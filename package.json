@@ -1,0 +1,16 @@
+{
+  "name": "sky-code",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:cli": "bun run --watch packages/cli/src/index.tsx",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "prettier": "^3.8.3"
+  }
+}
