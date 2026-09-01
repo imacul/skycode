@@ -1,4 +1,4 @@
-// Chat Agent - General conversation agent
+// Business Agent - Specialized for business strategy and planning
 import type {
   BaseAgent,
   AgentConfig,
@@ -7,73 +7,79 @@ import type {
   AgentResponse,
   AgentMode,
   AgentCapability,
+  BaseProvider,
+  Message,
+  BusinessAgentConfig,
 } from './types';
-import type { ChatAgentConfig } from './types';
-import type { BaseProvider } from '../providers/base';
-import type { Message } from '../store/conversation';
-import { getSystemMessage } from '../store/conversation';
 
 /**
- * Default chat agent configuration
+ * Default business agent configuration
  */
-export const DEFAULT_CHAT_AGENT_CONFIG: ChatAgentConfig = {
-  name: 'chat-agent',
-  description: 'A general-purpose AI assistant for conversation, documentation, and knowledge queries.',
-  capabilities: ['chat', 'documentation', 'search'],
-  defaultMode: 'chat',
-  systemPrompt: `You are a helpful, knowledgeable AI assistant. Your role is to:
-- Answer questions accurately and clearly
-- Provide helpful explanations and examples
-- Assist with documentation and learning
-- Help solve problems step-by-step
+export const DEFAULT_BUSINESS_AGENT_CONFIG: BusinessAgentConfig = {
+  name: 'business-agent',
+  description: 'A specialized AI agent for business strategy, planning, and analysis.',
+  capabilities: ['chat', 'documentation', 'search', 'plan', 'business'],
+  defaultMode: 'business',
+  systemPrompt: `You are an expert business strategist and consultant. Your role is to help with:
+- Business planning and strategy
+- Market analysis and research
+- Product development and go-to-market
+- Financial modeling and projections
+- Competitive analysis
+- Business process optimization
+- Startup advice and growth strategies
 
-Be concise but thorough. Use markdown formatting for clarity. Cite sources when possible.`,
-  chatSettings: {
-    responseLength: 'medium',
-    includeThinking: false,
-    includeSources: true,
+Always provide actionable, data-driven insights. Use frameworks like SWOT, Porter's Five Forces, Business Model Canvas, and Lean Startup methodology.`,
+  businessSettings: {
+    framework: 'comprehensive',
+    includeData: true,
+    includeActionItems: true,
+    includeMetrics: true,
   },
 };
 
 /**
- * Mode-specific prompts for chat agent
+ * Mode-specific system prompts for business agent
  */
 const MODE_PROMPTS: Record<AgentMode, string> = {
-  chat: 'Engage in general conversation. Be helpful, accurate, and friendly.',
-  code: 'Provide code examples and technical explanations when relevant.',
-  debug: 'Help troubleshoot and solve problems methodically.',
-  explain: 'Explain concepts clearly with examples and analogies.',
+  chat: 'Engage in business conversation. Provide strategic insights and practical advice.',
+  explain: 'Explain business concepts clearly with examples and frameworks.',
+  plan: 'Create comprehensive business plans with clear action items, timelines, and success metrics.',
+  business: 'Provide expert business analysis and strategy. Use frameworks and data-driven approaches.',
+  search: 'Research business topics and provide comprehensive market analysis.',
+  code: 'N/A',
+  debug: 'N/A',
   refactor: 'N/A',
   test: 'N/A',
-  search: 'Search for information and provide comprehensive answers with sources.',
-  plan: 'Create comprehensive plans and strategies.',
-  build: 'Create implementation plans and technical roadmaps.',
-  business: 'Provide business strategy and analysis.',
+  build: 'N/A',
 };
 
 /**
- * Response length settings
+ * Get system message
  */
-const RESPONSE_LENGTH_TOKENS: Record<'short' | 'medium' | 'long', number> = {
-  short: 512,
-  medium: 2048,
-  long: 4096,
-};
+function getSystemMessage(provider: string, model: string, content: string): Message {
+  return {
+    id: `system_${Date.now()}`,
+    role: 'system',
+    content,
+    timestamp: new Date(),
+  };
+}
 
 /**
- * Chat Agent implementation
+ * Business Agent implementation
  */
-export class ChatAgent implements BaseAgent {
-  readonly config: ChatAgentConfig;
+export class BusinessAgent implements BaseAgent {
+  readonly config: BusinessAgentConfig;
   private context: AgentContext;
   private currentMode: AgentMode;
 
-  constructor(config: Partial<ChatAgentConfig> = {}) {
+  constructor(config: Partial<BusinessAgentConfig> = {}) {
     this.config = {
-      ...DEFAULT_CHAT_AGENT_CONFIG,
+      ...DEFAULT_BUSINESS_AGENT_CONFIG,
       ...config,
-    } as ChatAgentConfig;
-    this.currentMode = this.config.defaultMode || 'chat';
+    } as BusinessAgentConfig;
+    this.currentMode = this.config.defaultMode || 'business';
     
     this.context = {
       conversation: null,
@@ -81,8 +87,8 @@ export class ChatAgent implements BaseAgent {
       settings: {},
       provider: null,
       model: '',
-      workingDirectory: process.cwd(),
-      env: process.env,
+      workingDirectory: typeof process !== 'undefined' ? process.cwd() : '/',
+      env: typeof process !== 'undefined' ? { ...process.env } : {},
     };
   }
 
@@ -96,7 +102,7 @@ export class ChatAgent implements BaseAgent {
     };
 
     if (!this.context.provider) {
-      throw new Error('ChatAgent requires a provider to be set in context');
+      throw new Error('BusinessAgent requires a provider to be set in context');
     }
 
     if (!this.context.model) {
@@ -108,17 +114,13 @@ export class ChatAgent implements BaseAgent {
    * Get the system message
    */
   private getSystemMessage(): Message {
-    const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.chat;
-    const systemPrompt = this.config.systemPrompt || DEFAULT_CHAT_AGENT_CONFIG.systemPrompt;
+    const modePrompt = MODE_PROMPTS[this.currentMode];
+    const systemPrompt = this.config.systemPrompt || DEFAULT_BUSINESS_AGENT_CONFIG.systemPrompt;
     
-    const fullPrompt = this.config.chatSettings?.includeThinking
-      ? `${systemPrompt}\n\nAlways show your thinking process step-by-step.`
-      : systemPrompt;
-
     return getSystemMessage(
       this.context.provider?.name || 'openrouter',
       this.context.model,
-      `${fullPrompt}\n\n${modePrompt}`
+      `${systemPrompt}\n\n${modePrompt}`
     );
   }
 
@@ -143,12 +145,33 @@ export class ChatAgent implements BaseAgent {
     messages.push({
       id: `user_${Date.now()}`,
       role: 'user',
-      content: request.input,
+      content: this.formatUserInput(request),
       timestamp: new Date(),
       metadata: undefined,
     });
 
     return messages;
+  }
+
+  /**
+   * Format user input based on mode
+   */
+  private formatUserInput(request: AgentRequest): string {
+    const input = request.input;
+    const mode = request.mode || this.currentMode;
+
+    switch (mode) {
+      case 'plan':
+        return `BUSINESS PLAN MODE: Create a comprehensive plan for:\n\n${input}`;
+      case 'business':
+        return `BUSINESS ANALYSIS: Analyze and provide strategic insights for:\n\n${input}`;
+      case 'explain':
+        return `EXPLAIN BUSINESS CONCEPT: Explain the following business concept:\n\n${input}`;
+      case 'search':
+        return `BUSINESS RESEARCH: Research and provide insights on:\n\n${input}`;
+      default:
+        return input;
+    }
   }
 
   /**
@@ -164,12 +187,8 @@ export class ChatAgent implements BaseAgent {
       throw new Error('Provider not initialized');
     }
 
-    // Get max tokens based on response length setting
-    const responseLength = this.config.chatSettings?.responseLength || 'medium';
-    const maxTokens = RESPONSE_LENGTH_TOKENS[responseLength];
-
     try {
-      const maxTokens = (request.context as any)?.maxTokens || RESPONSE_LENGTH_TOKENS[this.config.chatSettings?.responseLength || 'medium'];
+      const maxTokens = (request.context as any)?.maxTokens || 4096;
       const response = await this.context.provider.chat({
         messages,
         model: this.context.model,
@@ -192,7 +211,7 @@ export class ChatAgent implements BaseAgent {
         suggestions: this.generateSuggestions(response.content, request),
       };
     } catch (error) {
-      throw new Error(`ChatAgent processing failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`BusinessAgent processing failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -210,11 +229,8 @@ export class ChatAgent implements BaseAgent {
       throw new Error('Provider not initialized');
     }
 
-    // Get max tokens based on response length setting
-    const responseLength = this.config.chatSettings?.responseLength || 'medium';
-    const maxTokens = (request.context as any)?.maxTokens || RESPONSE_LENGTH_TOKENS[responseLength];
-
     try {
+      const maxTokens = (request.context as any)?.maxTokens || 4096;
       await this.context.provider.chatStream(
         {
           messages,
@@ -266,7 +282,7 @@ export class ChatAgent implements BaseAgent {
       try {
         JSON.parse(content);
         return 'json';
-      } catch {
+      } catch (e) {
         // Not valid JSON
       }
     }
@@ -285,33 +301,32 @@ export class ChatAgent implements BaseAgent {
     const suggestions: string[] = [];
     const mode = request.mode || this.currentMode;
 
-    // Don't generate suggestions for streaming
     if (request.onStream) return suggestions;
 
     const lowerContent = content.toLowerCase();
 
     switch (mode) {
+      case 'plan':
+        suggestions.push('What are the next steps?');
+        suggestions.push('Can you create a timeline?');
+        suggestions.push('What resources will I need?');
+        break;
+      case 'business':
+        suggestions.push('What are the risks?');
+        suggestions.push('How can I validate this?');
+        suggestions.push('What are the alternatives?');
+        break;
       case 'explain':
         suggestions.push('Can you give me an example?');
-        suggestions.push('Can you explain it differently?');
-        suggestions.push('What are the key points?');
+        suggestions.push('How does this apply to my situation?');
         break;
       case 'search':
         suggestions.push('Can you find more information?');
-        suggestions.push('What are the best resources on this?');
-        suggestions.push('Can you summarize the key findings?');
+        suggestions.push('What are the best resources?');
         break;
-      case 'chat':
       default:
-        if (content.includes('?')) {
-          suggestions.push('Can you elaborate on that?');
-          suggestions.push('What do you mean by that?');
-        }
         if (content.length > 500) {
           suggestions.push('Can you summarize this?');
-        }
-        if (lowerContent.includes('code') || lowerContent.includes('function')) {
-          suggestions.push('Can you show me an example?');
         }
         break;
     }
@@ -323,7 +338,7 @@ export class ChatAgent implements BaseAgent {
    * Get agent capabilities
    */
   getCapabilities(): AgentCapability[] {
-    return this.config.capabilities || DEFAULT_CHAT_AGENT_CONFIG.capabilities;
+    return this.config.capabilities || DEFAULT_BUSINESS_AGENT_CONFIG.capabilities;
   }
 
   /**
@@ -381,8 +396,8 @@ export class ChatAgent implements BaseAgent {
 }
 
 /**
- * Factory function for ChatAgent
+ * Factory function for BusinessAgent
  */
-export function createChatAgent(config?: Partial<ChatAgentConfig>): BaseAgent {
-  return new ChatAgent(config);
+export function createBusinessAgent(config?: Partial<BusinessAgentConfig>): BaseAgent {
+  return new BusinessAgent(config);
 }

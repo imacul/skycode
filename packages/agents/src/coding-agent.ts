@@ -8,11 +8,10 @@ import type {
   AgentMode,
   AgentCapability,
   CodeBlock,
+  CodingAgentConfig,
+  BaseProvider,
+  Message,
 } from './types';
-import type { CodingAgentConfig } from './types';
-import type { BaseProvider } from '../providers/base';
-import type { Message } from '../store/conversation';
-import { getSystemMessage } from '../store/conversation';
 
 /**
  * Default coding agent configuration
@@ -62,6 +61,18 @@ const MODE_PROMPTS: Record<AgentMode, string> = {
 };
 
 /**
+ * Get system message
+ */
+function getSystemMessage(provider: string, model: string, content: string): Message {
+  return {
+    id: `system_${Date.now()}`,
+    role: 'system',
+    content,
+    timestamp: new Date(),
+  };
+}
+
+/**
  * Coding Agent implementation
  */
 export class CodingAgent implements BaseAgent {
@@ -82,8 +93,8 @@ export class CodingAgent implements BaseAgent {
       settings: {},
       provider: null,
       model: '',
-      workingDirectory: process.cwd(),
-      env: process.env,
+      workingDirectory: typeof process !== 'undefined' ? process.cwd() : '/',
+      env: typeof process !== 'undefined' ? { ...process.env } : {},
     };
   }
 
@@ -96,22 +107,20 @@ export class CodingAgent implements BaseAgent {
       ...context,
     };
 
-    // Ensure we have a provider
     if (!this.context.provider) {
       throw new Error('CodingAgent requires a provider to be set in context');
     }
 
-    // Ensure we have a model
     if (!this.context.model) {
       this.context.model = this.config.model || 'meta-llama/llama-3.1-70b-instruct';
     }
   }
 
   /**
-   * Get the system message based on current mode
+   * Get the system message
    */
   private getSystemMessage(): Message {
-    const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.code;
+    const modePrompt = MODE_PROMPTS[this.currentMode];
     const systemPrompt = this.config.systemPrompt || DEFAULT_CODING_AGENT_CONFIG.systemPrompt;
     
     return getSystemMessage(
@@ -138,7 +147,7 @@ export class CodingAgent implements BaseAgent {
       messages.push(...this.context.messages);
     }
 
-    // Add the user's input
+    // Add user input
     messages.push({
       id: `user_${Date.now()}`,
       role: 'user',
@@ -188,6 +197,29 @@ export class CodingAgent implements BaseAgent {
         }
         return input;
     }
+  }
+
+  /**
+   * Extract code blocks from response
+   */
+  private extractCodeBlocks(content: string): CodeBlock[] {
+    const codeBlocks: CodeBlock[] = [];
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    
+    let match;
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      const language = match[1] || 'unknown';
+      const code = match[2].trim();
+      
+      if (code) {
+        codeBlocks.push({
+          language,
+          code,
+        });
+      }
+    }
+    
+    return codeBlocks;
   }
 
   /**
@@ -311,36 +343,7 @@ export class CodingAgent implements BaseAgent {
       return 'markdown';
     }
     
-    // Check if it's mostly code
-    const codeBlocks = this.extractCodeBlocks(content);
-    if (codeBlocks.length > 0 && codeBlocks.some(b => b.code.length > 100)) {
-      return 'code';
-    }
-    
     return 'text';
-  }
-
-  /**
-   * Extract code blocks from content
-   */
-  private extractCodeBlocks(content: string): CodeBlock[] {
-    const codeBlocks: CodeBlock[] = [];
-    const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
-    
-    let match;
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      const language = match[1] || 'text';
-      const code = match[2].trim();
-      
-      if (code) {
-        codeBlocks.push({
-          language,
-          code,
-        });
-      }
-    }
-    
-    return codeBlocks;
   }
 
   /**
@@ -350,47 +353,39 @@ export class CodingAgent implements BaseAgent {
     const suggestions: string[] = [];
     const mode = request.mode || this.currentMode;
 
-    // Don't generate suggestions for streaming
     if (request.onStream) return suggestions;
 
-    // Analyze content and generate context-aware suggestions
     const lowerContent = content.toLowerCase();
 
     switch (mode) {
       case 'debug':
-        if (lowerContent.includes('fixed') || lowerContent.includes('solution')) {
-          suggestions.push('Can you explain the bug in more detail?');
-          suggestions.push('How can I prevent this bug in the future?');
-        }
+        suggestions.push('What other issues might exist?');
+        suggestions.push('Can you explain the root cause?');
+        suggestions.push('How can I prevent this bug?');
         break;
       case 'explain':
-        if (content.length > 500) {
-          suggestions.push('Can you simplify this explanation?');
-          suggestions.push('Can you give me an example?');
-        }
+        suggestions.push('Can you give me an example?');
+        suggestions.push('What are the key concepts?');
         break;
       case 'refactor':
-        suggestions.push('What are the key improvements in this refactoring?');
-        suggestions.push('Can you explain the changes line by line?');
+        suggestions.push('What improvements were made?');
+        suggestions.push('Can you refactor another section?');
         break;
       case 'test':
-        suggestions.push('Can you add more edge case tests?');
-        suggestions.push('How do I run these tests?');
+        suggestions.push('What edge cases are covered?');
+        suggestions.push('Can you write more tests?');
         break;
       case 'code':
       default:
-        if (lowerContent.includes('function') || lowerContent.includes('class')) {
-          suggestions.push('Can you explain how this works?');
-          suggestions.push('Can you write tests for this?');
+        if (content.includes('function') || content.includes('class')) {
+          suggestions.push('Can you explain this code?');
         }
-        if (content.includes('```')) {
-          suggestions.push('Can you refactor this code?');
-          suggestions.push('Are there any potential bugs here?');
+        if (content.includes('error') || content.includes('bug')) {
+          suggestions.push('How do I fix this?');
         }
         break;
     }
 
-    // Limit to 3 suggestions
     return suggestions.slice(0, 3);
   }
 
@@ -451,7 +446,7 @@ export class CodingAgent implements BaseAgent {
    * Cleanup
    */
   async cleanup(): Promise<void> {
-    // Nothing to cleanup for now
+    // Nothing to cleanup
   }
 }
 

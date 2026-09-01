@@ -1,4 +1,4 @@
-// Chat Agent - General conversation agent
+// Planning Agent - Specialized for creating plans and strategies
 import type {
   BaseAgent,
   AgentConfig,
@@ -8,72 +8,67 @@ import type {
   AgentMode,
   AgentCapability,
 } from './types';
-import type { ChatAgentConfig } from './types';
+import type { PlanningAgentConfig } from './types';
 import type { BaseProvider } from '../providers/base';
 import type { Message } from '../store/conversation';
 import { getSystemMessage } from '../store/conversation';
 
 /**
- * Default chat agent configuration
+ * Default planning agent configuration
  */
-export const DEFAULT_CHAT_AGENT_CONFIG: ChatAgentConfig = {
-  name: 'chat-agent',
-  description: 'A general-purpose AI assistant for conversation, documentation, and knowledge queries.',
-  capabilities: ['chat', 'documentation', 'search'],
-  defaultMode: 'chat',
-  systemPrompt: `You are a helpful, knowledgeable AI assistant. Your role is to:
-- Answer questions accurately and clearly
-- Provide helpful explanations and examples
-- Assist with documentation and learning
-- Help solve problems step-by-step
+export const DEFAULT_PLANNING_AGENT_CONFIG: PlanningAgentConfig = {
+  name: 'planning-agent',
+  description: 'A specialized AI agent for creating detailed plans, roadmaps, and strategies.',
+  capabilities: ['chat', 'documentation', 'search', 'plan', 'build'],
+  defaultMode: 'plan',
+  systemPrompt: `You are an expert planner and strategist. Your role is to help create:
+- Detailed project plans and roadmaps
+- Step-by-step implementation strategies
+- Technical architecture plans
+- Product development roadmaps
+- Business strategy plans
+- Personal development plans
 
-Be concise but thorough. Use markdown formatting for clarity. Cite sources when possible.`,
-  chatSettings: {
-    responseLength: 'medium',
-    includeThinking: false,
-    includeSources: true,
+Always create structured, actionable plans with clear milestones, timelines, and success criteria. Use frameworks like SMART goals, OKRs, and Agile methodologies.`,
+  planningSettings: {
+    includeTimeline: true,
+    includeMilestones: true,
+    includeResources: true,
+    includeRisks: true,
+    includeSuccessMetrics: true,
   },
 };
 
 /**
- * Mode-specific prompts for chat agent
+ * Mode-specific system prompts for planning agent
  */
 const MODE_PROMPTS: Record<AgentMode, string> = {
-  chat: 'Engage in general conversation. Be helpful, accurate, and friendly.',
-  code: 'Provide code examples and technical explanations when relevant.',
-  debug: 'Help troubleshoot and solve problems methodically.',
-  explain: 'Explain concepts clearly with examples and analogies.',
+  chat: 'Engage in planning conversation. Provide structured advice and actionable insights.',
+  explain: 'Explain planning concepts and methodologies clearly.',
+  plan: 'Create comprehensive, structured plans with clear steps, timelines, and success criteria.',
+  build: 'Create implementation plans and technical roadmaps.',
+  search: 'Research planning methodologies and provide best practices.',
+  code: 'N/A',
+  debug: 'N/A',
   refactor: 'N/A',
   test: 'N/A',
-  search: 'Search for information and provide comprehensive answers with sources.',
-  plan: 'Create comprehensive plans and strategies.',
-  build: 'Create implementation plans and technical roadmaps.',
-  business: 'Provide business strategy and analysis.',
+  business: 'N/A',
 };
 
 /**
- * Response length settings
+ * Planning Agent implementation
  */
-const RESPONSE_LENGTH_TOKENS: Record<'short' | 'medium' | 'long', number> = {
-  short: 512,
-  medium: 2048,
-  long: 4096,
-};
-
-/**
- * Chat Agent implementation
- */
-export class ChatAgent implements BaseAgent {
-  readonly config: ChatAgentConfig;
+export class PlanningAgent implements BaseAgent {
+  readonly config: PlanningAgentConfig;
   private context: AgentContext;
   private currentMode: AgentMode;
 
-  constructor(config: Partial<ChatAgentConfig> = {}) {
+  constructor(config: Partial<PlanningAgentConfig> = {}) {
     this.config = {
-      ...DEFAULT_CHAT_AGENT_CONFIG,
+      ...DEFAULT_PLANNING_AGENT_CONFIG,
       ...config,
-    } as ChatAgentConfig;
-    this.currentMode = this.config.defaultMode || 'chat';
+    } as PlanningAgentConfig;
+    this.currentMode = this.config.defaultMode || 'plan';
     
     this.context = {
       conversation: null,
@@ -96,7 +91,7 @@ export class ChatAgent implements BaseAgent {
     };
 
     if (!this.context.provider) {
-      throw new Error('ChatAgent requires a provider to be set in context');
+      throw new Error('PlanningAgent requires a provider to be set in context');
     }
 
     if (!this.context.model) {
@@ -108,17 +103,13 @@ export class ChatAgent implements BaseAgent {
    * Get the system message
    */
   private getSystemMessage(): Message {
-    const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.chat;
-    const systemPrompt = this.config.systemPrompt || DEFAULT_CHAT_AGENT_CONFIG.systemPrompt;
+    const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.plan;
+    const systemPrompt = this.config.systemPrompt || DEFAULT_PLANNING_AGENT_CONFIG.systemPrompt;
     
-    const fullPrompt = this.config.chatSettings?.includeThinking
-      ? `${systemPrompt}\n\nAlways show your thinking process step-by-step.`
-      : systemPrompt;
-
     return getSystemMessage(
       this.context.provider?.name || 'openrouter',
       this.context.model,
-      `${fullPrompt}\n\n${modePrompt}`
+      `${systemPrompt}\n\n${modePrompt}`
     );
   }
 
@@ -143,12 +134,33 @@ export class ChatAgent implements BaseAgent {
     messages.push({
       id: `user_${Date.now()}`,
       role: 'user',
-      content: request.input,
+      content: this.formatUserInput(request),
       timestamp: new Date(),
       metadata: undefined,
     });
 
     return messages;
+  }
+
+  /**
+   * Format user input based on mode
+   */
+  private formatUserInput(request: AgentRequest): string {
+    const input = request.input;
+    const mode = request.mode || this.currentMode;
+
+    switch (mode) {
+      case 'plan':
+        return `PLANNING MODE: Create a detailed plan for:\n\n${input}\n\nInclude timeline, milestones, resources, and success criteria.`;
+      case 'build':
+        return `BUILD MODE: Create an implementation plan for:\n\n${input}\n\nInclude technical steps, dependencies, and testing strategy.`;
+      case 'explain':
+        return `EXPLAIN PLANNING: Explain the planning process for:\n\n${input}`;
+      case 'search':
+        return `PLANNING RESEARCH: Research best practices for:\n\n${input}`;
+      default:
+        return input;
+    }
   }
 
   /**
@@ -164,16 +176,12 @@ export class ChatAgent implements BaseAgent {
       throw new Error('Provider not initialized');
     }
 
-    // Get max tokens based on response length setting
-    const responseLength = this.config.chatSettings?.responseLength || 'medium';
-    const maxTokens = RESPONSE_LENGTH_TOKENS[responseLength];
-
     try {
-      const maxTokens = (request.context as any)?.maxTokens || RESPONSE_LENGTH_TOKENS[this.config.chatSettings?.responseLength || 'medium'];
+      const maxTokens = (request.context as any)?.maxTokens || 4096;
       const response = await this.context.provider.chat({
         messages,
         model: this.context.model,
-        temperature: 0.7,
+        temperature: 0.3, // Lower temperature for more structured plans
         maxTokens,
       });
 
@@ -192,7 +200,7 @@ export class ChatAgent implements BaseAgent {
         suggestions: this.generateSuggestions(response.content, request),
       };
     } catch (error) {
-      throw new Error(`ChatAgent processing failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`PlanningAgent processing failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -210,16 +218,13 @@ export class ChatAgent implements BaseAgent {
       throw new Error('Provider not initialized');
     }
 
-    // Get max tokens based on response length setting
-    const responseLength = this.config.chatSettings?.responseLength || 'medium';
-    const maxTokens = (request.context as any)?.maxTokens || RESPONSE_LENGTH_TOKENS[responseLength];
-
     try {
+      const maxTokens = (request.context as any)?.maxTokens || 4096;
       await this.context.provider.chatStream(
         {
           messages,
           model: this.context.model,
-          temperature: 0.7,
+          temperature: 0.3,
           maxTokens,
           stream: true,
         },
@@ -266,7 +271,7 @@ export class ChatAgent implements BaseAgent {
       try {
         JSON.parse(content);
         return 'json';
-      } catch {
+      } catch (e) {
         // Not valid JSON
       }
     }
@@ -285,33 +290,32 @@ export class ChatAgent implements BaseAgent {
     const suggestions: string[] = [];
     const mode = request.mode || this.currentMode;
 
-    // Don't generate suggestions for streaming
     if (request.onStream) return suggestions;
 
     const lowerContent = content.toLowerCase();
 
     switch (mode) {
+      case 'plan':
+        suggestions.push('What are the first steps?');
+        suggestions.push('Can you create a timeline?');
+        suggestions.push('What resources will I need?');
+        break;
+      case 'build':
+        suggestions.push('What technologies should I use?');
+        suggestions.push('Can you break this into sprints?');
+        suggestions.push('What are the dependencies?');
+        break;
       case 'explain':
         suggestions.push('Can you give me an example?');
-        suggestions.push('Can you explain it differently?');
-        suggestions.push('What are the key points?');
+        suggestions.push('What are the key principles?');
         break;
       case 'search':
-        suggestions.push('Can you find more information?');
-        suggestions.push('What are the best resources on this?');
-        suggestions.push('Can you summarize the key findings?');
+        suggestions.push('What are the best practices?');
+        suggestions.push('Can you find case studies?');
         break;
-      case 'chat':
       default:
-        if (content.includes('?')) {
-          suggestions.push('Can you elaborate on that?');
-          suggestions.push('What do you mean by that?');
-        }
         if (content.length > 500) {
-          suggestions.push('Can you summarize this?');
-        }
-        if (lowerContent.includes('code') || lowerContent.includes('function')) {
-          suggestions.push('Can you show me an example?');
+          suggestions.push('Can you summarize this plan?');
         }
         break;
     }
@@ -323,7 +327,7 @@ export class ChatAgent implements BaseAgent {
    * Get agent capabilities
    */
   getCapabilities(): AgentCapability[] {
-    return this.config.capabilities || DEFAULT_CHAT_AGENT_CONFIG.capabilities;
+    return this.config.capabilities || DEFAULT_PLANNING_AGENT_CONFIG.capabilities;
   }
 
   /**
@@ -381,8 +385,10 @@ export class ChatAgent implements BaseAgent {
 }
 
 /**
- * Factory function for ChatAgent
+ * Factory function for PlanningAgent
  */
-export function createChatAgent(config?: Partial<ChatAgentConfig>): BaseAgent {
-  return new ChatAgent(config);
+export function createPlanningAgent(config?: Partial<PlanningAgentConfig>): BaseAgent {
+  return new PlanningAgent(config);
 }
+
+

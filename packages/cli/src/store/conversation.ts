@@ -343,15 +343,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 /**
  * Get system message for a conversation
  */
-export function getSystemMessage(provider?: string, model?: string): Message {
-  let content = 'You are a helpful AI coding assistant.';
+export function getSystemMessage(provider?: string, model?: string, customContent?: string): Message {
+  let content = customContent || 'You are a helpful AI coding assistant.';
   
-  if (model) {
-    content += ` You are currently using the ${model} model.`;
-  }
-  
-  if (provider === 'openrouter') {
-    content += ' Respond with helpful, accurate, and concise answers.';
+  if (!customContent) {
+    if (model) {
+      content += ` You are currently using the ${model} model.`;
+    }
+    
+    if (provider === 'openrouter') {
+      content += ' Respond with helpful, accurate, and concise answers.';
+    }
   }
 
   return {

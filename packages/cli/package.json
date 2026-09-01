@@ -1,21 +1,41 @@
 {
   "name": "@sky-code/cli",
-  "module": "src/index.tsx",
+  "version": "1.0.0",
+  "description": "Sky Code CLI - AI-powered code assistant with multiple agent modes",
+  "module": "dist/index.js",
   "type": "module",
-  "private": true,
+  "bin": {
+    "skycode": "./dist/index.js"
+  },
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
     "test": "bun test src/tests",
     "test:watch": "bun test --watch src/tests",
-    "test:coverage": "bun test --coverage src/tests"
+    "test:coverage": "bun test --coverage src/tests",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "ai",
+    "code",
+    "assistant",
+    "cli",
+    "planning",
+    "business",
+    "agent"
+  ],
+  "author": "Sky Code Team",
+  "license": "MIT",
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.0.0",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.2.15",
+    "typescript": "^5.0.0",
     "zustand": "^4.5.2"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "@opentui/core": "^0.2.15",

@@ -1,19 +1,53 @@
 {
   "name": "sky-code",
   "version": "1.0.0",
+  "description": "Sky Code - AI-powered development platform with planning, build, and business modes",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
+    "dev": "bun run --watch packages/cli/src/index.tsx",
     "dev:cli": "bun run --watch packages/cli/src/index.tsx",
+    "build": "npm run build:cli",
+    "build:cli": "cd packages/cli && npm run build",
+    "start": "npm run start:cli",
+    "start:cli": "cd packages/cli && npm run start",
+    "test": "npm run test:cli",
+    "test:cli": "cd packages/cli && npm test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepublishOnly": "npm run build"
   },
+  "bin": {
+    "skycode": "./packages/cli/dist/index.js"
+  },
+  "keywords": [
+    "ai",
+    "code",
+    "development",
+    "cli",
+    "planning",
+    "business",
+    "agent",
+    "typescript"
+  ],
+  "author": "Sky Code Team",
+  "license": "MIT",
   "devDependencies": {
     "@types/react": "^19.2.18",
-    "prettier": "^3.8.3"
+    "prettier": "^3.8.3",
+    "typescript": "^5.0.0"
   },
-  "dependencies": {
-    "zustand": "4.5.2"
-  }
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imacul/skycode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/imacul/skycode/issues"
+  },
+  "homepage": "https://github.com/imacul/skycode#readme"
 }

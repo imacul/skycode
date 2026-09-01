@@ -15,8 +15,6 @@ import { createChatAgent, DEFAULT_CHAT_AGENT_CONFIG } from './chat-agent';
 import { createPlanningAgent, DEFAULT_PLANNING_AGENT_CONFIG } from './planning-agent';
 import { createBusinessAgent, DEFAULT_BUSINESS_AGENT_CONFIG } from './business-agent';
 import type { CodingAgentConfig, ChatAgentConfig, PlanningAgentConfig, BusinessAgentConfig } from './types';
-import type { BaseProvider } from '../providers/base';
-import type { AgentContext } from './types';
 
 /**
  * Built-in agents registry
@@ -119,7 +117,7 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
   /**
    * Initialize all agents with shared context
    */
-  async initializeAll(context: Partial<AgentContext>): Promise<void> {
+  async initializeAll(context: Partial<import('./types').AgentContext>): Promise<void> {
     const promises = Object.values(this.agents).map((agent) => 
       agent.initialize(context)
     );
@@ -129,7 +127,7 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
   /**
    * Initialize a specific agent
    */
-  async initializeAgent(name: string, context: Partial<AgentContext>): Promise<void> {
+  async initializeAgent(name: string, context: Partial<import('./types').AgentContext>): Promise<void> {
     const agent = this.getAgent(name);
     if (agent) {
       await agent.initialize(context);
@@ -170,7 +168,7 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
    * Select the best agent for a request
    */
   private selectAgent(request: AgentRequest): BaseAgent {
-    const explicitAgent = request.context?.agent as string;
+    const explicitAgent = (request.context as any)?.agent as string;
     
     // If agent is explicitly specified, use it
     if (explicitAgent && this.agents[explicitAgent]) {
@@ -178,7 +176,7 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
     }
 
     // Check if mode suggests a specific agent
-    const mode = request.mode || request.context?.mode as string;
+    const mode = request.mode || (request.context as any)?.mode as string;
     
     if (mode === 'code' || mode === 'debug' || mode === 'refactor' || mode === 'test') {
       return this.agents['coding-agent'] || this.getDefaultAgent();
@@ -215,8 +213,32 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
       'documentation', 'docs', 'tutorial', 'guide', 'learn',
     ];
 
+    // Business-related keywords
+    const businessKeywords = [
+      'business', 'market', 'strategy', 'revenue', 'profit',
+      'customer', 'product', 'startup', 'investor', 'pitch',
+      'plan', 'roadmap', 'go-to-market', 'competitive',
+    ];
+
+    // Planning-related keywords
+    const planningKeywords = [
+      'plan', 'roadmap', 'timeline', 'milestone', 'step',
+      'implementation', 'architecture', 'design', 'structure',
+    ];
+
     const hasCodeKeyword = codeKeywords.some(kw => lowerInput.includes(kw));
     const hasChatKeyword = chatKeywords.some(kw => lowerInput.includes(kw));
+    const hasBusinessKeyword = businessKeywords.some(kw => lowerInput.includes(kw));
+    const hasPlanningKeyword = planningKeywords.some(kw => lowerInput.includes(kw));
+
+    // Priority order: explicit mode > business > planning > code > chat
+    if (hasBusinessKeyword) {
+      return this.agents['business-agent'] || this.agents['planning-agent'] || this.getDefaultAgent();
+    }
+
+    if (hasPlanningKeyword) {
+      return this.agents['planning-agent'] || this.getDefaultAgent();
+    }
 
     // If it contains code-related keywords, use coding agent
     if (hasCodeKeyword && !hasChatKeyword) {
@@ -251,7 +273,7 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
   /**
    * Update context for all agents
    */
-  updateAllContext(updates: Partial<AgentContext>): void {
+  updateAllContext(updates: Partial<import('./types').AgentContext>): void {
     for (const agent of Object.values(this.agents)) {
       agent.updateContext(updates);
     }
@@ -331,14 +353,8 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
    * Get available modes across all agents
    */
   getAvailableModes(): AgentMode[] {
-    const modes = new Set<AgentMode>();
-    
-    for (const agent of Object.values(this.agents)) {
-      const agentModes: AgentMode[] = ['chat', 'code', 'debug', 'explain', 'refactor', 'test', 'search', 'plan', 'build', 'business'];
-      modes.add(agent.getMode());
-    }
-    
-    return Array.from(modes);
+    const modes: AgentMode[] = ['chat', 'code', 'debug', 'explain', 'refactor', 'test', 'search', 'plan', 'build', 'business'];
+    return modes;
   }
 }
 

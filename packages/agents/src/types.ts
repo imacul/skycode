@@ -1,7 +1,54 @@
 // Agent types and interfaces
-import type { BaseProvider } from '../providers/base';
-import type { Message, Conversation } from '../store/conversation';
-import type { Settings } from '../store/settings';
+// Types that would normally come from other modules
+// These are duplicated here to avoid circular dependencies
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: Date;
+  metadata?: {
+    model?: string;
+    finishReason?: string;
+    usage?: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    };
+  };
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: Date;
+  updatedAt: Date;
+  metadata?: {
+    model?: string;
+    provider?: string;
+    totalTokens?: number;
+  };
+}
+
+export interface Settings {
+  [key: string]: unknown;
+}
+
+export interface BaseProvider {
+  name: string;
+  chat(options: { messages: Message[]; model: string; temperature?: number; maxTokens?: number }): Promise<{
+    content: string;
+    model: string;
+    finishReason: string;
+    usage?: { totalTokens?: number };
+  }>;
+  chatStream(
+    options: { messages: Message[]; model: string; temperature?: number; maxTokens?: number; stream: boolean },
+    callback: (chunk: { content: string; finishReason?: string; usage?: { totalTokens?: number } }) => void
+  ): Promise<void>;
+  initialize(config: { apiKey?: string; baseUrl?: string }): Promise<void>;
+}
 
 /**
  * Agent capabilities

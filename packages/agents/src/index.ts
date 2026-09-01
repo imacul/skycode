@@ -58,4 +58,8 @@ export type {
   ChatAgentConfig,
   PlanningAgentConfig,
   BusinessAgentConfig,
+  BaseProvider,
+  Message,
+  Conversation,
+  Settings,
 } from './types';

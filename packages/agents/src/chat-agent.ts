@@ -7,11 +7,10 @@ import type {
   AgentResponse,
   AgentMode,
   AgentCapability,
+  BaseProvider,
+  Message,
+  ChatAgentConfig,
 } from './types';
-import type { ChatAgentConfig } from './types';
-import type { BaseProvider } from '../providers/base';
-import type { Message } from '../store/conversation';
-import { getSystemMessage } from '../store/conversation';
 
 /**
  * Default chat agent configuration
@@ -61,6 +60,18 @@ const RESPONSE_LENGTH_TOKENS: Record<'short' | 'medium' | 'long', number> = {
 };
 
 /**
+ * Get system message
+ */
+function getSystemMessage(provider: string, model: string, content: string): Message {
+  return {
+    id: `system_${Date.now()}`,
+    role: 'system',
+    content,
+    timestamp: new Date(),
+  };
+}
+
+/**
  * Chat Agent implementation
  */
 export class ChatAgent implements BaseAgent {
@@ -81,8 +92,8 @@ export class ChatAgent implements BaseAgent {
       settings: {},
       provider: null,
       model: '',
-      workingDirectory: process.cwd(),
-      env: process.env,
+      workingDirectory: typeof process !== 'undefined' ? process.cwd() : '/',
+      env: typeof process !== 'undefined' ? { ...process.env } : {},
     };
   }
 
@@ -108,7 +119,7 @@ export class ChatAgent implements BaseAgent {
    * Get the system message
    */
   private getSystemMessage(): Message {
-    const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.chat;
+    const modePrompt = MODE_PROMPTS[this.currentMode];
     const systemPrompt = this.config.systemPrompt || DEFAULT_CHAT_AGENT_CONFIG.systemPrompt;
     
     const fullPrompt = this.config.chatSettings?.includeThinking
@@ -165,11 +176,9 @@ export class ChatAgent implements BaseAgent {
     }
 
     // Get max tokens based on response length setting
-    const responseLength = this.config.chatSettings?.responseLength || 'medium';
-    const maxTokens = RESPONSE_LENGTH_TOKENS[responseLength];
+    const maxTokens = (request.context as any)?.maxTokens || RESPONSE_LENGTH_TOKENS[this.config.chatSettings?.responseLength || 'medium'];
 
     try {
-      const maxTokens = (request.context as any)?.maxTokens || RESPONSE_LENGTH_TOKENS[this.config.chatSettings?.responseLength || 'medium'];
       const response = await this.context.provider.chat({
         messages,
         model: this.context.model,
@@ -266,7 +275,7 @@ export class ChatAgent implements BaseAgent {
       try {
         JSON.parse(content);
         return 'json';
-      } catch {
+      } catch (e) {
         // Not valid JSON
       }
     }
@@ -285,33 +294,28 @@ export class ChatAgent implements BaseAgent {
     const suggestions: string[] = [];
     const mode = request.mode || this.currentMode;
 
-    // Don't generate suggestions for streaming
     if (request.onStream) return suggestions;
 
     const lowerContent = content.toLowerCase();
 
     switch (mode) {
+      case 'chat':
+        if (content.length > 500) {
+          suggestions.push('Can you summarize this?');
+        }
+        suggestions.push('Can you explain this further?');
+        break;
       case 'explain':
         suggestions.push('Can you give me an example?');
-        suggestions.push('Can you explain it differently?');
         suggestions.push('What are the key points?');
         break;
       case 'search':
         suggestions.push('Can you find more information?');
-        suggestions.push('What are the best resources on this?');
-        suggestions.push('Can you summarize the key findings?');
+        suggestions.push('What are the best resources?');
         break;
-      case 'chat':
       default:
-        if (content.includes('?')) {
-          suggestions.push('Can you elaborate on that?');
-          suggestions.push('What do you mean by that?');
-        }
         if (content.length > 500) {
           suggestions.push('Can you summarize this?');
-        }
-        if (lowerContent.includes('code') || lowerContent.includes('function')) {
-          suggestions.push('Can you show me an example?');
         }
         break;
     }

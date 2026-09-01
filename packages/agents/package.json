@@ -1,0 +1,45 @@
+{
+  "name": "@sky-code/agents",
+  "version": "1.0.0",
+  "description": "Sky Code AI Agents - Planning, Build, and Business mode agents",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "planning",
+    "build",
+    "business",
+    "code",
+    "typescript"
+  ],
+  "author": "Sky Code Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@opentui/core": "^0.2.15",
+    "@opentui/react": "^0.2.15",
+    "react": "^19.2.6",
+    "zustand": "^4.5.2"
+  },
+  "dependencies": {
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src"
+  ]
+}
