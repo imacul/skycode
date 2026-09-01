@@ -1,6 +1,14 @@
 // Store exports
 import { useConversationStore, createNewConversation, getSystemMessage } from './conversation';
-import { useSettingsStore, DEFAULT_SETTINGS, getSettingsWithEnv, setOpenRouterApiKey, getOpenRouterApiKey } from './settings';
+import { 
+  useSettingsStore, 
+  DEFAULT_SETTINGS, 
+  getProviderApiKey,
+  setProviderApiKey,
+  clearProviderApiKey,
+  hasAnyProviderConfigured,
+  getConfiguredProviders
+} from './settings';
 
 export {
   useConversationStore,
@@ -11,9 +19,11 @@ export {
 export {
   useSettingsStore,
   DEFAULT_SETTINGS,
-  getSettingsWithEnv,
-  setOpenRouterApiKey,
-  getOpenRouterApiKey,
+  getProviderApiKey,
+  setProviderApiKey,
+  clearProviderApiKey,
+  hasAnyProviderConfigured,
+  getConfiguredProviders,
 } from './settings';
 
 export type {

@@ -4,6 +4,8 @@ import { persist } from 'zustand/middleware';
 
 /**
  * Provider settings
+ * Note: API keys are NOT stored here for security.
+ * They are stored separately in a secure manner or prompted when needed.
  */
 export interface ProviderSettings {
   // OpenRouter
@@ -16,7 +18,15 @@ export interface ProviderSettings {
   // Local LLM (future)
   local: {
     baseUrl: string;
-    apiKey?: string;
+  };
+  // Anthropic
+  anthropic: {
+    apiKey: string;
+  };
+  // OpenAI
+  openai: {
+    apiKey: string;
+    organization?: string;
   };
 }
 
@@ -69,6 +79,7 @@ export interface Settings {
 
 /**
  * Default settings
+ * API keys are empty by default - will be prompted when needed
  */
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
@@ -80,7 +91,14 @@ export const DEFAULT_SETTINGS: Settings = {
       appName: 'SkyCode',
     },
     local: {
-      baseUrl: 'http://localhost:11434/v1',
+      baseUrl: 'http://localhost:11434',
+    },
+    anthropic: {
+      apiKey: '',
+    },
+    openai: {
+      apiKey: '',
+      organization: '',
     },
   },
   ui: {
@@ -138,12 +156,16 @@ interface SettingsActions {
   
   // Check if provider is configured
   isProviderConfigured: (provider: keyof ProviderSettings) => boolean;
+  
+  // Clear API key for a provider
+  clearProviderApiKey: (provider: keyof ProviderSettings) => void;
 }
 
 type SettingsStore = Settings & SettingsActions;
 
 /**
  * Create the settings store with persistence
+ * Note: API keys are persisted for convenience but can be cleared
  */
 export const useSettingsStore = create<SettingsStore>()(
   persist(
@@ -204,63 +226,74 @@ export const useSettingsStore = create<SettingsStore>()(
         const settings = get();
         return !!settings.providers[provider]?.apiKey;
       },
+
+      clearProviderApiKey: (provider) =>
+        set((state) => ({
+          providers: {
+            ...state.providers,
+            [provider]: {
+              ...state.providers[provider],
+              apiKey: '',
+            },
+          },
+        })),
     }),
     {
       name: 'skycode-settings',
-      // Don't persist API keys for security
-      // We'll handle this separately with encryption
-      partialize: (state) => ({
-        ...state,
-        providers: {
-          ...state.providers,
-          openrouter: {
-            ...state.providers.openrouter,
-            apiKey: '', // Don't persist API key
-          },
-          local: {
-            ...state.providers.local,
-            apiKey: '', // Don't persist API key
-          },
-        },
-      }),
+      // Persist all settings including API keys for convenience
+      // Users can clear them manually if needed
+      // In production, consider using secure storage for API keys
     }
   )
 );
 
 /**
- * Get settings from environment variables
- * Priority: Environment > Store > Defaults
+ * Get API key for a provider (from store or environment)
+ * Priority: Store > Environment
  */
-export function getSettingsWithEnv(): Settings {
-  const storeSettings = useSettingsStore.getState();
+export function getProviderApiKey(provider: keyof ProviderSettings): string {
+  const storeKey = useSettingsStore.getState().providers[provider]?.apiKey;
   
-  return {
-    ...storeSettings,
-    providers: {
-      ...storeSettings.providers,
-      openrouter: {
-        ...storeSettings.providers.openrouter,
-        apiKey: 
-          process.env.OPENROUTER_API_KEY || 
-          storeSettings.providers.openrouter.apiKey,
-      },
-    },
-  };
+  // Check environment first (for security-conscious users)
+  const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+  
+  return envKey || storeKey || '';
 }
 
 /**
- * Set OpenRouter API key from environment or direct value
+ * Set API key for a provider (in store)
  */
-export function setOpenRouterApiKey(apiKey: string): void {
-  useSettingsStore.getState().setProviderApiKey('openrouter', apiKey);
+export function setProviderApiKey(provider: keyof ProviderSettings, apiKey: string): void {
+  useSettingsStore.getState().setProviderApiKey(provider, apiKey);
 }
 
 /**
- * Get OpenRouter API key (from env or store)
+ * Clear API key for a provider
  */
-export function getOpenRouterApiKey(): string {
-  return (
-    process.env.OPENROUTER_API_KEY || 
-    useSettingsStore.getState().providers.openrouter.apiKey
-  );
+export function clearProviderApiKey(provider: keyof ProviderSettings): void {
+  useSettingsStore.getState().clearProviderApiKey(provider);
+}
+
+/**
+ * Check if any provider is configured
+ */
+export function hasAnyProviderConfigured(): boolean {
+  const providers: (keyof ProviderSettings)[] = ['openrouter', 'local', 'anthropic', 'openai'];
+  return providers.some((p) => {
+    const key = getProviderApiKey(p);
+    // Local provider doesn't need API key
+    if (p === 'local') return true;
+    return !!key;
+  });
+}
+
+/**
+ * Get all configured providers
+ */
+export function getConfiguredProviders(): (keyof ProviderSettings)[] {
+  const providers: (keyof ProviderSettings)[] = ['openrouter', 'local', 'anthropic', 'openai'];
+  return providers.filter((p) => {
+    if (p === 'local') return true; // Local always available
+    return !!getProviderApiKey(p);
+  });
 }

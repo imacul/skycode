@@ -4,18 +4,32 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
 import { StatusBar } from './components/satus-bar';
+import { WelcomeScreen } from './components/welcome-screen';
 import { useConversationStore, createNewConversation } from './store/conversation';
-import { useSettingsStore, getOpenRouterApiKey, setOpenRouterApiKey } from './store/settings';
-import { createOpenRouterProvider } from './providers';
+import { useSettingsStore, getProviderApiKey, setProviderApiKey, getConfiguredProviders } from './store/settings';
+import { createOpenRouterProvider } from './providers/openrouter';
+import { createLocalLLMProvider } from './providers/local';
+import { createAnthropicProvider } from './providers/anthropic';
+import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
 import type { BaseProvider } from './providers/base';
 import type { AgentRequest, AgentResponse } from './agents/types';
 
-// Initialize the agent orchestrator
-const orchestrator = createAgentOrchestrator();
-
-// Initialize providers
-const openrouterProvider = createOpenRouterProvider();
+// Provider factory
+function createProvider(provider: string): BaseProvider | null {
+  switch (provider) {
+    case 'openrouter':
+      return createOpenRouterProvider();
+    case 'local':
+      return createLocalLLMProvider();
+    case 'anthropic':
+      return createAnthropicProvider();
+    case 'openai':
+      return createOpenAIProvider();
+    default:
+      return null;
+  }
+}
 
 function App() {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -24,16 +38,17 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState<BaseProvider | null>(null);
   const [model, setModel] = useState<string>('');
+  const [showWelcome, setShowWelcome] = useState(false);
   
   const {
     currentMessages,
     addMessage,
     createConversation,
     getCurrentConversation,
+    clearMessages,
   } = useConversationStore();
   
   const { 
-    providers: settingsProviders,
     model: modelSettings,
     updateModelSettings,
   } = useSettingsStore();
@@ -42,27 +57,46 @@ function App() {
   useEffect(() => {
     const init = async () => {
       try {
-        // Check for API key
-        const apiKey = getOpenRouterApiKey();
+        // Check if any provider is configured
+        const configured = getConfiguredProviders();
         
-        if (!apiKey) {
-          console.warn('No OPENROUTER_API_KEY found. Using placeholder for UI.');
+        if (configured.length === 0) {
+          // Show welcome screen for first-time setup
+          setShowWelcome(true);
+          return;
+        }
+
+        // Use first configured provider
+        const providerName = configured[0];
+        const apiKey = getProviderApiKey(providerName as any);
+        
+        const providerInstance = createProvider(providerName);
+        if (!providerInstance) {
+          setShowWelcome(true);
+          return;
         }
 
         // Initialize provider
-        await openrouterProvider.initialize({
-          apiKey: apiKey || '',
-        });
+        if (providerName === 'local') {
+          await providerInstance.initialize({
+            baseUrl: apiKey || 'http://localhost:11434',
+          });
+        } else {
+          await providerInstance.initialize({
+            apiKey,
+          });
+        }
 
-        setProvider(openrouterProvider);
+        setProvider(providerInstance);
         
         // Set default model
         const defaultModel = modelSettings.defaultModel || 'meta-llama/llama-3.1-70b-instruct';
         setModel(defaultModel);
 
         // Initialize agents with context
+        const orchestrator = createAgentOrchestrator();
         await orchestrator.initializeAll({
-          provider: openrouterProvider,
+          provider: providerInstance,
           model: defaultModel,
           workingDirectory: process.cwd(),
           env: { ...process.env },
@@ -71,14 +105,20 @@ function App() {
         setIsInitialized(true);
       } catch (err) {
         setError(`Failed to initialize: ${err instanceof Error ? err.message : String(err)}`);
+        setShowWelcome(true);
       }
     };
 
     init();
+  }, []);
 
-    return () => {
-      orchestrator.cleanupAll();
-    };
+  // Handle welcome screen completion
+  const handleWelcomeComplete = useCallback(() => {
+    setShowWelcome(false);
+    // Re-initialize
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
   }, []);
 
   // Handle user input submission
@@ -114,13 +154,21 @@ function App() {
         },
       };
 
-      // Route request through orchestrator
+      // Create orchestrator and route request
+      const orchestrator = createAgentOrchestrator();
+      await orchestrator.initializeAll({
+        provider,
+        model,
+        workingDirectory: process.cwd(),
+        env: { ...process.env },
+      });
+      
       await orchestrator.routeRequestStream(request);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setIsProcessing(false);
     }
-  }, [provider, isInitialized, isProcessing, addMessage]);
+  }, [provider, isInitialized, isProcessing, model, addMessage]);
 
   // Handle command execution
   const handleCommand = useCallback(async (command: string) => {
@@ -128,10 +176,13 @@ function App() {
       createNewConversation(useConversationStore.getState(), 'New Conversation', 'openrouter', model);
     } else if (command === '/exit') {
       process.exit(0);
+    } else if (command === '/model') {
+      addMessage('system', 'Usage: /model <model-name>');
     } else if (command.startsWith('/model ')) {
       const modelName = command.slice(7).trim();
       setModel(modelName);
       updateModelSettings({ defaultModel: modelName });
+      addMessage('system', `Switched to model: ${modelName}`);
     } else if (command === '/help') {
       const helpText = `
 Available commands:
@@ -139,6 +190,7 @@ Available commands:
   /exit      - Quit the application
   /model <name> - Switch model
   /help      - Show this help
+  /setup     - Configure API keys
 
 Available models (open weights):
   meta-llama/llama-3.1-70b-instruct
@@ -151,14 +203,32 @@ Available models (open weights):
   openchat/openchat-7b
 
 Current model: ${model}
-Current provider: ${provider?.name || 'openrouter'}
+Current provider: ${provider?.name || 'none'}
 `.trim();
       addMessage('system', helpText);
+    } else if (command === '/setup') {
+      setShowWelcome(true);
+    } else if (command === '/clear') {
+      clearMessages();
+      addMessage('system', 'Conversation cleared');
     }
-  }, [model, provider, createNewConversation, addMessage, updateModelSettings]);
+  }, [model, provider, createNewConversation, addMessage, clearMessages, updateModelSettings]);
 
   // Check if we need to show setup instructions
-  const needsSetup = !getOpenRouterApiKey();
+  const needsSetup = !isInitialized && !showWelcome;
+
+  // Show welcome screen first if not configured
+  if (showWelcome) {
+    return (
+      <box
+        width="100%"
+        height="100%"
+        backgroundColor="#0D0D12"
+      >
+        <WelcomeScreen onComplete={handleWelcomeComplete} />
+      </box>
+    );
+  }
 
   return (
     <box
@@ -175,17 +245,16 @@ Current provider: ${provider?.name || 'openrouter'}
       {needsSetup && (
         <box width="100%" maxWidth={78} paddingX={2}>
           <text fg="yellow">
-            ⚠️  Set OPENROUTER_API_KEY environment variable to use AI models.
+            ⚠️  No AI provider configured.
           </text>
           <text fg="gray" attributes={{ dim: true }}>
-            {' '}
-            Example: export OPENROUTER_API_KEY="your-api-key"
+            {' Type /setup to configure API keys or use /help'}
           </text>
         </box>
       )}
 
       {/* Error display */}
-      {error && (
+      {error && !showWelcome && (
         <box width="100%" maxWidth={78} paddingX={2}>
           <text fg="red">❌ {error}</text>
         </box>
@@ -220,7 +289,7 @@ Current provider: ${provider?.name || 'openrouter'}
             </box>
           ))
         ) : (
-          !isProcessing && (
+          !isProcessing && !showWelcome && (
             <box flexDirection="column" gap={1}>
               <text fg="gray" attributes={{ dim: true }}>
                 Welcome to Sky Code!
@@ -260,7 +329,8 @@ Current provider: ${provider?.name || 'openrouter'}
       <box width="100%" maxWidth={78} paddingX={2}>
         <InputBar 
           onSubmit={handleSubmit}
-          disabled={!isInitialized || isProcessing}
+          disabled={!isInitialized || isProcessing || showWelcome}
+          onCommand={handleCommand}
         />
       </box>
 
