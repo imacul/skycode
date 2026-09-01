@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "Sky Code AI Agents - Planning, Build, and Business mode agents",
   "main": "dist/index.js",
-  "module": "dist/index.js",
-  "type": "module",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "prepublish": "npm run build"
   },
   "keywords": [
     "ai",
@@ -16,10 +16,22 @@
     "build",
     "business",
     "code",
-    "typescript"
+    "typescript",
+    "artificial-intelligence",
+    "machine-learning",
+    "chatbot"
   ],
   "author": "Sky Code Team",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imacul/skycode.git",
+    "directory": "packages/agents"
+  },
+  "bugs": {
+    "url": "https://github.com/imacul/skycode/issues"
+  },
+  "homepage": "https://github.com/imacul/skycode#readme",
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.0.0"
@@ -34,12 +46,22 @@
   },
   "exports": {
     ".": {
+      "require": "./dist/index.js",
       "import": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./dist/*": "./dist/*",
+    "./src/*": "./src/*"
   },
   "files": [
     "dist",
-    "src"
-  ]
+    "src",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  }
 }
