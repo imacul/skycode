@@ -22,6 +22,16 @@ check_bun() {
     fi
 }
 
+# Check if Git is installed
+check_git() {
+    if ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}⚠️  Git not found. Please install Git first.${NC}"
+        echo -e "  macOS: brew install git"
+        echo -e "  Linux: sudo apt install git"
+        exit 1
+    fi
+}
+
 # Install Sky Code
 install_skycode() {
     echo -e "${BLUE}🚀 Installing Sky Code...${NC}"
@@ -57,6 +67,7 @@ main() {
   ===============================${NC}"
     echo -e "${YELLOW}Installing to current directory...${NC}\n"
     
+    check_git
     check_bun
     install_skycode
     run_skycode
@@ -68,13 +79,12 @@ if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     echo ""
     echo "Options:"
     echo "  --help, -h    Show this help message"
-    echo "  --skip-pull   Skip pulling latest changes (use local)"
     echo ""
     echo "Quick Start:"
     echo "  curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | bash"
     echo ""
-    echo "Or use npx:"
-    echo "  npx https://github.com/imacul/skycode raw"
+    echo "For Windows PowerShell:"
+    echo "  irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex"
     exit 0
 fi
 

@@ -55,12 +55,12 @@ curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | ba
 
 #### Windows PowerShell:
 ```powershell
-irm https://raw.githubusercontent.com/imacul/skycode/main/install.sh | iex
+irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex
 ```
 
 #### Windows CMD:
 ```cmd
-curl -L https://raw.githubusercontent.com/imacul/skycode/main/install.sh -o install.sh && install.sh
+curl -L https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 -o install.ps1 && .\install.ps1
 ```
 
 #### iOS / Android (Termux):
