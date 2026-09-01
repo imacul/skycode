@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import type { KeyBinding } from '@opentui/core';
 import type { TextareaRenderable } from '@opentui/core';
 import { EmptyBorder } from './border';
@@ -7,7 +7,11 @@ import { StatusBar } from './satus-bar';
 type Props = {
   onSubmit: (text: string) => void;
   disabled?: boolean;
+  onCommand?: (command: string) => void;
 };
+
+// Command prefix
+const COMMAND_PREFIX = '/';
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
   { name: 'return', action: 'submit' },
@@ -25,17 +29,43 @@ export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
   { name: 'kpenter', meta: true, action: 'submit' },
 ];
 
-export function InputBar({ onSubmit, disabled = false }: Props) {
+export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
   const textareaRef = useRef<TextareaRenderable | null>(null);
+  const [inputValue, setInputValue] = useState('');
+  const [isCommandMode, setIsCommandMode] = useState(false);
+
+  // Check if input is a command
+  useEffect(() => {
+    setIsCommandMode(inputValue.startsWith(COMMAND_PREFIX));
+  }, [inputValue]);
 
   const handleSubmit = () => {
     const text = textareaRef.current?.editBuffer.getText() ?? '';
+    
+    if (!text.trim()) return;
+
+    // Check if it's a command
+    if (text.startsWith(COMMAND_PREFIX)) {
+      const command = text.slice(1).trim();
+      if (onCommand) {
+        onCommand(command);
+      }
+      // Clear input after command
+      setInputValue('');
+      if (textareaRef.current) {
+        textareaRef.current.editBuffer.setText('');
+      }
+      return;
+    }
+
+    // Regular message submission
     onSubmit(text);
+    setInputValue('');
   };
 
   return (
     <box width="100%" alignItems="center">
-      <box border={['left']} borderColor="cyan" width="100%">
+      <box border={['left']} borderColor={isCommandMode ? 'magenta' : 'cyan'} width="100%">
         <box
           position="relative"
           justifyContent="center"
@@ -50,7 +80,7 @@ export function InputBar({ onSubmit, disabled = false }: Props) {
             focused={!disabled}
             keyBindings={TEXTAREA_KEY_BINDINGS}
             onSubmit={handleSubmit}
-            placeholder={`Ask anything ... "Fix a bug in the database"`}
+            placeholder={isCommandMode ? `Enter command (e.g., /new, /help)` : `Ask anything ... "Fix a bug in the database"`}
           />
           <StatusBar />
         </box>

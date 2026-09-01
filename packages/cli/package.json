@@ -4,10 +4,15 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run --watch src/index.tsx"
+    "dev": "bun run --watch src/index.tsx",
+    "test": "bun test src/tests",
+    "test:watch": "bun test --watch src/tests",
+    "test:coverage": "bun test --coverage src/tests"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.15",
+    "zustand": "^4.5.2"
   },
   "peerDependencies": {
     "typescript": "^5"

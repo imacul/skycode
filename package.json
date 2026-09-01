@@ -10,7 +10,10 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.18",
     "prettier": "^3.8.3"
+  },
+  "dependencies": {
+    "zustand": "4.5.2"
   }
 }
