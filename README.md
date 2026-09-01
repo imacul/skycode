@@ -48,8 +48,24 @@
 
 ### One-Command Install
 
+#### macOS / Linux (Terminal):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | bash
+```
+
+#### Windows PowerShell:
+```powershell
+irm https://raw.githubusercontent.com/imacul/skycode/main/install.sh | iex
+```
+
+#### Windows CMD:
+```cmd
+curl -L https://raw.githubusercontent.com/imacul/skycode/main/install.sh -o install.sh && install.sh
+```
+
+#### iOS / Android (Termux):
+```bash
+pkg install curl && curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | bash
 ```
 
 This will:
