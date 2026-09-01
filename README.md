@@ -46,12 +46,19 @@
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### One-Command Install
 
-- **[Bun](https://bun.sh)** (v1.0+) - *Required*
-- Terminal with ANSI color support
+```bash
+curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | bash
+```
 
-### Installation
+This will:
+1. Install Bun (if not already installed)
+2. Clone Sky Code
+3. Install dependencies
+4. Start the app
+
+### Manual Installation
 
 ```bash
 # Clone the repository
