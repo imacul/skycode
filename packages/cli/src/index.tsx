@@ -177,7 +177,53 @@ function App() {
     } else if (command === '/exit') {
       process.exit(0);
     } else if (command === '/model') {
-      addMessage('system', 'Usage: /model <model-name>');
+      // Show available models
+      const modelsList = `
+Available Models:
+
+OpenRouter (Open Weights):
+  meta-llama/llama-3.1-70b-instruct (default)
+  meta-llama/llama-3.1-8b-instruct
+  mistralai/mistral-7b-instruct
+  mistralai/mixtral-8x7b-instruct
+  google/gemma-7b-it
+  phi-3-mini-4k-instruct
+  phi-3-small-8k-instruct
+  openchat/openchat-7b
+
+Local LLM (Ollama):
+  llama3.1:70b-instruct
+  llama3.1:8b-instruct
+  llama3:70b-instruct
+  llama3:8b-instruct
+  mistral:7b-instruct
+  mixtral:8x7b-instruct
+  gemma:7b-instruct
+  phi3:3.8b-mini-instruct
+  phi3:7b-small-instruct
+  qwen2:7b-instruct
+
+Anthropic (Claude):
+  claude-3-5-sonnet-20241022
+  claude-3-opus-20240229
+  claude-3-sonnet-20240229
+  claude-3-haiku-20240307
+  claude-2:1
+  claude-instant-1:2
+
+OpenAI (GPT):
+  gpt-4o-mini
+  gpt-4o
+  gpt-4-turbo
+  gpt-4
+  gpt-3.5-turbo
+  o1-preview
+  o1-mini
+
+Usage: /model <model-name>
+Current model: ${model}
+`.trim();
+      addMessage('system', modelsList);
     } else if (command.startsWith('/model ')) {
       const modelName = command.slice(7).trim();
       setModel(modelName);
@@ -188,19 +234,16 @@ function App() {
 Available commands:
   /new       - Start a new conversation
   /exit      - Quit the application
+  /model     - List available models
   /model <name> - Switch model
   /help      - Show this help
   /setup     - Configure API keys
+  /clear     - Clear current conversation
 
-Available models (open weights):
-  meta-llama/llama-3.1-70b-instruct
-  meta-llama/llama-3.1-8b-instruct
-  mistralai/mistral-7b-instruct
-  mistralai/mixtral-8x7b-instruct
-  google/gemma-7b-it
-  phi-3-mini-4k-instruct
-  phi-3-small-8k-instruct
-  openchat/openchat-7b
+Example usage:
+  /model meta-llama/llama-3.1-70b-instruct
+  /model claude-3-5-sonnet-20241022
+  /model gpt-4o-mini
 
 Current model: ${model}
 Current provider: ${provider?.name || 'none'}
