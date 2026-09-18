@@ -31,6 +31,7 @@ SkyCode is under active development.
 - Chat, coding, planning, and business agents
 - Automatic agent routing
 - Persistent conversation history
+- Scrollable long-chat transcript with a fixed input composer
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -188,6 +189,16 @@ Model availability changes frequently, so SkyCode avoids treating a hard-coded m
 | `/setup` | Open the full provider setup flow |
 | `/help` | Show available commands |
 | `/exit` | Exit SkyCode |
+
+### Chat navigation
+
+For long conversations:
+
+- `Page Up` / `Page Down` scroll the transcript.
+- `Ctrl + Home` jumps to the oldest visible part of the chat.
+- `Ctrl + End` jumps back to the newest messages.
+- While you stay at the bottom, streaming replies follow automatically.
+- The input composer stays pinned below the transcript instead of being pushed off-screen.
 
 ## Conversation history
 
