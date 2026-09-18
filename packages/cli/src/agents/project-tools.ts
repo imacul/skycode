@@ -26,6 +26,8 @@ export interface ProjectToolExecution {
 }
 
 const TOOL_CALL_RE = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+const CLARIFICATION_RE = /<clarification>\s*([\s\S]*?)\s*<\/clarification>/i;
+const PROJECT_PLAN_RE = /<project_plan>\s*([\s\S]*?)\s*<\/project_plan>/i;
 
 export function shouldUseProjectTools(input: string): boolean {
   const text = input.toLowerCase();
@@ -73,8 +75,31 @@ export function parseProjectToolCalls(content: string): ProjectToolCall[] {
   return calls;
 }
 
+export function parseProjectClarification(content: string): string | null {
+  const match = CLARIFICATION_RE.exec(content);
+  return match?.[1]?.trim() || null;
+}
+
+export function parseProjectPlan(content: string): Record<string, unknown> | null {
+  const match = PROJECT_PLAN_RE.exec(content);
+  if (!match?.[1]) return null;
+
+  try {
+    const parsed = JSON.parse(match[1]);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function stripProjectToolCalls(content: string): string {
-  return content.replace(TOOL_CALL_RE, '').trim();
+  return content
+    .replace(TOOL_CALL_RE, '')
+    .replace(PROJECT_PLAN_RE, '')
+    .replace(CLARIFICATION_RE, '$1')
+    .trim();
 }
 
 function isPathInsideWorkspace(workspace: string, candidate: string): boolean {
@@ -148,8 +173,28 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     'You can modify the active SkyCode workspace using project tools.',
     'Workspace root: ' + resolve(workingDirectory),
     '',
-    'When the user explicitly asks you to create, scaffold, build, edit, or modify project files, use tools instead of only showing code in chat.',
-    'Use one or more tool calls in exactly this format:',
+    'When the user explicitly asks you to create, scaffold, build, edit, or modify project files, act as both a software architect and implementation agent.',
+    'Before writing files, decide whether any missing information would materially change the architecture, stack, data model, deployment target, or user-visible behavior.',
+    'Ask clarification only when the answer is genuinely blocking or would cause a substantially different implementation. Do not interrogate the user about trivial choices that can be safely defaulted.',
+    'When clarification is required, return ONLY one <clarification> block containing the smallest useful set of concrete questions, then wait for the user.',
+    'Example: <clarification>1. Should this be React/Vite or plain HTML/CSS/JS? 2. Does the app need authentication?</clarification>',
+    '',
+    'When enough information is available, first think through a maintainable project architecture. You may include one machine-readable plan:',
+    '<project_plan>{"stack":"React + TypeScript","structure":["src/components","src/features","src/styles"],"decisions":["feature logic separated from shared UI"]}</project_plan>',
+    '',
+    'Architecture rules:',
+    '- Do not pack an entire non-trivial application into one file.',
+    '- Separate concerns when the project size warrants it: UI/components, feature/domain logic, data/API access, utilities, configuration, types/models, assets, and styles.',
+    '- Keep component-specific styles close to the component when that is idiomatic for the stack; keep global tokens/reset/theme styles separate.',
+    '- Prefer feature-based or domain-based folders for medium/large apps rather than giant generic folders.',
+    '- Avoid creating tiny files merely for the sake of separation; split code when it improves ownership, reuse, testing, readability, or change isolation.',
+    '- Follow established conventions for the requested stack. Inspect an existing repo before imposing a new architecture.',
+    '- For backend/full-stack work, keep transport/controllers/routes separate from core business/domain logic and persistence/integration code when the stack supports that pattern.',
+    '- For frontend apps, keep pages/routes, reusable UI, feature logic, hooks/state, services/API clients, and styles organized rather than mixing everything into page files.',
+    '- Create configuration, tests, README, environment examples, and entry points when the task actually needs them.',
+    '- If the user specifies an architecture or folder convention, follow it unless it is internally inconsistent; explain conflicts rather than silently replacing it.',
+    '',
+    'Use one or more tool calls in exactly this format:'
     '<tool_call>{"name":"create_directory","args":{"path":"my-site"}}</tool_call>',
     '<tool_call>{"name":"write_file","args":{"path":"my-site/index.html","content":"<!doctype html>..."}}</tool_call>',
     '',
@@ -166,8 +211,9 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- Never claim a file was created or changed unless the tool result says success.',
     '- Inspect existing files before overwriting when the request targets an existing project.',
     '- Do not delete files, run shell commands, install packages, or access paths outside the workspace through this tool set.',
-    '- For a new small HTML/CSS/JavaScript project, create the requested folder and write the actual index.html, CSS, and JavaScript files.',
-    '- After tools finish, give a concise summary of what was actually created or changed.',
+    '- For a small plain HTML/CSS/JavaScript project, normally keep markup in index.html, shared presentation in one or more CSS files, and behavior in JavaScript modules instead of embedding everything in index.html.',
+    '- For larger projects, create a folder structure appropriate to the stack before writing implementation files.',
+    '- After tools finish, give a concise summary of the architecture and what was actually created or changed.',
   ].join('\n');
 }
 
