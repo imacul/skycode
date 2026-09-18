@@ -19,7 +19,7 @@ function Ensure-Command($name, $helpText) {
     }
 }
 
-Write-Step "Installer v1.1.3"
+Write-Step "Installer v1.1.4"
 Write-Step "Checking requirements..."
 
 if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
@@ -30,6 +30,16 @@ if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
 
 Ensure-Command "bun" "Install Bun from https://bun.sh"
 Ensure-Command "git" "Install Git for Windows, then run this installer again."
+
+$MinimumBunVersion = [version]"1.4.0"
+$InstalledBunVersion = [version]((bun --version).Trim())
+if ($InstalledBunVersion -lt $MinimumBunVersion) {
+    Write-Step "Bun $InstalledBunVersion is too old for SkyCode. Upgrading Bun..."
+    bun upgrade
+    if ($LASTEXITCODE -ne 0) { throw "Failed to upgrade Bun to a compatible version." }
+    $InstalledBunVersion = [version]((bun --version).Trim())
+}
+Write-Step "Using Bun $InstalledBunVersion"
 
 Write-Step "Installing SkyCode to $InstallRoot"
 
