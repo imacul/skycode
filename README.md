@@ -34,6 +34,7 @@ SkyCode is under active development.
 - Scrollable long-chat transcript with a fixed input composer
 - Grounded assistant identity and model/provider provenance
 - Interactive slash-command picker with filtering and keyboard navigation
+- Clickable saved-chat browser with one-click resume
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -207,6 +208,10 @@ For long conversations:
 - The input composer stays pinned below the transcript instead of being pushed off-screen.
 
 ## Conversation history
+
+SkyCode includes a visible **Chats** control in the terminal UI. Open it to browse saved conversations and click any chat to resume it immediately. The active chat is highlighted, and each row shows recent activity and message count.
+
+The existing `/history`, `/resume`, and `skycode resume` flows remain available for keyboard-driven use.
 
 SkyCode stores conversation history locally at:
 
