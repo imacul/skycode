@@ -46,7 +46,7 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
 
     // Check if it's a command
     if (text.startsWith(COMMAND_PREFIX)) {
-      const command = text.slice(1).trim();
+      const command = text.trim();
       if (onCommand) {
         onCommand(command);
       }
