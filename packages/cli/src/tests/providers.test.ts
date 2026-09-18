@@ -39,6 +39,91 @@ describe('Providers', () => {
       expect(model).toBeDefined();
       expect(model?.id).toBe('meta-llama/llama-3.1-70b-instruct');
     });
+
+    it('should parse OpenAI-compatible chat completion responses', async () => {
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            id: 'or-1',
+            model: 'test/model',
+            choices: [
+              {
+                index: 0,
+                message: { role: 'assistant', content: 'Hello from OpenRouter' },
+                finish_reason: 'stop',
+              },
+            ],
+            usage: {
+              prompt_tokens: 5,
+              completion_tokens: 4,
+              total_tokens: 9,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )) as typeof fetch;
+
+      try {
+        const provider = createOpenRouterProvider();
+        await provider.initialize({ apiKey: 'test-key' });
+        const response = await provider.chat({
+          model: 'test/model',
+          messages: [],
+        });
+
+        expect(response.content).toBe('Hello from OpenRouter');
+        expect(response.finishReason).toBe('stop');
+        expect(response.usage?.totalTokens).toBe(9);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('should parse OpenRouter SSE deltas and final completion', async () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              'data: {"id":"or-1","model":"test/model","choices":[{"index":0,"delta":{"content":"Hel"},"finish_reason":null}]}\r\n\r\n'
+            )
+          );
+          controller.enqueue(
+            encoder.encode(
+              'data: {"id":"or-1","model":"test/model","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":"stop"}]}\r\n\r\n'
+            )
+          );
+          controller.close();
+        },
+      });
+
+      globalThis.fetch = (async () =>
+        new Response(stream, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        })) as typeof fetch;
+
+      try {
+        const provider = createOpenRouterProvider();
+        await provider.initialize({ apiKey: 'test-key' });
+        let content = '';
+        let finished = false;
+
+        await provider.chatStream(
+          { model: 'test/model', messages: [] },
+          (chunk) => {
+            content += chunk.content;
+            if (chunk.finishReason) finished = true;
+          }
+        );
+
+        expect(content).toBe('Hello');
+        expect(finished).toBe(true);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+
   });
 
   describe('Local LLM Provider', () => {
