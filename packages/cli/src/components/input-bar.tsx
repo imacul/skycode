@@ -25,6 +25,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/history', description: 'Show saved conversations' },
   { command: '/resume', description: 'Resume a saved conversation', takesArgs: true },
   { command: '/copy', description: 'Copy the latest assistant reply' },
+  { command: '/cancel', description: 'Cancel the active generation' },
   { command: '/clear', description: 'Clear the current conversation' },
   { command: '/setup', description: 'Configure providers' },
   { command: '/help', description: 'Show available commands' },

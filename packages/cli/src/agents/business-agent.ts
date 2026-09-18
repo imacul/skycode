@@ -227,6 +227,7 @@ export class BusinessAgent implements BaseAgent {
           temperature: 0.7,
           maxTokens,
           stream: true,
+          signal: request.context?.signal,
         },
         (chunk) => {
           fullContent += chunk.content;

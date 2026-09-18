@@ -76,10 +76,12 @@ function App() {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   const [activeAgent, setActiveAgent] = useState<string>('chat-agent');
+  const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
   const messagesScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const orchestratorRef = useRef<ReturnType<typeof createAgentOrchestrator> | null>(null);
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
   
   const {
     currentMessages,
@@ -277,7 +279,12 @@ function App() {
 
   // Handle user input submission
   const handleSubmit = useCallback(async (text: string) => {
-    if (!provider || !isInitialized || isProcessing) return;
+    if (!provider || !isInitialized) return;
+
+    if (isProcessing) {
+      setQueuedMessages((queue) => [...queue, text]);
+      return;
+    }
 
     setIsProcessing(true);
     setError(null);
@@ -300,6 +307,9 @@ function App() {
       setHistoryView(null);
       setShowHistoryPanel(false);
 
+      const abortController = new AbortController();
+      activeAbortControllerRef.current = abortController;
+
       // Create agent request
       const request: AgentRequest = {
         input: text,
@@ -307,6 +317,7 @@ function App() {
           maxTokens: budget.responseReserve,
           contextWindow: budget.contextWindow,
           droppedHistoryMessages: fittedHistory.droppedCount,
+          signal: abortController.signal,
         },
         // Leave mode unset so the orchestrator can route general work,
         // coding, planning, and business requests intelligently.
@@ -319,10 +330,13 @@ function App() {
             model: response.metadata?.model,
             finishReason: response.metadata?.finishReason,
           });
+          activeAbortControllerRef.current = null;
           setIsProcessing(false);
         },
         onError: (err) => {
-          setError(err.message);
+          const wasCancelled = abortController.signal.aborted;
+          activeAbortControllerRef.current = null;
+          setError(wasCancelled ? 'Generation cancelled.' : err.message);
           setIsProcessing(false);
         },
       };
@@ -347,10 +361,28 @@ function App() {
 
       await streamPromise;
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const wasCancelled =
+        activeAbortControllerRef.current?.signal.aborted === true ||
+        /abort|cancel/i.test(errorMessage);
+      activeAbortControllerRef.current = null;
+      setError(wasCancelled ? 'Generation cancelled.' : errorMessage);
       setIsProcessing(false);
     }
   }, [provider, isInitialized, isProcessing, model, contextWindow, addMessage]);
+
+  useEffect(() => {
+    if (isProcessing || queuedMessages.length === 0 || !isInitialized || !provider) return;
+
+    const [nextMessage, ...rest] = queuedMessages;
+    setQueuedMessages(rest);
+    void handleSubmit(nextMessage);
+  }, [isProcessing, queuedMessages, isInitialized, provider, handleSubmit]);
+
+  const cancelGeneration = useCallback(() => {
+    activeAbortControllerRef.current?.abort();
+    setQueuedMessages([]);
+  }, []);
 
   // Handle command execution
   const handleCommand = useCallback(async (command: string) => {
@@ -482,6 +514,7 @@ Available commands:
   /history   - List saved chats with start date and last activity
   /resume <number-or-id> - Resume a saved chat
   /copy      - Copy the latest assistant reply
+  /cancel    - Cancel the active generation
   /clear     - Clear current conversation
 
 CLI commands:
@@ -588,6 +621,18 @@ Current provider: ${provider?.name || 'none'}
         <text fg="gray" attributes={{ dim: true }}>
           Agent: {activeAgent}
         </text>
+        {queuedMessages.length > 0 && (
+          <text fg="yellow">Queued: {queuedMessages.length}</text>
+        )}
+        {isProcessing && (
+          <text
+            fg="red"
+            attributes={{ underline: true }}
+            onMouseDown={cancelGeneration}
+          >
+            Cancel
+          </text>
+        )}
       </box>
 
       {showHistoryPanel && (
@@ -777,8 +822,24 @@ Current provider: ${provider?.name || 'none'}
       <box width="100%" maxWidth={78} paddingX={2} flexShrink={0}>
         <InputBar 
           onSubmit={handleSubmit}
-          disabled={!isInitialized || isProcessing || showWelcome}
-          onCommand={handleCommand}
+          disabled={!isInitialized || showWelcome}
+          onCommand={(command) => {
+            if (command === '/cancel') {
+              if (isProcessing) {
+                cancelGeneration();
+              } else {
+                setHistoryView('There is no active generation to cancel.');
+              }
+              return;
+            }
+
+            if (isProcessing) {
+              setHistoryView('Generation in progress. Use /cancel or the Cancel control first.');
+              return;
+            }
+
+            void handleCommand(command);
+          }}
         />
       </box>
 
