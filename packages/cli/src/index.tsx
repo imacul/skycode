@@ -66,8 +66,11 @@ function App() {
           return;
         }
 
-        // Use first configured provider
-        const providerName = configured[0];
+        // Prefer the user's configured provider, then fall back to the first available one.
+        const preferredProvider = modelSettings.defaultProvider;
+        const providerName = configured.includes(preferredProvider as any)
+          ? preferredProvider
+          : configured[0];
         const apiKey = getProviderApiKey(providerName as any);
         
         const providerInstance = createProvider(providerName);
@@ -78,8 +81,14 @@ function App() {
 
         // Initialize provider
         if (providerName === 'local') {
+          const localSettings = useSettingsStore.getState().providers.local;
           await providerInstance.initialize({
-            baseUrl: apiKey || 'http://localhost:11434',
+            baseUrl:
+              process.env.LOCAL_LLM_BASE_URL ||
+              localSettings.baseUrl ||
+              'http://localhost:11434',
+            model: process.env.LOCAL_LLM_MODEL,
+            enableThinking: process.env.LOCAL_LLM_THINKING === 'true',
           });
         } else {
           await providerInstance.initialize({
@@ -89,8 +98,15 @@ function App() {
 
         setProvider(providerInstance);
         
-        // Set default model
-        const defaultModel = modelSettings.defaultModel || 'meta-llama/llama-3.1-70b-instruct';
+        // Resolve a model that actually belongs to the selected provider.
+        let defaultModel = modelSettings.defaultModel || 'meta-llama/llama-3.1-70b-instruct';
+        if (providerName === 'local') {
+          const localModels = await providerInstance.listModels();
+          defaultModel =
+            process.env.LOCAL_LLM_MODEL ||
+            localModels[0]?.id ||
+            defaultModel;
+        }
         setModel(defaultModel);
 
         // Initialize agents with context
@@ -136,7 +152,8 @@ function App() {
       // Create agent request
       const request: AgentRequest = {
         input: text,
-        mode: 'code', // Default to code mode
+        // Leave mode unset so the orchestrator can route general work,
+        // coding, planning, and business requests intelligently.
         onStream: (chunk) => {
           setCurrentResponse((prev) => prev + chunk);
         },
