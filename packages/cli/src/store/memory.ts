@@ -430,7 +430,6 @@ export function buildMemoryContext(options: {
     '\n- [memory context clipped to fit the model context budget]'
   );
 }
-}
 
 export function formatMemoryList(workspace = process.cwd()): string {
   const memories = listMemories(workspace);
