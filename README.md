@@ -35,6 +35,7 @@ SkyCode is under active development.
 - Grounded assistant identity and model/provider provenance
 - Interactive slash-command picker with filtering and keyboard navigation
 - Clickable saved-chat browser with one-click resume
+- Runtime-aware context budgeting for long conversations
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -199,7 +200,7 @@ Type `/` in the composer to open the command picker. Keep typing to filter it, u
 
 ### Chat navigation
 
-For long conversations:
+For long conversations, SkyCode now budgets the history sent to the model against the model's served context window. On llama.cpp-compatible local runtimes, SkyCode attempts to detect the active runtime context from `/props`; you can override it with `LOCAL_LLM_CONTEXT_LENGTH` or `SKYCODE_CONTEXT_LENGTH`.
 
 - `Page Up` / `Page Down` scroll the transcript.
 - `Ctrl + Home` jumps to the oldest visible part of the chat.
