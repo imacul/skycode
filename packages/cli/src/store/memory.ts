@@ -370,6 +370,12 @@ export function buildMemoryContext(options: {
     .slice(0, maxMemories)
     .map(({ record }) => record);
 
+  const authoritativeTopicTokens = new Set(
+    memories
+      .filter((record) => record.key.startsWith('profile:') || record.key.startsWith('project:'))
+      .flatMap((record) => tokens(record.key.replace(':', ' ')))
+  );
+
   const snippets: Array<{ content: string; score: number; title: string }> = [];
   for (const conversation of Object.values(options.conversations || {})) {
     if (conversation.id === options.currentConversationId) continue;
@@ -378,6 +384,16 @@ export function buildMemoryContext(options: {
       if (message.role !== 'user') continue;
       const content = normalizeSpace(message.content);
       if (content.length < 8 || looksSensitive(content)) continue;
+
+      // When we have an authoritative durable profile/project value, avoid
+      // resurfacing older chat excerpts about the same recognized subject.
+      const contentTokens = new Set(tokens(content));
+      if (
+        authoritativeTopicTokens.size > 0 &&
+        [...authoritativeTopicTokens].some((token) => contentTokens.has(token))
+      ) {
+        continue;
+      }
 
       const score = conversationRecallScore(content, queryTokens, conversation.updatedAt);
       if (score <= 0) continue;
