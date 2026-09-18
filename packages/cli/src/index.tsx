@@ -63,6 +63,7 @@ function App() {
   const [initVersion, setInitVersion] = useState(0);
   const [historyView, setHistoryView] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
   
@@ -191,27 +192,24 @@ function App() {
             : check.remoteSha.slice(0, 7);
 
         if (!preferences.autoUpdate) {
-          addMessage(
-            'system',
+          setUpdateNotice(
             `SkyCode ${versionLabel} is available. Run "skycode update" to install it.`
           );
           return;
         }
 
-        addMessage('system', `Updating SkyCode automatically to ${versionLabel}...`);
+        setUpdateNotice(`Updating SkyCode automatically to ${versionLabel}...`);
 
         try {
           const result = await performUpdate();
           if (!cancelled && result.updated) {
-            addMessage(
-              'system',
+            setUpdateNotice(
               `SkyCode updated to v${result.version}. Restart SkyCode to use the update.`
             );
           }
         } catch (updateError) {
           if (!cancelled) {
-            addMessage(
-              'system',
+            setUpdateNotice(
               `Automatic update could not be installed: ${
                 updateError instanceof Error ? updateError.message : String(updateError)
               }`
@@ -228,7 +226,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [isInitialized, addMessage]);
+  }, [isInitialized]);
 
   // Handle welcome screen completion
   const handleWelcomeComplete = useCallback(() => {
@@ -504,6 +502,12 @@ Current provider: ${provider?.name || 'none'}
           <text fg="gray" attributes={{ dim: true }}>
             {' Type /setup to configure API keys or use /help'}
           </text>
+        </box>
+      )}
+
+      {updateNotice && !showWelcome && (
+        <box width="100%" maxWidth={78} paddingX={2}>
+          <text fg="cyan">{updateNotice}</text>
         </box>
       )}
 
