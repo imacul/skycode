@@ -58,6 +58,9 @@ export interface AgentContext {
   
   // Environment variables
   env: Record<string, string | undefined>;
+
+  // Retrieved durable/past-chat memory for the current request
+  memoryContext?: string;
   
   // Additional context
   [key: string]: unknown;
