@@ -514,6 +514,7 @@ Available commands:
   /history   - List saved chats with start date and last activity
   /resume <number-or-id> - Resume a saved chat
   /copy      - Copy the latest assistant reply
+  /cancel    - Cancel the active generation
   /clear     - Clear current conversation
 
 CLI commands:
@@ -822,7 +823,23 @@ Current provider: ${provider?.name || 'none'}
         <InputBar 
           onSubmit={handleSubmit}
           disabled={!isInitialized || showWelcome}
-          onCommand={handleCommand}
+          onCommand={(command) => {
+            if (command === '/cancel') {
+              if (isProcessing) {
+                cancelGeneration();
+              } else {
+                setHistoryView('There is no active generation to cancel.');
+              }
+              return;
+            }
+
+            if (isProcessing) {
+              setHistoryView('Generation in progress. Use /cancel or the Cancel control first.');
+              return;
+            }
+
+            void handleCommand(command);
+          }}
         />
       </box>
 
