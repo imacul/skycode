@@ -41,6 +41,7 @@ function App() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [setupMode, setSetupMode] = useState<SetupMode>('all');
   const [forceSetup, setForceSetup] = useState(false);
+  const [initVersion, setInitVersion] = useState(0);
   
   const {
     currentMessages,
@@ -137,17 +138,16 @@ function App() {
     };
 
     init();
-  }, []);
+  }, [initVersion]);
 
   // Handle welcome screen completion
   const handleWelcomeComplete = useCallback(() => {
     setShowWelcome(false);
     setForceSetup(false);
     setSetupMode('all');
-    // Re-initialize with the newly configured provider.
-    setTimeout(() => {
-      window.location.reload();
-    }, 100);
+    setIsInitialized(false);
+    setError(null);
+    setInitVersion((version) => version + 1);
   }, []);
 
   // Handle user input submission
