@@ -28,7 +28,7 @@ const PROVIDERS = [
   {
     id: 'anthropic',
     name: 'Anthropic',
-    description: 'Claude 3.5, Claude 3 models',
+    description: 'Claude models through Anthropic',
     icon: '🎭',
     requiresApiKey: true,
     envVar: 'ANTHROPIC_API_KEY',
@@ -36,7 +36,7 @@ const PROVIDERS = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'GPT-4, GPT-3.5 models',
+    description: 'OpenAI models, including Codex-capable workflows',
     icon: '✨',
     requiresApiKey: true,
     envVar: 'OPENAI_API_KEY',
