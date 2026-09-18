@@ -32,6 +32,7 @@ SkyCode is under active development.
 - Automatic agent routing
 - Persistent conversation history
 - Scrollable long-chat transcript with a fixed input composer
+- Grounded assistant identity and model/provider provenance
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
