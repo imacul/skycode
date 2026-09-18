@@ -104,10 +104,19 @@ function App() {
         let defaultModel = modelSettings.defaultModel || 'meta-llama/llama-3.1-70b-instruct';
         if (providerName === 'local') {
           const localModels = await providerInstance.listModels();
+          const persistedLocalModel = localModels.find(
+            (candidate) => candidate.id === modelSettings.defaultModel
+          )?.id;
+
           defaultModel =
             process.env.LOCAL_LLM_MODEL ||
+            persistedLocalModel ||
             localModels[0]?.id ||
             defaultModel;
+
+          if (defaultModel !== modelSettings.defaultModel) {
+            updateModelSettings({ defaultModel });
+          }
         }
         setModel(defaultModel);
 
