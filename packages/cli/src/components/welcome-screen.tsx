@@ -20,6 +20,12 @@ const PROVIDERS_BY_MODE: Record<SetupMode, string[]> = {
   openrouter: ['openrouter'],
 };
 
+const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<string, string>> = {
+  openrouter: 'meta-llama/llama-3.1-70b-instruct',
+  anthropic: 'claude-3-5-sonnet-20241022',
+  openai: 'gpt-4o-mini',
+};
+
 export function WelcomeScreen({ onComplete, mode = 'all', forceSetup = false }: WelcomeScreenProps) {
   const directProvider = mode === 'local' ? 'local' : mode === 'openrouter' ? 'openrouter' : null;
   const [currentStep, setCurrentStep] = useState<'provider-select' | 'api-key-prompt' | 'complete'>(
@@ -46,7 +52,11 @@ export function WelcomeScreen({ onComplete, mode = 'all', forceSetup = false }: 
 
     const existingKey = getProviderApiKey(provider as any);
     if (existingKey && !forceSetup) {
-      useSettingsStore.getState().updateModelSettings({ defaultProvider: provider });
+      const defaultModel = DEFAULT_MODEL_BY_PROVIDER[provider];
+      useSettingsStore.getState().updateModelSettings({
+        defaultProvider: provider,
+        ...(defaultModel ? { defaultModel } : {}),
+      });
       onComplete();
     } else {
       setCurrentStep('api-key-prompt');
@@ -62,7 +72,11 @@ export function WelcomeScreen({ onComplete, mode = 'all', forceSetup = false }: 
       setProviderApiKey(selectedProvider as any, value);
     }
 
-    useSettingsStore.getState().updateModelSettings({ defaultProvider: selectedProvider });
+    const defaultModel = DEFAULT_MODEL_BY_PROVIDER[selectedProvider];
+    useSettingsStore.getState().updateModelSettings({
+      defaultProvider: selectedProvider,
+      ...(defaultModel ? { defaultModel } : {}),
+    });
     onComplete();
   }, [selectedProvider, onComplete]);
 
