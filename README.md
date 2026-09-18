@@ -224,14 +224,15 @@ ANTHROPIC_API_KEY="..."
 OPENAI_API_KEY="..."
 ```
 
-Model availability changes frequently, so SkyCode avoids treating a hard-coded model list as authoritative.
+Model availability changes frequently, so SkyCode now discovers models from the active provider at runtime. With OpenRouter configured, `/model` uses its live model catalog and `/model search <query>` filters it before switching with `/model <provider/model-id>`.
 
 ## Commands
 
 | Command | Description |
 |---|---|
 | `/new` | Start a new conversation |
-| `/model` | Show model information |
+| `/model` | List models from the active provider |
+| `/model search <query>` | Search active-provider models |
 | `/model <name>` | Switch model |
 | `/addlocal` | Add or update a local AI server |
 | `/addcloud` | Add a cloud provider |
