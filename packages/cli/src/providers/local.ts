@@ -7,6 +7,7 @@ import type {
   ModelInfo,
   ProviderConfig,
 } from './base';
+import { extractSseEvents, getSseData } from '../utils/sse';
 
 /**
  * Local LLM configuration
@@ -495,50 +496,77 @@ export class LocalLLMProvider implements BaseProvider {
         let promptTokens = 0;
         let completionTokens = 0;
 
+        let completionSent = false;
+
+        const processOllamaLine = (line: string) => {
+          if (!line.trim()) return;
+
+          try {
+            const chunk = JSON.parse(line) as OllamaStreamChunk;
+
+            if (chunk.prompt_eval_count !== undefined) {
+              promptTokens = chunk.prompt_eval_count;
+            }
+
+            if (chunk.response) {
+              onChunk({
+                content: chunk.response,
+                finishReason: undefined,
+              });
+            }
+
+            if (chunk.done && !completionSent) {
+              finishReason = 'stop';
+              completionTokens = chunk.eval_count || completionTokens;
+              completionSent = true;
+              onChunk({
+                content: '',
+                finishReason,
+                usage: {
+                  promptTokens,
+                  completionTokens,
+                  totalTokens: promptTokens + completionTokens,
+                },
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing Ollama stream chunk:', e);
+          }
+        };
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-
-          while (buffer.includes('\n')) {
-            const endIndex = buffer.indexOf('\n');
-            const line = buffer.slice(0, endIndex);
-            buffer = buffer.slice(endIndex + 1);
-
-            if (line.trim()) {
-              try {
-                const chunk = JSON.parse(line) as OllamaStreamChunk;
-
-                if (chunk.done) {
-                  finishReason = 'stop';
-                  onChunk({
-                    content: '',
-                    finishReason,
-                    usage: {
-                      promptTokens,
-                      completionTokens: chunk.eval_count || 0,
-                      totalTokens: promptTokens + (chunk.eval_count || 0),
-                    },
-                  });
-                  break;
-                }
-
-                if (chunk.response) {
-                  onChunk({
-                    content: chunk.response,
-                    finishReason: undefined,
-                  });
-                }
-
-                if (chunk.prompt_eval_count !== undefined) {
-                  promptTokens = chunk.prompt_eval_count;
-                }
-              } catch (e) {
-                console.error('Error parsing Ollama stream chunk:', e);
-              }
-            }
+          if (value) {
+            buffer += decoder.decode(value, { stream: !done });
           }
+
+          let newlineIndex = buffer.indexOf('\n');
+          while (newlineIndex >= 0) {
+            const line = buffer.slice(0, newlineIndex).replace(/\r$/, '');
+            buffer = buffer.slice(newlineIndex + 1);
+            processOllamaLine(line);
+            newlineIndex = buffer.indexOf('\n');
+          }
+
+          if (done) break;
+        }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processOllamaLine(buffer.replace(/\r$/, ''));
+        }
+
+        if (!completionSent) {
+          onChunk({
+            content: '',
+            finishReason: finishReason || 'stop',
+            usage: {
+              promptTokens,
+              completionTokens,
+              totalTokens: promptTokens + completionTokens,
+            },
+          });
         }
       } else {
         // OpenAI-compatible streaming (LM Studio, etc.)
@@ -578,57 +606,91 @@ export class LocalLLMProvider implements BaseProvider {
         const decoder = new TextDecoder();
         let buffer = '';
         let finishReason: string | undefined;
+        let completionSent = false;
+        let lastUsage: ChatStreamChunk['usage'];
+
+        const processEvent = (event: string) => {
+          const data = getSseData(event);
+          if (!data) return;
+
+          if (data === '[DONE]') {
+            finishReason = finishReason || 'stop';
+            if (!completionSent) {
+              completionSent = true;
+              onChunk({ content: '', finishReason, usage: lastUsage });
+            }
+            return;
+          }
+
+          try {
+            const chunk = JSON.parse(data) as LMStudioResponse;
+            const delta = chunk.choices?.[0]?.delta;
+            const deltaContent = delta?.content || delta?.reasoning_content || '';
+
+            if (deltaContent) {
+              onChunk({
+                content: deltaContent,
+                finishReason: undefined,
+              });
+            }
+
+            const chunkFinish = chunk.choices?.[0]?.finish_reason;
+            if (chunkFinish) {
+              finishReason = chunkFinish;
+            }
+
+            if (chunk.usage) {
+              lastUsage = {
+                promptTokens: chunk.usage.prompt_tokens,
+                completionTokens: chunk.usage.completion_tokens,
+                totalTokens: chunk.usage.total_tokens,
+              };
+            }
+
+            if (chunkFinish && !completionSent) {
+              completionSent = true;
+              onChunk({
+                content: '',
+                finishReason: chunkFinish,
+                usage: lastUsage,
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing stream chunk:', e);
+          }
+        };
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-
-          while (buffer.includes('\n\n')) {
-            const endIndex = buffer.indexOf('\n\n');
-            const line = buffer.slice(0, endIndex);
-            buffer = buffer.slice(endIndex + 2);
-
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') {
-                finishReason = 'stop';
-                onChunk({
-                  content: '',
-                  finishReason,
-                });
-                break;
-              }
-
-              try {
-                const chunk = JSON.parse(data) as LMStudioResponse;
-
-                const delta = chunk.choices?.[0]?.delta;
-                const deltaContent = delta?.content || delta?.reasoning_content || '';
-                if (deltaContent) {
-                  onChunk({
-                    content: deltaContent,
-                    finishReason: undefined,
-                  });
-                }
-
-                if (chunk.choices?.[0]?.finish_reason) {
-                  finishReason = chunk.choices[0].finish_reason;
-                }
-
-                if (chunk.usage) {
-                  onChunk({
-                    content: '',
-                    finishReason,
-                    usage: chunk.usage,
-                  });
-                }
-              } catch (e) {
-                console.error('Error parsing stream chunk:', e);
-              }
-            }
+          if (value) {
+            buffer += decoder.decode(value, { stream: !done });
           }
+
+          const extracted = extractSseEvents(buffer, done);
+          buffer = extracted.rest;
+
+          for (const event of extracted.events) {
+            processEvent(event);
+          }
+
+          if (done) break;
+        }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          const finalEvents = extractSseEvents(buffer, true);
+          for (const event of finalEvents.events) {
+            processEvent(event);
+          }
+        }
+
+        if (!completionSent) {
+          onChunk({
+            content: '',
+            finishReason: finishReason || 'stop',
+            usage: lastUsage,
+          });
         }
       }
     } catch (error) {
