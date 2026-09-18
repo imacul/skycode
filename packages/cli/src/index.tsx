@@ -8,6 +8,7 @@ import {
   useConversationStore,
   createNewConversation,
   formatConversationHistory,
+  formatRelativeTime,
 } from './store/conversation';
 import { copyToClipboard } from './utils/clipboard';
 import {
@@ -69,6 +70,7 @@ function App() {
   const [forceSetup, setForceSetup] = useState(false);
   const [initVersion, setInitVersion] = useState(0);
   const [historyView, setHistoryView] = useState<string | null>(null);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   const startupCommandHandled = useRef(false);
@@ -178,9 +180,7 @@ function App() {
 
         if (STARTUP_COMMAND === 'resume' && !startupCommandHandled.current) {
           startupCommandHandled.current = true;
-          setHistoryView(formatConversationHistory(
-            useConversationStore.getState().getSortedConversations()
-          ));
+          setShowHistoryPanel(true);
         }
       } catch (err) {
         setError(`Failed to initialize: ${err instanceof Error ? err.message : String(err)}`);
@@ -275,6 +275,7 @@ function App() {
 
       addMessage('user', text);
       setHistoryView(null);
+      setShowHistoryPanel(false);
 
       // Create agent request
       const request: AgentRequest = {
@@ -326,6 +327,7 @@ function App() {
         model
       );
       setHistoryView(null);
+      setShowHistoryPanel(false);
     } else if (command === '/exit') {
       process.exit(0);
     } else if (command === '/model') {
@@ -394,9 +396,11 @@ Current model: ${model}
       setForceSetup(true);
       setShowWelcome(true);
     } else if (command === '/history' || command === '/chats') {
-      setHistoryView(formatConversationHistory(getSortedConversations()));
+      setHistoryView(null);
+      setShowHistoryPanel(true);
     } else if (command === '/resume') {
-      setHistoryView(formatConversationHistory(getSortedConversations()));
+      setHistoryView(null);
+      setShowHistoryPanel(true);
     } else if (command.startsWith('/resume ')) {
       const target = command.slice('/resume '.length).trim();
       const conversations = getSortedConversations();
@@ -410,6 +414,7 @@ Current model: ${model}
         setHistoryView(`Chat "${target}" was not found.\n\n${formatConversationHistory(conversations)}`);
       } else {
         switchConversation(conversation.id);
+        setShowHistoryPanel(false);
         setHistoryView(
           `Resumed: ${conversation.title}\nStarted: ${new Date(conversation.createdAt).toLocaleString()}\nMessages: ${conversation.messages.length}`
         );
@@ -469,6 +474,7 @@ Current provider: ${provider?.name || 'none'}
     } else if (command === '/clear') {
       clearMessages();
       setHistoryView(null);
+      setShowHistoryPanel(false);
       addMessage('system', 'Conversation cleared');
     }
   }, [
@@ -517,6 +523,98 @@ Current provider: ${provider?.name || 'none'}
       <box flexShrink={0} width="100%" alignItems="center">
         <Header />
       </box>
+            <box flexShrink={0} width="100%" maxWidth={78} paddingX={2} flexDirection="row" gap={2}>
+        <text
+          fg="cyan"
+          attributes={{ underline: true }}
+          onMouseDown={() => {
+            createNewConversation(
+              useConversationStore.getState(),
+              'New Conversation',
+              modelSettings.defaultProvider,
+              model
+            );
+            setHistoryView(null);
+            setShowHistoryPanel(false);
+          }}
+        >
+          + New chat
+        </text>
+        <text
+          fg={showHistoryPanel ? 'magenta' : 'gray'}
+          attributes={{ underline: true }}
+          onMouseDown={() => {
+            setHistoryView(null);
+            setShowHistoryPanel((visible) => !visible);
+          }}
+        >
+          Chats ({getSortedConversations().length})
+        </text>
+      </box>
+
+      {showHistoryPanel && (
+        <box
+          width="100%"
+          maxWidth={78}
+          paddingX={2}
+          flexDirection="column"
+          flexShrink={0}
+          maxHeight={14}
+          border={['top', 'bottom']}
+          borderColor="gray"
+          backgroundColor="#111119"
+        >
+          <box width="100%" flexDirection="row" justifyContent="space-between" paddingY={1}>
+            <text fg="white">Saved chats</text>
+            <text
+              fg="gray"
+              attributes={{ underline: true }}
+              onMouseDown={() => setShowHistoryPanel(false)}
+            >
+              Close
+            </text>
+          </box>
+
+          <scrollbox
+            width="100%"
+            flexDirection="column"
+            maxHeight={11}
+            overflow="hidden"
+          >
+            {getSortedConversations().length === 0 ? (
+              <text fg="gray" attributes={{ dim: true }}>No saved chats yet.</text>
+            ) : (
+              getSortedConversations().map((conversation) => {
+                const isCurrent =
+                  useConversationStore.getState().currentConversationId === conversation.id;
+
+                return (
+                  <box
+                    key={conversation.id}
+                    width="100%"
+                    flexDirection="column"
+                    paddingX={1}
+                    paddingY={0.5}
+                    backgroundColor={isCurrent ? '#1E2530' : '#111119'}
+                    onMouseDown={() => {
+                      switchConversation(conversation.id);
+                      setShowHistoryPanel(false);
+                      setHistoryView(null);
+                    }}
+                  >
+                    <text fg={isCurrent ? 'cyan' : 'white'}>
+                      {isCurrent ? '● ' : '  '}{conversation.title}
+                    </text>
+                    <text fg="gray" attributes={{ dim: true }}>
+                      {formatRelativeTime(conversation.updatedAt)} · {conversation.messages.length} messages
+                    </text>
+                  </box>
+                );
+              })
+            )}
+          </scrollbox>
+        </box>
+      )}
       
       {/* Setup instructions if no API key */}
       {needsSetup && (
