@@ -41,6 +41,7 @@ SkyCode is under active development.
 - Built-in AI evaluation harness with smoke tests and a 100-case regression suite
 - Autonomous coding-agent project creation with safe workspace-scoped file tools
 - Architecture-first project planning with stack-aware separation of concerns and clarification questions
+- Unified OpenRouter + local model catalog with FREE/PAID labels and provider-aware switching
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -224,16 +225,17 @@ ANTHROPIC_API_KEY="..."
 OPENAI_API_KEY="..."
 ```
 
-Model availability changes frequently, so SkyCode now discovers models from the active provider at runtime. With OpenRouter configured, `/model` uses its live model catalog and `/model search <query>` filters it before switching with `/model <provider/model-id>`.
+Model availability changes frequently, so SkyCode discovers models at runtime. With OpenRouter configured, `/model` shows its live catalog with FREE/PAID pricing labels and also includes models from a reachable local server. Use `/model search <query>` to filter the combined catalog, then switch with `/model openrouter:<model-id>` or `/model local:<model-id>`.
 
 ## Commands
 
 | Command | Description |
 |---|---|
 | `/new` | Start a new conversation |
-| `/model` | List models from the active provider |
-| `/model search <query>` | Search active-provider models |
-| `/model <name>` | Switch model |
+| `/model` | List OpenRouter and running local models with FREE/PAID labels |
+| `/model search <query>` | Search across OpenRouter and local models |
+| `/model openrouter:<id>` | Switch to an OpenRouter model |
+| `/model local:<id>` | Switch to a running local model |
 | `/addlocal` | Add or update a local AI server |
 | `/addcloud` | Add a cloud provider |
 | `/openroute` | Add or update OpenRouter |
