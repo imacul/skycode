@@ -9,6 +9,7 @@ import type {
   ProviderConfig,
 } from './base';
 import type { Message } from '../store/conversation';
+import { extractSseEvents, getSseData } from '../utils/sse';
 
 /**
  * OpenRouter-specific configuration
@@ -44,16 +45,24 @@ interface OpenRouterRequest {
 }
 
 /**
- * OpenRouter API response
+ * OpenRouter chat-completions response (OpenAI-compatible)
  */
 interface OpenRouterResponse {
   id: string;
   model: string;
-  created: number;
-  content: Array<{ text?: string; type: string }>;
-  role: string;
-  finish_reason: string | null;
-  usage: {
+  created?: number;
+  choices: Array<{
+    index: number;
+    message: {
+      role: string;
+      content:
+        | string
+        | Array<{ type?: string; text?: string }>
+        | null;
+    };
+    finish_reason: string | null;
+  }>;
+  usage?: {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
@@ -61,20 +70,36 @@ interface OpenRouterResponse {
 }
 
 /**
- * OpenRouter stream chunk
+ * OpenRouter streaming response chunk (OpenAI-compatible)
  */
 interface OpenRouterStreamChunk {
   id: string;
   model: string;
-  created: number;
-  content: Array<{ text?: string; type: string }>;
-  role: string;
-  finish_reason: string | null;
+  created?: number;
+  choices: Array<{
+    index: number;
+    delta?: {
+      role?: string;
+      content?:
+        | string
+        | Array<{ type?: string; text?: string }>
+        | null;
+    };
+    finish_reason: string | null;
+  }>;
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
   };
+}
+
+function textFromContent(
+  content: string | Array<{ type?: string; text?: string }> | null | undefined
+): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  return content.map((part) => part.text || '').join('');
 }
 
 /**
@@ -217,18 +242,14 @@ export class OpenRouterProvider implements BaseProvider {
   /**
    * Convert OpenRouter response to internal format
    */
-  private convertResponse(
-    response: OpenRouterResponse | OpenRouterStreamChunk
-  ): ChatResponse {
-    const content = response.content
-      ?.map((c) => c.text || '')
-      .join('')
-      .trim();
+  private convertResponse(response: OpenRouterResponse): ChatResponse {
+    const choice = response.choices?.[0];
+    const content = textFromContent(choice?.message?.content).trim();
 
     return {
-      content: content || '',
+      content,
       model: response.model,
-      finishReason: response.finish_reason || 'stop',
+      finishReason: choice?.finish_reason || 'stop',
       usage: response.usage
         ? {
             promptTokens: response.usage.prompt_tokens,
@@ -238,6 +259,21 @@ export class OpenRouterProvider implements BaseProvider {
         : undefined,
       rawResponse: response,
     };
+  }
+
+  private getRequestSignal(request: ChatRequestOptions): AbortSignal {
+    const timeoutSignal = AbortSignal.timeout(
+      (request.timeout as number | undefined) || this.config.timeout || 120000
+    );
+    const externalSignal = request.signal as AbortSignal | undefined;
+
+    if (!externalSignal) return timeoutSignal;
+
+    const abortAny = (AbortSignal as typeof AbortSignal & {
+      any?: (signals: AbortSignal[]) => AbortSignal;
+    }).any;
+
+    return abortAny ? abortAny([externalSignal, timeoutSignal]) : externalSignal;
   }
 
   /**
@@ -265,7 +301,7 @@ export class OpenRouterProvider implements BaseProvider {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.config.apiKey}`,
       ...(this.config.siteName && { 'HTTP-Referer': this.config.siteUrl || '' }),
-      ...(this.config.appName && { 'X-App-Name': this.config.appName }),
+      ...(this.config.appName && { 'X-Title': this.config.appName }),
       ...this.config.headers,
     };
 
@@ -273,7 +309,7 @@ export class OpenRouterProvider implements BaseProvider {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(request.timeout || this.config.timeout || 120000),
+      signal: this.getRequestSignal(request),
     });
 
     if (!response.ok) {
@@ -322,7 +358,7 @@ export class OpenRouterProvider implements BaseProvider {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.config.apiKey}`,
       ...(this.config.siteName && { 'HTTP-Referer': this.config.siteUrl || '' }),
-      ...(this.config.appName && { 'X-App-Name': this.config.appName }),
+      ...(this.config.appName && { 'X-Title': this.config.appName }),
       ...this.config.headers,
     };
 
@@ -330,7 +366,7 @@ export class OpenRouterProvider implements BaseProvider {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(request.timeout || this.config.timeout || 120000),
+      signal: this.getRequestSignal(request),
     });
 
     if (!response.ok) {
@@ -356,67 +392,92 @@ export class OpenRouterProvider implements BaseProvider {
     let buffer = '';
     let finishReason: string | undefined;
     let usage: ChatResponse['usage'] | undefined;
+    let completionSent = false;
+
+    const processEvent = (event: string) => {
+      const data = getSseData(event);
+      if (!data) return;
+
+      if (data === '[DONE]') {
+        finishReason = finishReason || 'stop';
+        if (!completionSent) {
+          completionSent = true;
+          onChunk({
+            content: '',
+            finishReason,
+            usage,
+          });
+        }
+        return;
+      }
+
+      try {
+        const chunk = JSON.parse(data) as OpenRouterStreamChunk;
+
+        if (chunk.usage) {
+          usage = {
+            promptTokens: chunk.usage.prompt_tokens,
+            completionTokens: chunk.usage.completion_tokens,
+            totalTokens: chunk.usage.total_tokens,
+          };
+        }
+
+        const choice = chunk.choices?.[0];
+        const deltaContent = textFromContent(choice?.delta?.content);
+
+        if (deltaContent) {
+          onChunk({
+            content: deltaContent,
+            finishReason: undefined,
+            usage,
+          });
+        }
+
+        if (choice?.finish_reason) {
+          finishReason = choice.finish_reason;
+          if (!completionSent) {
+            completionSent = true;
+            onChunk({
+              content: '',
+              finishReason,
+              usage,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing OpenRouter stream chunk:', e);
+      }
+    };
 
     while (true) {
       const { done, value } = await reader.read();
+
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done });
+      }
+
+      const extracted = extractSseEvents(buffer, done);
+      buffer = extracted.rest;
+
+      for (const event of extracted.events) {
+        processEvent(event);
+      }
+
       if (done) break;
+    }
 
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process complete lines
-      while (buffer.includes('\n\n')) {
-        const endIndex = buffer.indexOf('\n\n');
-        const line = buffer.slice(0, endIndex);
-        buffer = buffer.slice(endIndex + 2);
-
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') {
-            finishReason = 'stop';
-            break;
-          }
-
-          try {
-            const chunk = JSON.parse(data) as OpenRouterStreamChunk;
-
-            // Handle usage if present
-            if (chunk.usage) {
-              usage = {
-                promptTokens: chunk.usage.prompt_tokens,
-                completionTokens: chunk.usage.completion_tokens,
-                totalTokens: chunk.usage.total_tokens,
-              };
-            }
-
-            // Handle finish reason
-            if (chunk.finish_reason) {
-              finishReason = chunk.finish_reason;
-            }
-
-            // Extract content
-            const content = chunk.content
-              ?.map((c) => c.text || '')
-              .join('');
-
-            if (content) {
-              onChunk({
-                content,
-                finishReason,
-                usage,
-              });
-            }
-          } catch (e) {
-            console.error('Error parsing stream chunk:', e);
-          }
-        }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      const finalEvents = extractSseEvents(buffer, true);
+      for (const event of finalEvents.events) {
+        processEvent(event);
       }
     }
 
-    // Send final chunk with finish reason
-    if (finishReason) {
+    if (!completionSent) {
       onChunk({
         content: '',
-        finishReason,
+        finishReason: finishReason || 'stop',
         usage,
       });
     }
