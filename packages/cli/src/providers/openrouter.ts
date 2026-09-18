@@ -112,8 +112,8 @@ interface OpenRouterModel {
   description: string;
   context_length: number;
   pricing: {
-    prompt: number;
-    completion: number;
+    prompt: number | string;
+    completion: number | string;
   };
   tags: string[];
 }
@@ -517,8 +517,8 @@ export class OpenRouterProvider implements BaseProvider {
         description: model.description,
         contextLength: model.context_length,
         pricing: {
-          prompt: model.pricing?.prompt,
-          completion: model.pricing?.completion,
+          prompt: Number(model.pricing?.prompt || 0),
+          completion: Number(model.pricing?.completion || 0),
         },
         tags: model.tags,
       }));
