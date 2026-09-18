@@ -19,6 +19,7 @@ function Ensure-Command($name, $helpText) {
     }
 }
 
+Write-Step "Installer v1.1.3"
 Write-Step "Checking requirements..."
 
 if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {

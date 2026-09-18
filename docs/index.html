@@ -50,8 +50,8 @@
           <div class="panel active" data-panel="windows">
             <p>Open PowerShell and run:</p>
             <div class="codebox">
-              <code>irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex</code>
-              <button class="copy" data-copy="irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex">Copy</button>
+              <code>irm &quot;https://raw.githubusercontent.com/imacul/skycode/main/install.ps1?ts=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())&quot; | iex</code>
+              <button class="copy" data-copy="irm &quot;https://raw.githubusercontent.com/imacul/skycode/main/install.ps1?ts=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())&quot; | iex">Copy</button>
             </div>
           </div>
 

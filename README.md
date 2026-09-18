@@ -58,7 +58,7 @@ SkyCode is under active development.
 ### Windows PowerShell
 
 ```powershell
-irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex
+irm "https://raw.githubusercontent.com/imacul/skycode/main/install.ps1?ts=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" | iex
 ```
 
 ### macOS / Linux
