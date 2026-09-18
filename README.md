@@ -34,6 +34,7 @@ SkyCode is under active development.
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
+- Built-in update checks and `skycode update`
 
 ### Experimental
 
@@ -81,6 +82,36 @@ skycode resume
 ```
 
 > If your shell was already open before installation, you may need to open a new terminal window before the `skycode` command is available.
+
+## Updating SkyCode
+
+SkyCode checks for a newer build at startup when internet access is available. The check is non-blocking, so local/offline use still starts normally.
+
+Check manually without installing:
+
+```bash
+skycode update --check
+```
+
+Install the latest version:
+
+```bash
+skycode update
+```
+
+Enable automatic updates:
+
+```bash
+skycode update --auto
+```
+
+Disable automatic updates:
+
+```bash
+skycode update --no-auto
+```
+
+Automatic updates are opt-in. Without `--auto`, SkyCode only notifies you when a newer build is available.
 
 ## Local models
 
