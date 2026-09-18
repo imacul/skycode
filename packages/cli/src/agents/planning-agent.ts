@@ -227,6 +227,7 @@ export class PlanningAgent implements BaseAgent {
           temperature: 0.3,
           maxTokens,
           stream: true,
+          signal: request.context?.signal,
         },
         (chunk) => {
           fullContent += chunk.content;
