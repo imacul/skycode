@@ -194,7 +194,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- Create configuration, tests, README, environment examples, and entry points when the task actually needs them.',
     '- If the user specifies an architecture or folder convention, follow it unless it is internally inconsistent; explain conflicts rather than silently replacing it.',
     '',
-    'Use one or more tool calls in exactly this format:'
+    'Use one or more tool calls in exactly this format:',
     '<tool_call>{"name":"create_directory","args":{"path":"my-site"}}</tool_call>',
     '<tool_call>{"name":"write_file","args":{"path":"my-site/index.html","content":"<!doctype html>..."}}</tool_call>',
     '',
