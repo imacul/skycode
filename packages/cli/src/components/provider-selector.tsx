@@ -100,7 +100,7 @@ export function ProviderSelector({ onSelect, onBack, allowedProviders }: Provide
             onMouseMove={() => setSelectedIndex(index)}
             onMouseDown={() => {
               setSelectedIndex(index);
-              handleSelect();
+              onSelect(provider.id);
             }}
           >
             <text fg={selectedIndex === index ? 'cyan' : 'white'}>
