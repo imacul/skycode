@@ -23,6 +23,7 @@
       <div class="side-title">Get started</div>
       <a href="#install">Install SkyCode</a>
       <a href="#run">Run & resume</a>
+      <a href="#update">Update SkyCode</a>
       <a href="#local">Local AI</a>
       <div class="side-title">Reference</div>
       <a href="#providers">Providers</a>
@@ -62,7 +63,7 @@
             </div>
           </div>
 
-          <div class="note">The installer places SkyCode under your user profile, installs dependencies, and creates a global <code>skycode</code> command. Running the same install command again updates SkyCode.</div>
+          <div class="note">The installer places SkyCode under your user profile, installs dependencies, and creates a global <code>skycode</code> command. After installation, use <code>skycode update</code> for future updates.</div>
         </div>
       </section>
 
@@ -77,8 +78,30 @@
         </div>
       </section>
 
-      <section id="local" class="doc-section">
+      <section id="update" class="doc-section">
         <div class="step-num">3</div>
+        <div class="step-body">
+          <h2>Update SkyCode</h2>
+          <p>SkyCode checks for updates automatically when internet access is available. Offline and local-model use continue normally if GitHub cannot be reached.</p>
+
+          <p>Check for an update without installing:</p>
+          <div class="codebox"><code>skycode update --check</code><button class="copy" data-copy="skycode update --check">Copy</button></div>
+
+          <p>Install the latest version:</p>
+          <div class="codebox"><code>skycode update</code><button class="copy" data-copy="skycode update">Copy</button></div>
+
+          <p>Enable automatic installation of future updates:</p>
+          <div class="codebox"><code>skycode update --auto</code><button class="copy" data-copy="skycode update --auto">Copy</button></div>
+
+          <p>Disable automatic installation:</p>
+          <div class="codebox"><code>skycode update --no-auto</code><button class="copy" data-copy="skycode update --no-auto">Copy</button></div>
+
+          <div class="note">Automatic installation is opt-in. By default, SkyCode only notifies you when a newer version is available.</div>
+        </div>
+      </section>
+
+      <section id="local" class="doc-section">
+        <div class="step-num">4</div>
         <div class="step-body">
           <h2>Add a local model</h2>
           <p>Inside SkyCode, run:</p>
