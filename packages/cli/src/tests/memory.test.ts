@@ -55,6 +55,24 @@ describe('cross-chat memory', () => {
     expect(memories[0].sourceConversationId).toBe('chat-2');
   });
 
+  it('does not turn transient "my X is" statements into durable profile memory', () => {
+    autoCaptureMemories('My bug is the login button flashing.');
+    expect(listMemories()).toHaveLength(0);
+  });
+
+  it('captures stable location and project fields with correction semantics', () => {
+    const workspace = join(tempDir, 'project');
+
+    autoCaptureMemories('I live in Lagos.');
+    autoCaptureMemories('The database is SQLite.', { workspace });
+    autoCaptureMemories('Correction: the database is Postgres.', { workspace });
+
+    const memories = listMemories(workspace);
+    expect(memories.some((item) => item.key === 'profile:location' && item.value.includes('Lagos'))).toBe(true);
+    expect(memories.some((item) => item.key === 'project:database' && item.value.includes('Postgres'))).toBe(true);
+    expect(memories.some((item) => item.value.includes('SQLite'))).toBe(false);
+  });
+
   it('keeps project memory scoped to the current workspace', () => {
     const one = join(tempDir, 'one');
     const two = join(tempDir, 'two');
