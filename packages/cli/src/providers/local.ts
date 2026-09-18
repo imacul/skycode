@@ -224,6 +224,21 @@ export class LocalLLMProvider implements BaseProvider {
     this.serverType = detectServerType(this.config.baseUrl || '');
   }
 
+  private getRequestSignal(request: ChatRequestOptions): AbortSignal {
+    const timeoutSignal = AbortSignal.timeout(
+      (request.timeout as number | undefined) || this.config.timeout || 120000
+    );
+    const externalSignal = request.signal as AbortSignal | undefined;
+
+    if (!externalSignal) return timeoutSignal;
+
+    const abortAny = (AbortSignal as typeof AbortSignal & {
+      any?: (signals: AbortSignal[]) => AbortSignal;
+    }).any;
+
+    return abortAny ? abortAny([externalSignal, timeoutSignal]) : externalSignal;
+  }
+
   /**
    * Initialize the provider
    */
@@ -344,7 +359,7 @@ export class LocalLLMProvider implements BaseProvider {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(request.timeout || this.config.timeout || 120000),
+          signal: this.getRequestSignal(request),
         });
 
         if (!response.ok) {
@@ -379,7 +394,7 @@ export class LocalLLMProvider implements BaseProvider {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(request.timeout || this.config.timeout || 120000),
+          signal: this.getRequestSignal(request),
         });
 
         if (!response.ok) {
@@ -413,7 +428,7 @@ export class LocalLLMProvider implements BaseProvider {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(request.timeout || this.config.timeout || 120000),
+          signal: this.getRequestSignal(request),
         });
 
         if (!response.ok) {
@@ -477,7 +492,7 @@ export class LocalLLMProvider implements BaseProvider {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(request.timeout || this.config.timeout || 120000),
+          signal: this.getRequestSignal(request),
         });
 
         if (!response.ok) {
@@ -590,7 +605,7 @@ export class LocalLLMProvider implements BaseProvider {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(request.timeout || this.config.timeout || 120000),
+          signal: this.getRequestSignal(request),
         });
 
         if (!response.ok) {
