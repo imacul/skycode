@@ -38,6 +38,7 @@ SkyCode is under active development.
 - Runtime-aware context budgeting for long conversations
 - Scored agent routing with visible active-agent diagnostics
 - Compose while generating, queue follow-up messages, and cancel active local inference
+- Built-in AI evaluation harness with smoke tests and a 100-case regression suite
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -127,6 +128,29 @@ skycode update --no-auto
 ```
 
 Automatic updates are opt-in. Without `--auto`, SkyCode only notifies you when a newer build is available.
+
+## AI evaluation
+
+Run the fast smoke evaluation against the configured local model:
+
+```bash
+skycode eval
+```
+
+Run all 100 regression cases:
+
+```bash
+skycode eval --all
+```
+
+You can target a category or specific case IDs:
+
+```bash
+skycode eval --category coding
+skycode eval --ids 4,17,31,46,61
+```
+
+Reports are saved locally under `~/.skycode/evals/` as both Markdown and JSON. The suite covers identity/fabrication, instruction following, memory, reasoning, coding, routing, and streaming/UI checks. Cases that require visual or integration review are marked `SKIP` or `REVIEW` instead of pretending they were automatically verified.
 
 ## Local models
 
