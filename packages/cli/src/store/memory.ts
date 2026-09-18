@@ -229,13 +229,41 @@ export function autoCaptureMemories(
 
   const profile = text.match(/(?:^|\b)(?:correction:\s*)?my\s+([a-z][a-z0-9 _-]{1,30}?)\s+is\s+(.+?)(?:[.!?]|$)/i);
   if (profile?.[1] && profile?.[2]) {
-    const field = normalizeKeyPart(profile[1]);
-    const value = normalizeSpace('My ' + profile[1] + ' is ' + profile[2]);
-    const record = remember(value, {
-      key: 'profile:' + field,
+    const fieldText = normalizeSpace(profile[1]).toLowerCase();
+    const stableField =
+      /^(name|age|location|city|country|timezone|job|role|profession|occupation|editor|language|preferred .+|favorite .+)$/.test(fieldText);
+
+    if (stableField) {
+      const field = normalizeKeyPart(profile[1]);
+      const value = normalizeSpace('My ' + profile[1] + ' is ' + profile[2]);
+      const record = remember(value, {
+        key: 'profile:' + field,
+        kind: 'profile',
+        sourceConversationId,
+        confidence: 0.98,
+      });
+      if (record) captured.push(record);
+    }
+  }
+
+  const location = text.match(/(?:^|\b)i\s+live\s+in\s+(.+?)(?:[.!?]|$)/i);
+  if (location?.[1]) {
+    const record = remember('I live in ' + normalizeSpace(location[1]), {
+      key: 'profile:location',
       kind: 'profile',
       sourceConversationId,
       confidence: 0.98,
+    });
+    if (record) captured.push(record);
+  }
+
+  const role = text.match(/(?:^|\b)i\s+(?:work\s+as|am)\s+(?:an?\s+)?([a-z][a-z0-9 /+&_-]{2,60}?)(?:[.!?]|$)/i);
+  if (role?.[1] && /\b(developer|engineer|designer|student|founder|consultant|analyst|manager|researcher|architect|writer|teacher)\b/i.test(role[1])) {
+    const record = remember('I work as ' + normalizeSpace(role[1]), {
+      key: 'profile:role',
+      kind: 'profile',
+      sourceConversationId,
+      confidence: 0.94,
     });
     if (record) captured.push(record);
   }
@@ -249,6 +277,23 @@ export function autoCaptureMemories(
       sourceConversationId,
       confidence: 0.95,
     });
+    if (record) captured.push(record);
+  }
+
+  const projectField = text.match(/(?:^|\b)(?:the\s+)?(?:project\s+)?(stack|framework|database|backend|frontend|styling|state management)\s+is\s+(.+?)(?:[.!?]|$)/i);
+  if (projectField?.[1] && projectField?.[2]) {
+    const field = normalizeKeyPart(projectField[1]);
+    const record = remember(
+      normalizeSpace(projectField[1] + ' is ' + projectField[2]),
+      {
+        key: 'project:' + field,
+        kind: 'project',
+        scope: 'workspace',
+        workspace,
+        sourceConversationId,
+        confidence: 0.97,
+      }
+    );
     if (record) captured.push(record);
   }
 
