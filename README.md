@@ -67,7 +67,7 @@ irm "https://raw.githubusercontent.com/imacul/skycode/main/install.ps1?ts=$([Dat
 curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | sh
 ```
 
-The installer places SkyCode under your user profile, installs dependencies, and creates a global `skycode` command.
+The installer places SkyCode under your user profile, ensures a compatible Bun version (1.4+), installs dependencies, and creates a global `skycode` command.
 
 Run SkyCode:
 
@@ -247,7 +247,7 @@ The provider layer keeps local and hosted models behind a common interface so th
 Requirements:
 
 - Git
-- Bun
+- Bun 1.4+
 - Node.js 18+ is recommended for package tooling
 
 Clone and install:
