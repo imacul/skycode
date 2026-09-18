@@ -17,6 +17,7 @@ import {
   executeProjectToolCall,
   getProjectToolInstructions,
   parseProjectToolCalls,
+  parseProjectClarification,
   projectToolResultMessage,
   shouldUseProjectTools,
   stripProjectToolCalls,
@@ -232,6 +233,15 @@ export class CodingAgent implements BaseAgent {
 
       tokensUsed += response.usage?.totalTokens || 0;
       finishReason = response.finishReason || finishReason;
+
+      const clarification = parseProjectClarification(response.content);
+      if (clarification && !hasExecutedTools) {
+        return {
+          content: clarification,
+          finishReason: 'clarification_required',
+          tokensUsed,
+        };
+      }
 
       const calls = parseProjectToolCalls(response.content);
 
