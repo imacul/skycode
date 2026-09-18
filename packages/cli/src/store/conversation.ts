@@ -1,5 +1,9 @@
 // Conversation store for managing chat state
 import { create } from 'zustand';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 
 /**
  * Message role types
@@ -115,6 +119,59 @@ interface ConversationActions {
  */
 type ConversationStore = ConversationState & ConversationActions;
 
+const CONVERSATIONS_FILE =
+  process.env.SKYCODE_HISTORY_PATH ||
+  join(homedir(), '.skycode', 'conversations.json');
+
+const conversationStorage: StateStorage = {
+  getItem: () => {
+    if (!existsSync(CONVERSATIONS_FILE)) return null;
+    return readFileSync(CONVERSATIONS_FILE, 'utf8');
+  },
+  setItem: (_name, value) => {
+    mkdirSync(dirname(CONVERSATIONS_FILE), { recursive: true });
+    writeFileSync(CONVERSATIONS_FILE, value, 'utf8');
+  },
+  removeItem: () => {
+    if (existsSync(CONVERSATIONS_FILE)) unlinkSync(CONVERSATIONS_FILE);
+  },
+};
+
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+export function formatRelativeTime(value: Date | string, now = new Date()): string {
+  const date = toDate(value);
+  const diffMs = Math.max(0, now.getTime() - date.getTime());
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
+}
+
+export function formatConversationHistory(conversations: Conversation[]): string {
+  if (conversations.length === 0) {
+    return 'No saved chats yet.';
+  }
+
+  const lines = conversations.map((conversation, index) => {
+    const created = toDate(conversation.createdAt);
+    const updated = toDate(conversation.updatedAt);
+    return `${index + 1}. ${conversation.title}\n   ID: ${conversation.id}\n   Started: ${created.toLocaleString()}\n   Last chat: ${formatRelativeTime(updated)}\n   Messages: ${conversation.messages.length}`;
+  });
+
+  return `Saved chats:\n\n${lines.join('\n\n')}\n\nUse /resume <number-or-id> to open one.`;
+}
+
 /**
  * Generate unique ID
  */
@@ -125,7 +182,9 @@ function generateId(): string {
 /**
  * Create the conversation store
  */
-export const useConversationStore = create<ConversationStore>((set, get) => ({
+export const useConversationStore = create<ConversationStore>()(
+  persist(
+    (set, get) => ({
   // State
   currentConversationId: null,
   conversations: {},
@@ -195,8 +254,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       const conversation = state.conversations[currentId];
       if (!conversation) return state;
 
+      const shouldAutoTitle =
+        role === 'user' &&
+        conversation.messages.filter((msg) => msg.role === 'user').length === 0 &&
+        /^(Conversation \d+|New Conversation)$/.test(conversation.title);
+
+      const autoTitle = content.trim().replace(/\s+/g, ' ').slice(0, 60);
       const updatedConversation = {
         ...conversation,
+        title: shouldAutoTitle && autoTitle ? autoTitle : conversation.title,
         messages: [...conversation.messages, message],
         updatedAt: now,
       };
@@ -331,10 +397,52 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   getSortedConversations: () => {
     const conversations = Object.values(get().conversations);
     return [...conversations].sort(
-      (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+      (a, b) => toDate(b.updatedAt).getTime() - toDate(a.updatedAt).getTime()
     );
   },
-}));
+    }),
+    {
+      name: 'skycode-conversations',
+      storage: createJSONStorage(() => conversationStorage),
+      partialize: (state) => ({
+        currentConversationId: state.currentConversationId,
+        conversations: state.conversations,
+        currentMessages: state.currentMessages,
+        currentProvider: state.currentProvider,
+        currentModel: state.currentModel,
+      }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<ConversationState>;
+        const conversations = Object.fromEntries(
+          Object.entries(saved.conversations || {}).map(([id, conversation]) => [
+            id,
+            {
+              ...conversation,
+              createdAt: toDate(conversation.createdAt),
+              updatedAt: toDate(conversation.updatedAt),
+              messages: conversation.messages.map((message) => ({
+                ...message,
+                timestamp: toDate(message.timestamp),
+              })),
+            },
+          ])
+        ) as Record<string, Conversation>;
+
+        const currentConversationId = saved.currentConversationId || null;
+        return {
+          ...current,
+          ...saved,
+          conversations,
+          currentConversationId,
+          currentMessages:
+            currentConversationId && conversations[currentConversationId]
+              ? conversations[currentConversationId].messages
+              : [],
+        };
+      },
+    }
+  )
+);
 
 /**
  * Utility functions for conversations
