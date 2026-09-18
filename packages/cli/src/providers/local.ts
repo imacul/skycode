@@ -637,6 +637,50 @@ export class LocalLLMProvider implements BaseProvider {
   }
 
   /**
+   * Detect the context window exposed by compatible local runtimes.
+   * llama.cpp exposes this through /props. Other servers may not, so
+   * callers still fall back to the model registry/default.
+   */
+  private async discoverRuntimeContextLength(): Promise<number | null> {
+    if (this.serverType !== 'openai-compatible') return null;
+
+    try {
+      const root = (this.config.baseUrl || '').replace(/\/+$/, '').replace(/\/v1$/, '');
+      const response = await fetch(`${root}/props`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.config.headers,
+          ...(this.config.apiKey
+            ? { Authorization: `Bearer ${this.config.apiKey}` }
+            : {}),
+        },
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json() as {
+        n_ctx?: number;
+        context_length?: number;
+        default_generation_settings?: {
+          n_ctx?: number;
+        };
+      };
+
+      const discovered =
+        data.default_generation_settings?.n_ctx ??
+        data.n_ctx ??
+        data.context_length;
+
+      return typeof discovered === 'number' && discovered > 0
+        ? discovered
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * List available models
    */
   async listModels(): Promise<ModelInfo[]> {
@@ -692,11 +736,13 @@ export class LocalLLMProvider implements BaseProvider {
           const data = await response.json() as { data?: Array<{ id: string }> };
           const models = data.data || [];
           if (models.length > 0) {
+            const runtimeContextLength = await this.discoverRuntimeContextLength();
+
             return models.map((m) => ({
               id: m.id,
               name: m.id.replace(/[-:]/g, ' '),
               description: `Local model: ${m.id}`,
-              contextLength: this.getContextLength(m.id),
+              contextLength: runtimeContextLength || this.getContextLength(m.id),
               tags: ['local', this.serverType],
             }));
           }
