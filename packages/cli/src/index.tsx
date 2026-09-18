@@ -28,6 +28,11 @@ import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
 import type { BaseProvider } from './providers/base';
 import type { AgentRequest, AgentResponse } from './agents/types';
+import {
+  formatCatalogLine,
+  isFreeOpenRouterModel,
+  type CatalogModel,
+} from './utils/model-catalog';
 
 let activeChatScroll: ScrollBoxRenderable | null = null;
 
@@ -63,6 +68,28 @@ function createProvider(provider: string): BaseProvider | null {
     default:
       return null;
   }
+}
+
+async function isLocalServerReachable(baseUrl: string): Promise<boolean> {
+  const base = baseUrl.replace(/\/+$/, '');
+  const roots = base.endsWith('/v1') ? [base.slice(0, -3), base] : [base];
+  const candidates = [
+    ...roots.map((root) => root + '/api/tags'),
+    ...(base.endsWith('/v1')
+      ? [base + '/models']
+      : [base + '/v1/models', base + '/models']),
+  ];
+
+  for (const url of [...new Set(candidates)]) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1500) });
+      if (response.ok) return true;
+    } catch {
+      // Try the next local runtime endpoint.
+    }
+  }
+
+  return false;
 }
 
 function App() {
@@ -390,6 +417,119 @@ function App() {
     setQueuedMessages([]);
   }, []);
 
+  const loadUnifiedModelCatalog = useCallback(async (): Promise<CatalogModel[]> => {
+    const entries: CatalogModel[] = [];
+
+    const openRouterKey = getProviderApiKey('openrouter');
+    if (openRouterKey) {
+      const openRouter = createOpenRouterProvider();
+      await openRouter.initialize({ apiKey: openRouterKey });
+
+      try {
+        const models = await openRouter.listModels();
+        entries.push(
+          ...models.map((item) => ({
+            provider: 'openrouter' as const,
+            model: item,
+            free: isFreeOpenRouterModel(item),
+            local: false,
+          }))
+        );
+      } finally {
+        await openRouter.close();
+      }
+    }
+
+    const localSettings = useSettingsStore.getState().providers.local;
+    const localBaseUrl =
+      process.env.LOCAL_LLM_BASE_URL ||
+      localSettings.baseUrl ||
+      'http://localhost:11434';
+
+    if (await isLocalServerReachable(localBaseUrl)) {
+      const localProvider = createLocalLLMProvider();
+      await localProvider.initialize({
+        baseUrl: localBaseUrl,
+        model: process.env.LOCAL_LLM_MODEL,
+        enableThinking: process.env.LOCAL_LLM_THINKING === 'true',
+      });
+
+      try {
+        const models = await localProvider.listModels();
+        entries.push(
+          ...models.map((item) => ({
+            provider: 'local' as const,
+            model: item,
+            free: true,
+            local: true,
+          }))
+        );
+      } finally {
+        await localProvider.close();
+      }
+    }
+
+    return entries;
+  }, []);
+
+  const activateCatalogModel = useCallback(async (
+    providerName: 'openrouter' | 'local',
+    modelId: string
+  ) => {
+    const nextProvider = createProvider(providerName);
+    if (!nextProvider) {
+      throw new Error('Provider is not supported: ' + providerName);
+    }
+
+    if (providerName === 'openrouter') {
+      const apiKey = getProviderApiKey('openrouter');
+      if (!apiKey) {
+        throw new Error('OpenRouter is not configured. Set OPENROUTER_API_KEY or run /openroute.');
+      }
+      await nextProvider.initialize({ apiKey });
+    } else {
+      const localSettings = useSettingsStore.getState().providers.local;
+      const baseUrl =
+        process.env.LOCAL_LLM_BASE_URL ||
+        localSettings.baseUrl ||
+        'http://localhost:11434';
+
+      if (!(await isLocalServerReachable(baseUrl))) {
+        throw new Error('Local AI server is not reachable at ' + baseUrl);
+      }
+
+      await nextProvider.initialize({
+        baseUrl,
+        model: modelId,
+        enableThinking: process.env.LOCAL_LLM_THINKING === 'true',
+      });
+    }
+
+    const modelInfo = await nextProvider.getModel(modelId);
+    if (!modelInfo) {
+      await nextProvider.close();
+      throw new Error('Model was not found on ' + providerName + ': ' + modelId);
+    }
+
+    await provider?.close().catch(() => undefined);
+    setProvider(nextProvider);
+    setModel(modelId);
+    setContextWindow(modelInfo.contextLength || 8192);
+    updateModelSettings({
+      defaultProvider: providerName,
+      defaultModel: modelId,
+    });
+
+    const orchestrator = createAgentOrchestrator();
+    await orchestrator.initializeAll({
+      provider: nextProvider,
+      model: modelId,
+      workingDirectory: process.cwd(),
+      env: { ...process.env },
+    });
+    orchestratorRef.current = orchestrator;
+  }, [provider, updateModelSettings]);
+
   // Handle command execution
   const handleCommand = useCallback(async (command: string) => {
     if (command === '/new') {
@@ -404,89 +544,125 @@ function App() {
     } else if (command === '/exit') {
       process.exit(0);
     } else if (command === '/model') {
-      if (!provider) {
-        addMessage('system', 'No provider is initialized.');
-      } else {
-        try {
-          const models = await provider.listModels();
-          const visible = models.slice(0, 40);
-          const lines = visible.map((item) => {
-            const current = item.id === model ? '  ← current' : '';
-            const context = item.contextLength
-              ? ' [' + Math.round(item.contextLength / 1000) + 'K ctx]'
-              : '';
-            return '  ' + item.id + context + current;
-          });
+      try {
+        const catalog = await loadUnifiedModelCatalog();
+        const openRouterModels = catalog.filter((entry) => entry.provider === 'openrouter');
+        const localModels = catalog.filter((entry) => entry.provider === 'local');
 
-          addMessage(
-            'system',
-            [
-              'Available models from ' + provider.name + ':',
-              '',
-              ...lines,
-              models.length > visible.length
-                ? '\nShowing ' + visible.length + ' of ' + models.length + '. Use /model search <query> to filter.'
-                : '',
-              '',
-              'Switch with: /model <model-id>',
-              'Current model: ' + model,
-            ].filter(Boolean).join('\n')
-          );
-        } catch (modelError) {
-          addMessage(
-            'system',
-            'Could not load models from ' + provider.name + ': ' +
-              (modelError instanceof Error ? modelError.message : String(modelError))
-          );
-        }
+        const freeCount = openRouterModels.filter((entry) => entry.free).length;
+        const paidCount = openRouterModels.length - freeCount;
+
+        addMessage(
+          'system',
+          [
+            'Available AI models',
+            '',
+            openRouterModels.length > 0
+              ? 'OPENROUTER — ' + openRouterModels.length + ' models (' + freeCount + ' free, ' + paidCount + ' paid)'
+              : 'OPENROUTER — not configured or no models returned',
+            ...openRouterModels.map((entry) =>
+              formatCatalogLine(entry, {
+                provider: provider?.name || '',
+                model,
+              })
+            ),
+            '',
+            localModels.length > 0
+              ? 'LOCAL — ' + localModels.length + ' model(s) detected on your running local server'
+              : 'LOCAL — no running local AI server detected',
+            ...localModels.map((entry) =>
+              formatCatalogLine(entry, {
+                provider: provider?.name || '',
+                model,
+              })
+            ),
+            '',
+            'Labels: [FREE] = zero OpenRouter prompt/completion price; [PAID] shows current per-million-token prices; [LOCAL · FREE] runs on your own machine.',
+            'Switch with: /model openrouter:<model-id> or /model local:<model-id>',
+            'Search everything with: /model search <query>',
+          ].join('\n')
+        );
+      } catch (modelError) {
+        addMessage(
+          'system',
+          'Could not load the model catalog: ' +
+            (modelError instanceof Error ? modelError.message : String(modelError))
+        );
       }
     } else if (command.startsWith('/model search ')) {
-      if (!provider) {
-        addMessage('system', 'No provider is initialized.');
-      } else {
-        const query = command.slice('/model search '.length).trim().toLowerCase();
+      const query = command.slice('/model search '.length).trim().toLowerCase();
 
-        try {
-          const models = await provider.listModels();
-          const matches = models
-            .filter((item) =>
-              [item.id, item.name, item.description, ...(item.tags || [])]
-                .join(' ')
-                .toLowerCase()
-                .includes(query)
-            )
-            .slice(0, 50);
+      try {
+        const catalog = await loadUnifiedModelCatalog();
+        const matches = catalog.filter((entry) =>
+          [
+            entry.model.id,
+            entry.model.name,
+            entry.model.description,
+            ...(entry.model.tags || []),
+            entry.provider,
+            entry.free ? 'free' : 'paid',
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(query)
+        );
 
-          addMessage(
-            'system',
-            matches.length > 0
-              ? [
-                  'Models matching "' + query + '":',
-                  '',
-                  ...matches.map((item) =>
-                    '  ' + item.id +
-                    (item.contextLength
-                      ? ' [' + Math.round(item.contextLength / 1000) + 'K ctx]'
-                      : '')
-                  ),
-                  '',
-                  'Switch with: /model <model-id>',
-                ].join('\n')
-              : 'No models matched "' + query + '".'
-          );
-        } catch (modelError) {
-          addMessage(
-            'system',
-            'Could not search models: ' +
-              (modelError instanceof Error ? modelError.message : String(modelError))
-          );
-        }
+        addMessage(
+          'system',
+          matches.length > 0
+            ? [
+                'Models matching "' + query + '" — ' + matches.length,
+                '',
+                ...matches.map((entry) =>
+                  formatCatalogLine(entry, {
+                    provider: provider?.name || '',
+                    model,
+                  })
+                ),
+                '',
+                'Switch with the exact selector shown above.',
+              ].join('\n')
+            : 'No OpenRouter or running local models matched "' + query + '".'
+        );
+      } catch (modelError) {
+        addMessage(
+          'system',
+          'Could not search models: ' +
+            (modelError instanceof Error ? modelError.message : String(modelError))
+        );
       }
     } else if (command.startsWith('/model ')) {
-      const modelName = command.slice(7).trim();
-      setModel(modelName);
-      updateModelSettings({ defaultModel: modelName });
-      addMessage('system', `Switched to model: ${modelName}`);
+      const selector = command.slice(7).trim();
+      const separator = selector.indexOf(':');
+      const explicitProvider = separator > 0 ? selector.slice(0, separator) : '';
+      const explicitModel = separator > 0 ? selector.slice(separator + 1) : selector;
+
+      try {
+        if (explicitProvider === 'openrouter' || explicitProvider === 'local') {
+          await activateCatalogModel(explicitProvider, explicitModel);
+          addMessage(
+            'system',
+            'Switched to ' + explicitProvider + ' model: ' + explicitModel
+          );
+        } else if (provider?.name === 'openrouter' || provider?.name === 'local') {
+          await activateCatalogModel(provider.name, selector);
+          addMessage(
+            'system',
+            'Switched to ' + provider.name + ' model: ' + selector
+          );
+        } else {
+          setModel(selector);
+          updateModelSettings({ defaultModel: selector });
+          addMessage('system', 'Switched to model: ' + selector);
+        }
+      } catch (modelError) {
+        addMessage(
+          'system',
+          'Could not switch model: ' +
+            (modelError instanceof Error ? modelError.message : String(modelError))
+        );
+      }
     } else if (command === '/addcloud') {
       setSetupMode('cloud');
       setForceSetup(true);
@@ -541,9 +717,10 @@ function App() {
 Available commands:
   /new       - Start a new conversation
   /exit      - Quit the application
-  /model     - List available models from the active provider
-  /model search <query> - Search active-provider models
-  /model <name> - Switch model
+  /model     - List OpenRouter + running local models with FREE/PAID labels
+  /model search <query> - Search OpenRouter + local models
+  /model openrouter:<id> - Switch to an OpenRouter model
+  /model local:<id> - Switch to a running local model
   /help      - Show this help
   /setup     - Configure any provider
   /addcloud  - Add a cloud AI provider (Anthropic or OpenAI)
@@ -589,6 +766,8 @@ Current provider: ${provider?.name || 'none'}
     model,
     modelSettings.defaultProvider,
     provider,
+    loadUnifiedModelCatalog,
+    activateCatalogModel,
     createNewConversation,
     addMessage,
     clearMessages,
