@@ -20,6 +20,8 @@ export interface LocalLLMConfig extends ProviderConfig {
   model?: string;
   /** Custom headers */
   headers?: Record<string, string>;
+  /** Enable model reasoning/thinking when supported by the local server */
+  enableThinking?: boolean;
 }
 
 /**
@@ -160,13 +162,19 @@ interface LMStudioResponse {
   model: string;
   choices: Array<{
     index: number;
-    message: {
+    message?: {
       role: string;
-      content: string;
+      content?: string;
+      reasoning_content?: string;
+    };
+    delta?: {
+      role?: string;
+      content?: string;
+      reasoning_content?: string;
     };
     finish_reason: string | null;
   }>;
-  usage: {
+  usage?: {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
@@ -187,6 +195,15 @@ function detectServerType(baseUrl: string): 'ollama' | 'lmstudio' | 'openai-comp
 }
 
 /**
+ * Normalize an OpenAI-compatible server URL.
+ * Accepts both http://host:port and http://host:port/v1.
+ */
+function openAIBaseUrl(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, '');
+  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`;
+}
+
+/**
  * Local LLM Provider
  * Supports Ollama, LM Studio, and OpenAI-compatible local servers
  */
@@ -200,6 +217,7 @@ export class LocalLLMProvider implements BaseProvider {
     this.config = {
       baseUrl: 'http://localhost:11434', // Default to Ollama
       timeout: 120000,
+      enableThinking: false,
       ...config,
     };
     this.serverType = detectServerType(this.config.baseUrl || '');
@@ -356,7 +374,7 @@ export class LocalLLMProvider implements BaseProvider {
           stream: false,
         };
 
-        const response = await fetch(`${this.config.baseUrl}/v1/chat/completions`, {
+        const response = await fetch(`${openAIBaseUrl(this.config.baseUrl || '')}/chat/completions`, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
@@ -370,14 +388,14 @@ export class LocalLLMProvider implements BaseProvider {
 
         const data = await response.json();
         return {
-          content: data.choices?.[0]?.message?.content || '',
+          content: data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '',
           model: data.model,
           finishReason: data.choices?.[0]?.finish_reason || 'unknown',
           usage: data.usage,
           rawResponse: data,
         };
       } else {
-        // OpenAI-compatible
+        // OpenAI-compatible (llama.cpp, vLLM, LocalAI, etc.)
         const body = {
           model,
           messages: request.messages,
@@ -385,9 +403,12 @@ export class LocalLLMProvider implements BaseProvider {
           max_tokens: request.maxTokens,
           stop: request.stop,
           stream: false,
+          chat_template_kwargs: {
+            enable_thinking: this.config.enableThinking ?? false,
+          },
         };
 
-        const response = await fetch(`${this.config.baseUrl}/v1/chat/completions`, {
+        const response = await fetch(`${openAIBaseUrl(this.config.baseUrl || '')}/chat/completions`, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
@@ -401,7 +422,7 @@ export class LocalLLMProvider implements BaseProvider {
 
         const data = await response.json();
         return {
-          content: data.choices?.[0]?.message?.content || '',
+          content: data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '',
           model: data.model,
           finishReason: data.choices?.[0]?.finish_reason || 'unknown',
           usage: data.usage,
@@ -528,9 +549,16 @@ export class LocalLLMProvider implements BaseProvider {
           max_tokens: request.maxTokens,
           stop: request.stop,
           stream: true,
+          ...(this.serverType === 'openai-compatible'
+            ? {
+                chat_template_kwargs: {
+                  enable_thinking: this.config.enableThinking ?? false,
+                },
+              }
+            : {}),
         };
 
-        const response = await fetch(`${this.config.baseUrl}/v1/chat/completions`, {
+        const response = await fetch(`${openAIBaseUrl(this.config.baseUrl || '')}/chat/completions`, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
@@ -576,9 +604,11 @@ export class LocalLLMProvider implements BaseProvider {
               try {
                 const chunk = JSON.parse(data) as LMStudioResponse;
 
-                if (chunk.choices?.[0]?.delta?.content) {
+                const delta = chunk.choices?.[0]?.delta;
+                const deltaContent = delta?.content || delta?.reasoning_content || '';
+                if (deltaContent) {
                   onChunk({
-                    content: chunk.choices[0].delta.content,
+                    content: deltaContent,
                     finishReason: undefined,
                   });
                 }
@@ -636,6 +666,40 @@ export class LocalLLMProvider implements BaseProvider {
             contextLength: this.getContextLength(m.name),
             tags: ['local', 'ollama'],
           }));
+        }
+      } catch {
+        // Fall back to known models
+      }
+    }
+
+    if (this.serverType === 'openai-compatible' || this.serverType === 'lmstudio') {
+      try {
+        const headers = {
+          'Content-Type': 'application/json',
+          ...this.config.headers,
+        };
+
+        if (this.config.apiKey) {
+          headers['Authorization'] = `Bearer ${this.config.apiKey}`;
+        }
+
+        const response = await fetch(`${openAIBaseUrl(this.config.baseUrl || '')}/models`, {
+          headers,
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (response.ok) {
+          const data = await response.json() as { data?: Array<{ id: string }> };
+          const models = data.data || [];
+          if (models.length > 0) {
+            return models.map((m) => ({
+              id: m.id,
+              name: m.id.replace(/[-:]/g, ' '),
+              description: `Local model: ${m.id}`,
+              contextLength: this.getContextLength(m.id),
+              tags: ['local', this.serverType],
+            }));
+          }
         }
       } catch {
         // Fall back to known models

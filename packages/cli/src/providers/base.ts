@@ -15,6 +15,8 @@ export interface ProviderConfig {
   timeout?: number;
   /** Additional headers */
   headers?: Record<string, string>;
+  /** Enable model reasoning/thinking when supported by the provider */
+  enableThinking?: boolean;
 }
 
 /**
