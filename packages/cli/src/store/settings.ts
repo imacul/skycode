@@ -1,6 +1,9 @@
 // Settings store for user preferences
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 
 /**
  * Provider settings
@@ -163,6 +166,24 @@ interface SettingsActions {
 
 type SettingsStore = Settings & SettingsActions;
 
+const SETTINGS_FILE =
+  process.env.SKYCODE_SETTINGS_PATH ||
+  join(homedir(), '.skycode', 'settings.json');
+
+const fileStorage: StateStorage = {
+  getItem: () => {
+    if (!existsSync(SETTINGS_FILE)) return null;
+    return readFileSync(SETTINGS_FILE, 'utf8');
+  },
+  setItem: (_name, value) => {
+    mkdirSync(dirname(SETTINGS_FILE), { recursive: true });
+    writeFileSync(SETTINGS_FILE, value, 'utf8');
+  },
+  removeItem: () => {
+    if (existsSync(SETTINGS_FILE)) unlinkSync(SETTINGS_FILE);
+  },
+};
+
 /**
  * Create the settings store with persistence
  * Note: API keys are persisted for convenience but can be cleared
@@ -240,9 +261,9 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'skycode-settings',
-      // Persist all settings including API keys for convenience
-      // Users can clear them manually if needed
-      // In production, consider using secure storage for API keys
+      storage: createJSONStorage(() => fileStorage),
+      // Persist CLI settings in ~/.skycode/settings.json instead of browser localStorage.
+      // API keys are still stored for convenience and can be cleared manually.
     }
   )
 );
