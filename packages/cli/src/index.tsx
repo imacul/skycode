@@ -403,10 +403,7 @@ Current provider: ${provider?.name || 'none'}
           <box flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <text wordWrap="break-word" width="100%">
-              {currentResponse}
-              {isProcessing && !currentResponse.endsWith('|') && (
-                <text attributes={{ blink: true }}>|</text>
-              )}
+              {`${currentResponse}${isProcessing && !currentResponse.endsWith('|') ? '|' : ''}`}
             </text>
           </box>
         )}
