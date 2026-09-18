@@ -1,7 +1,7 @@
 // API Key Prompt Component
 // Shows when no API key is configured and prompts user to enter one
 import { useState, useCallback, useRef } from 'react';
-import type { TextareaRenderable } from '@opentui/core';
+import type { KeyBinding, TextareaRenderable } from '@opentui/core';
 
 export interface ApiKeyPromptProps {
   provider: 'openrouter' | 'anthropic' | 'openai' | 'local';
@@ -9,6 +9,12 @@ export interface ApiKeyPromptProps {
   onSkip: () => void;
   onBack: () => void;
 }
+
+const SETUP_TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
+  { name: 'return', action: 'submit' },
+  { name: 'enter', action: 'submit' },
+  { name: 'kpenter', action: 'submit' },
+];
 
 const PROVIDER_INFO: Record<string, { name: string; url: string; envVar: string }> = {
   openrouter: {
@@ -40,6 +46,7 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
   const textareaRef = useRef<TextareaRenderable | null>(null);
 
   const info = PROVIDER_INFO[provider];
+  const canSubmit = apiKey.trim().length > 0 && !isLoading;
 
   const handleSubmit = useCallback(() => {
     const key = textareaRef.current?.editBuffer.getText()?.trim() || apiKey;
@@ -118,6 +125,7 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
         <textarea
           ref={textareaRef}
           focused={true}
+          keyBindings={SETUP_TEXTAREA_KEY_BINDINGS}
           placeholder={provider === 'local' ? 'http://localhost:11434' : 'sk-...'}
           onChange={handleKeyChange}
           onSubmit={handleSubmit}
@@ -147,13 +155,14 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
             Try Without API Key
           </text>
         )}
-        <text 
-          fg="green" 
-          attributes={{ bold: true, underline: true }} 
-          onMouseDown={handleSubmit}
-          disabled={isLoading}
+        <text
+          fg={canSubmit ? 'green' : 'gray'}
+          attributes={{ bold: canSubmit, underline: canSubmit }}
+          onMouseDown={() => {
+            if (canSubmit) handleSubmit();
+          }}
         >
-          {isLoading ? 'Validating...' : 'Submit'}
+          {isLoading ? 'Validating...' : canSubmit ? 'Submit' : 'Enter a value to submit'}
         </text>
       </box>
     </box>
