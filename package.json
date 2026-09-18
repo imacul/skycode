@@ -1,7 +1,7 @@
 {
   "name": "sky-code",
-  "version": "1.0.0",
-  "description": "Sky Code - AI-powered development platform with planning, build, and business modes",
+  "version": "1.1.0",
+  "description": "SkyCode - open-source terminal AI harness for local and cloud models",
   "workspaces": [
     "packages/*"
   ],
