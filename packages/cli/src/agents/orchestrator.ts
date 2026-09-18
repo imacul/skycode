@@ -426,7 +426,7 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
 /**
  * Create the agent orchestrator
  */
-export function createAgentOrchestrator(defaultAgent?: string): AgentOrchestrator {
+export function createAgentOrchestrator(defaultAgent?: string): SkyCodeAgentOrchestrator {
   return new SkyCodeAgentOrchestrator(defaultAgent);
 }
 
