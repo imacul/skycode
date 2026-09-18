@@ -118,7 +118,8 @@ export class ChatAgent implements BaseAgent {
     return getSystemMessage(
       this.context.provider?.name || 'openrouter',
       this.context.model,
-      `${fullPrompt}\n\n${modePrompt}`
+      `${fullPrompt}\n\n${modePrompt}`,
+      this.context.memoryContext
     );
   }
 
