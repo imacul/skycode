@@ -3,21 +3,35 @@
 import { useState, useCallback } from 'react';
 import { ProviderSelector } from './provider-selector';
 import { ApiKeyPrompt } from './api-key-prompt';
-import { getProviderApiKey, setProviderApiKey, getConfiguredProviders } from '../store/settings';
+import { getProviderApiKey, setProviderApiKey, getConfiguredProviders, useSettingsStore } from '../store/settings';
+
+export type SetupMode = 'all' | 'cloud' | 'local' | 'openrouter';
 
 export interface WelcomeScreenProps {
   onComplete: () => void;
+  mode?: SetupMode;
+  forceSetup?: boolean;
 }
 
-export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
-  const [currentStep, setCurrentStep] = useState<'provider-select' | 'api-key-prompt' | 'complete'>('provider-select');
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+const PROVIDERS_BY_MODE: Record<SetupMode, string[]> = {
+  all: ['openrouter', 'local', 'anthropic', 'openai'],
+  cloud: ['anthropic', 'openai'],
+  local: ['local'],
+  openrouter: ['openrouter'],
+};
+
+export function WelcomeScreen({ onComplete, mode = 'all', forceSetup = false }: WelcomeScreenProps) {
+  const directProvider = mode === 'local' ? 'local' : mode === 'openrouter' ? 'openrouter' : null;
+  const [currentStep, setCurrentStep] = useState<'provider-select' | 'api-key-prompt' | 'complete'>(
+    directProvider ? 'api-key-prompt' : 'provider-select'
+  );
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(directProvider);
 
   // Check if already configured
   const configuredProviders = getConfiguredProviders();
   
   // If already configured, skip welcome screen
-  if (configuredProviders.length > 0 && currentStep === 'provider-select') {
+  if (!forceSetup && configuredProviders.length > 0 && currentStep === 'provider-select') {
     onComplete();
     return null;
   }
@@ -25,27 +39,31 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   const handleProviderSelect = useCallback((provider: string) => {
     setSelectedProvider(provider);
     
-    // Check if provider needs API key
     if (provider === 'local') {
-      // Local provider doesn't need API key
-      setProviderApiKey('local', 'http://localhost:11434');
+      setCurrentStep('api-key-prompt');
+      return;
+    }
+
+    const existingKey = getProviderApiKey(provider as any);
+    if (existingKey && !forceSetup) {
+      useSettingsStore.getState().updateModelSettings({ defaultProvider: provider });
       onComplete();
     } else {
-      // Check if already have API key
-      const existingKey = getProviderApiKey(provider as any);
-      if (existingKey) {
-        onComplete();
-      } else {
-        setCurrentStep('api-key-prompt');
-      }
+      setCurrentStep('api-key-prompt');
     }
   }, [onComplete]);
 
-  const handleApiKeySubmit = useCallback((apiKey: string) => {
-    if (selectedProvider) {
-      setProviderApiKey(selectedProvider as any, apiKey);
-      onComplete();
+  const handleApiKeySubmit = useCallback((value: string) => {
+    if (!selectedProvider) return;
+
+    if (selectedProvider === 'local') {
+      useSettingsStore.getState().updateProviderSettings('local', { baseUrl: value });
+    } else {
+      setProviderApiKey(selectedProvider as any, value);
     }
+
+    useSettingsStore.getState().updateModelSettings({ defaultProvider: selectedProvider });
+    onComplete();
   }, [selectedProvider, onComplete]);
 
   const handleSkip = useCallback(() => {
@@ -81,7 +99,8 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           
           <ProviderSelector
             onSelect={handleProviderSelect}
-            onBack={onComplete} // Skip setup
+            onBack={onComplete}
+            allowedProviders={PROVIDERS_BY_MODE[mode]}
           />
         </box>
       );
