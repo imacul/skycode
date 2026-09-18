@@ -33,6 +33,15 @@ import {
   isFreeOpenRouterModel,
   type CatalogModel,
 } from './utils/model-catalog';
+import {
+  autoCaptureMemories,
+  buildMemoryContext,
+  clearMemories,
+  forgetMemories,
+  formatMemoryList,
+  getMemoryPath,
+  remember,
+} from './store/memory';
 
 let activeChatScroll: ScrollBoxRenderable | null = null;
 
@@ -327,10 +336,25 @@ function App() {
       // Capture the existing history before adding this turn. Agents append
       // request.input themselves, so passing the just-added user message would
       // duplicate the prompt.
-      const fullHistory = useConversationStore
-        .getState()
+      const conversationState = useConversationStore.getState();
+      const fullHistory = conversationState
         .currentMessages
         .filter((message) => message.role !== 'system');
+
+      // Capture durable facts/preferences first so corrections become
+      // authoritative before memory is retrieved for this same turn.
+      autoCaptureMemories(text, {
+        conversationId: conversationState.currentConversationId,
+        workspace: process.cwd(),
+      });
+
+      const memoryContext = buildMemoryContext({
+        query: text,
+        workspace: process.cwd(),
+        currentConversationId: conversationState.currentConversationId,
+        conversations: conversationState.conversations,
+        maxChars: Math.min(6000, Math.max(1200, Math.floor(contextWindow * 0.6))),
+      });
 
       const budget = createContextBudget(contextWindow, text);
       const fittedHistory = fitHistoryToBudget(fullHistory, budget.historyBudget);
@@ -386,6 +410,7 @@ function App() {
         model,
         workingDirectory: process.cwd(),
         env: { ...process.env },
+        memoryContext,
       });
 
       const streamPromise = orchestrator.routeRequestStream(request);
@@ -543,6 +568,35 @@ function App() {
       setShowHistoryPanel(false);
     } else if (command === '/exit') {
       process.exit(0);
+    } else if (command === '/memory') {
+      addMessage(
+        'system',
+        formatMemoryList(process.cwd()) + '\n\nStored at: ' + getMemoryPath()
+      );
+    } else if (command === '/memory clear') {
+      const count = clearMemories();
+      addMessage('system', 'Cleared ' + count + ' durable memory record(s). Past chat history is unchanged.');
+    } else if (command.startsWith('/remember ')) {
+      const fact = command.slice('/remember '.length).trim();
+      const saved = remember(fact, {
+        kind: 'fact',
+        sourceConversationId: useConversationStore.getState().currentConversationId || undefined,
+      });
+      addMessage(
+        'system',
+        saved
+          ? 'Remembered: ' + saved.value
+          : 'I did not save that. Empty values and likely secrets/API keys are rejected.'
+      );
+    } else if (command.startsWith('/forget ')) {
+      const query = command.slice('/forget '.length).trim();
+      const count = forgetMemories(query, process.cwd());
+      addMessage(
+        'system',
+        count > 0
+          ? 'Forgot ' + count + ' matching durable memory record(s).'
+          : 'No durable memory matched "' + query + '".'
+      );
     } else if (command === '/model') {
       try {
         const catalog = await loadUnifiedModelCatalog();
@@ -717,6 +771,10 @@ function App() {
 Available commands:
   /new       - Start a new conversation
   /exit      - Quit the application
+  /memory    - Show durable cross-chat memory
+  /remember <fact> - Save a durable fact or preference
+  /forget <query> - Remove matching durable memory
+  /memory clear - Clear all durable memory
   /model     - List OpenRouter + running local models with FREE/PAID labels
   /model search <query> - Search OpenRouter + local models
   /model openrouter:<id> - Switch to an OpenRouter model

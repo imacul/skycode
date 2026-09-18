@@ -451,7 +451,12 @@ export const useConversationStore = create<ConversationStore>()(
 /**
  * Get system message for a conversation
  */
-export function getSystemMessage(provider?: string, model?: string, customContent?: string): Message {
+export function getSystemMessage(
+  provider?: string,
+  model?: string,
+  customContent?: string,
+  memoryContext?: string
+): Message {
   let content = customContent || 'You are a helpful AI coding assistant.';
 
   if (!customContent && provider === 'openrouter') {
@@ -470,6 +475,10 @@ export function getSystemMessage(provider?: string, model?: string, customConten
   ].join('\n');
 
   content = `${content}\n\n${identityFacts}`;
+
+  if (memoryContext?.trim()) {
+    content += '\n\n' + memoryContext.trim();
+  }
 
   return {
     id: `system_${Date.now()}`,

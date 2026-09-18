@@ -130,7 +130,8 @@ export class CodingAgent implements BaseAgent {
     return getSystemMessage(
       this.context.provider?.name || 'openrouter',
       this.context.model,
-      `${systemPrompt}\n\n${modePrompt}${toolPrompt}`
+      `${systemPrompt}\n\n${modePrompt}${toolPrompt}`,
+      this.context.memoryContext
     );
   }
 

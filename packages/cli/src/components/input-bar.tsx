@@ -19,6 +19,9 @@ const COMMAND_PREFIX = '/';
 const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/new', description: 'Start a new conversation' },
   { command: '/model', description: 'Show models or switch model', takesArgs: true },
+  { command: '/memory', description: 'Show durable cross-chat memory' },
+  { command: '/remember', description: 'Save a durable memory', takesArgs: true },
+  { command: '/forget', description: 'Forget matching durable memory', takesArgs: true },
   { command: '/addlocal', description: 'Add or update a local AI server' },
   { command: '/addcloud', description: 'Add a cloud AI provider' },
   { command: '/openroute', description: 'Add or update OpenRouter' },
