@@ -128,7 +128,7 @@ export function remember(
     confidence?: number;
   } = {}
 ): MemoryRecord | null {
-  const clean = normalizeSpace(value);
+  const clean = normalizeSpace(value).slice(0, 800);
   if (!clean || looksSensitive(clean)) return null;
 
   const scope = options.scope || 'global';
@@ -311,11 +311,13 @@ export function buildMemoryContext(options: {
   conversations?: Record<string, Conversation>;
   maxMemories?: number;
   maxPastChatSnippets?: number;
+  maxChars?: number;
 }): string {
   const workspace = options.workspace || process.cwd();
   const queryTokens = tokens(options.query);
   const maxMemories = options.maxMemories ?? 10;
   const maxPastChatSnippets = options.maxPastChatSnippets ?? 4;
+  const maxChars = options.maxChars ?? 2400;
 
   const memories = listMemories(workspace)
     .map((record) => ({ record, score: memoryScore(record, queryTokens) }))
@@ -373,7 +375,16 @@ export function buildMemoryContext(options: {
     }
   }
 
-  return lines.join('\n').trim();
+  const rendered = lines.join('\n').trim();
+  if (rendered.length <= maxChars) return rendered;
+
+  const clipped = rendered.slice(0, Math.max(0, maxChars - 80));
+  const lastNewline = clipped.lastIndexOf('\n');
+  return (
+    (lastNewline > 0 ? clipped.slice(0, lastNewline) : clipped) +
+    '\n- [memory context clipped to fit the model context budget]'
+  );
+}
 }
 
 export function formatMemoryList(workspace = process.cwd()): string {
