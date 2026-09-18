@@ -5,7 +5,12 @@ import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
 import { StatusBar } from './components/satus-bar';
 import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
-import { useConversationStore, createNewConversation } from './store/conversation';
+import {
+  useConversationStore,
+  createNewConversation,
+  formatConversationHistory,
+} from './store/conversation';
+import { copyToClipboard } from './utils/clipboard';
 import { useSettingsStore, getProviderApiKey, setProviderApiKey, getConfiguredProviders } from './store/settings';
 import { createOpenRouterProvider } from './providers/openrouter';
 import { createLocalLLMProvider } from './providers/local';
@@ -14,6 +19,8 @@ import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
 import type { BaseProvider } from './providers/base';
 import type { AgentRequest, AgentResponse } from './agents/types';
+
+const STARTUP_COMMAND = process.argv.slice(2)[0]?.toLowerCase();
 
 // Provider factory
 function createProvider(provider: string): BaseProvider | null {
@@ -42,12 +49,17 @@ function App() {
   const [setupMode, setSetupMode] = useState<SetupMode>('all');
   const [forceSetup, setForceSetup] = useState(false);
   const [initVersion, setInitVersion] = useState(0);
+  const [historyView, setHistoryView] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const startupCommandHandled = useRef(false);
   
   const {
     currentMessages,
     addMessage,
     createConversation,
     getCurrentConversation,
+    getSortedConversations,
+    switchConversation,
     clearMessages,
   } = useConversationStore();
   
@@ -131,6 +143,13 @@ function App() {
         });
 
         setIsInitialized(true);
+
+        if (STARTUP_COMMAND === 'resume' && !startupCommandHandled.current) {
+          startupCommandHandled.current = true;
+          setHistoryView(formatConversationHistory(
+            useConversationStore.getState().getSortedConversations()
+          ));
+        }
       } catch (err) {
         setError(`Failed to initialize: ${err instanceof Error ? err.message : String(err)}`);
         setShowWelcome(true);
@@ -161,6 +180,11 @@ function App() {
     try {
       // Add user message to conversation
       addMessage('user', text);
+      setHistoryView(null);
+
+      const conversationState = useConversationStore.getState();
+      const activeConversation = conversationState.getCurrentConversation();
+      const messagesForContext = conversationState.currentMessages;
 
       // Create agent request
       const request: AgentRequest = {
@@ -187,6 +211,8 @@ function App() {
       // Create orchestrator and route request
       const orchestrator = createAgentOrchestrator();
       await orchestrator.initializeAll({
+        conversation: activeConversation,
+        messages: messagesForContext,
         provider,
         model,
         workingDirectory: process.cwd(),
@@ -203,7 +229,13 @@ function App() {
   // Handle command execution
   const handleCommand = useCallback(async (command: string) => {
     if (command === '/new') {
-      createNewConversation(useConversationStore.getState(), 'New Conversation', 'openrouter', model);
+      createNewConversation(
+        useConversationStore.getState(),
+        'New Conversation',
+        modelSettings.defaultProvider,
+        model
+      );
+      setHistoryView(null);
     } else if (command === '/exit') {
       process.exit(0);
     } else if (command === '/model') {
@@ -271,6 +303,40 @@ Current model: ${model}
       setSetupMode('openrouter');
       setForceSetup(true);
       setShowWelcome(true);
+    } else if (command === '/history' || command === '/chats') {
+      setHistoryView(formatConversationHistory(getSortedConversations()));
+    } else if (command === '/resume') {
+      setHistoryView(formatConversationHistory(getSortedConversations()));
+    } else if (command.startsWith('/resume ')) {
+      const target = command.slice('/resume '.length).trim();
+      const conversations = getSortedConversations();
+      const byNumber = Number(target);
+      const conversation =
+        Number.isInteger(byNumber) && byNumber > 0
+          ? conversations[byNumber - 1]
+          : conversations.find((item) => item.id === target);
+
+      if (!conversation) {
+        setHistoryView(`Chat "${target}" was not found.\n\n${formatConversationHistory(conversations)}`);
+      } else {
+        switchConversation(conversation.id);
+        setHistoryView(
+          `Resumed: ${conversation.title}\nStarted: ${new Date(conversation.createdAt).toLocaleString()}\nMessages: ${conversation.messages.length}`
+        );
+      }
+    } else if (command === '/copy') {
+      const lastAssistant = [...useConversationStore.getState().currentMessages]
+        .reverse()
+        .find((message) => message.role === 'assistant');
+
+      if (!lastAssistant) {
+        setHistoryView('There is no assistant reply to copy yet.');
+      } else if (copyToClipboard(lastAssistant.content)) {
+        setCopiedMessageId(lastAssistant.id);
+        setHistoryView('Copied the latest assistant reply to your clipboard.');
+      } else {
+        setHistoryView('Could not access the system clipboard on this machine.');
+      }
     } else if (command === '/help') {
       const helpText = `
 Available commands:
@@ -283,6 +349,9 @@ Available commands:
   /addcloud  - Add a cloud AI provider (Anthropic or OpenAI)
   /addlocal  - Add a local AI server (Ollama, LM Studio, llama.cpp)
   /openroute - Add or update OpenRouter access
+  /history   - List saved chats with start date and last activity
+  /resume <number-or-id> - Resume a saved chat
+  /copy      - Copy the latest assistant reply
   /clear     - Clear current conversation
 
 Example usage:
@@ -300,9 +369,20 @@ Current provider: ${provider?.name || 'none'}
       setShowWelcome(true);
     } else if (command === '/clear') {
       clearMessages();
+      setHistoryView(null);
       addMessage('system', 'Conversation cleared');
     }
-  }, [model, provider, createNewConversation, addMessage, clearMessages, updateModelSettings]);
+  }, [
+    model,
+    modelSettings.defaultProvider,
+    provider,
+    createNewConversation,
+    addMessage,
+    clearMessages,
+    getSortedConversations,
+    switchConversation,
+    updateModelSettings,
+  ]);
 
   // Check if we need to show setup instructions
   const needsSetup = !isInitialized && !showWelcome;
@@ -380,6 +460,19 @@ Current provider: ${provider?.name || 'none'}
               <text wordWrap="break-word" width="100%">
                 {msg.content}
               </text>
+              {msg.role === 'assistant' && (
+                <text
+                  fg={copiedMessageId === msg.id ? 'green' : 'gray'}
+                  attributes={{ dim: copiedMessageId !== msg.id, underline: true }}
+                  onMouseDown={() => {
+                    if (copyToClipboard(msg.content)) {
+                      setCopiedMessageId(msg.id);
+                    }
+                  }}
+                >
+                  {copiedMessageId === msg.id ? '✓ Copied' : 'Copy'}
+                </text>
+              )}
             </box>
           ))
         ) : (
@@ -415,6 +508,21 @@ Current provider: ${provider?.name || 'none'}
           </box>
         )}
       </box>
+
+      {historyView && (
+        <box
+          width="100%"
+          maxWidth={78}
+          paddingX={2}
+          paddingY={1}
+          border={['top']}
+          borderColor="gray"
+        >
+          <text fg="yellow" wordWrap="break-word" width="100%">
+            {historyView}
+          </text>
+        </box>
+      )}
 
       {/* Input bar */}
       <box width="100%" maxWidth={78} paddingX={2}>
