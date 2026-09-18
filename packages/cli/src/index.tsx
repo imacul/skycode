@@ -11,6 +11,7 @@ import {
   formatRelativeTime,
 } from './store/conversation';
 import { copyToClipboard } from './utils/clipboard';
+import { runEvalCommand } from './eval/runner';
 import { createContextBudget, fitHistoryToBudget } from './utils/context-window';
 import {
   checkForUpdates,
@@ -40,6 +41,11 @@ if (STARTUP_COMMAND === '-v' || STARTUP_COMMAND === '--version' || STARTUP_COMMA
 
 if (STARTUP_COMMAND === 'update') {
   const exitCode = await runUpdateCommand(CLI_ARGS.slice(1));
+  process.exit(exitCode);
+}
+
+if (STARTUP_COMMAND === 'eval') {
+  const exitCode = await runEvalCommand(CLI_ARGS.slice(1));
   process.exit(exitCode);
 }
 
@@ -525,6 +531,8 @@ CLI commands:
   skycode update --check - Check without installing
   skycode update --auto  - Enable automatic updates and update now
   skycode update --no-auto - Disable automatic updates
+  skycode eval            - Run the local AI smoke evaluation
+  skycode eval --all      - Run the full 100-case evaluation suite
 
 Example usage:
   /model meta-llama/llama-3.1-70b-instruct
