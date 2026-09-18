@@ -1,4 +1,4 @@
-import { createCliRenderer } from '@opentui/core';
+import { createCliRenderer, type ScrollBoxRenderable } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
@@ -26,6 +26,8 @@ import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
 import type { BaseProvider } from './providers/base';
 import type { AgentRequest, AgentResponse } from './agents/types';
+
+let activeChatScroll: ScrollBoxRenderable | null = null;
 
 const CLI_ARGS = process.argv.slice(2);
 const STARTUP_COMMAND = CLI_ARGS[0]?.toLowerCase();
@@ -72,6 +74,7 @@ function App() {
   const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
+  const messagesScrollRef = useRef<ScrollBoxRenderable | null>(null);
   
   const {
     currentMessages,
@@ -87,6 +90,16 @@ function App() {
     model: modelSettings,
     updateModelSettings,
   } = useSettingsStore();
+
+  useEffect(() => {
+    activeChatScroll = messagesScrollRef.current;
+
+    return () => {
+      if (activeChatScroll === messagesScrollRef.current) {
+        activeChatScroll = null;
+      }
+    };
+  }, []);
 
   // Initialize on mount
   useEffect(() => {
@@ -494,13 +507,17 @@ Current provider: ${provider?.name || 'none'}
   return (
     <box
       alignItems="center"
-      justifyContent="center"
+      justifyContent="flex-start"
+      flexDirection="column"
       backgroundColor="#0D0D12"
       width="100%"
       height="100%"
-      gap={2}
+      overflow="hidden"
+      gap={1}
     >
-      <Header />
+      <box flexShrink={0} width="100%" alignItems="center">
+        <Header />
+      </box>
       
       {/* Setup instructions if no API key */}
       {needsSetup && (
@@ -528,14 +545,25 @@ Current provider: ${provider?.name || 'none'}
       )}
 
       {/* Messages display */}
-      <box
+      <scrollbox
+        ref={messagesScrollRef}
         width="100%"
         maxWidth={78}
         paddingX={2}
         flexDirection="column"
         gap={1}
-        overflow="hidden"
         flexGrow={1}
+        flexShrink={1}
+        height="auto"
+        overflow="hidden"
+        stickyScroll={true}
+        stickyStart="bottom"
+        scrollbarOptions={{
+          trackOptions: {
+            foregroundColor: 'cyan',
+            backgroundColor: '#1A1A24',
+          },
+        }}
       >
         {currentMessages.length > 0 ? (
           currentMessages.map((msg, index) => (
@@ -600,25 +628,23 @@ Current provider: ${provider?.name || 'none'}
             <text attributes={{ blink: true }}>Thinking...</text>
           </box>
         )}
-      </box>
-
-      {historyView && (
-        <box
-          width="100%"
-          maxWidth={78}
-          paddingX={2}
-          paddingY={1}
-          border={['top']}
-          borderColor="gray"
-        >
-          <text fg="yellow" wordWrap="break-word" width="100%">
-            {historyView}
-          </text>
-        </box>
-      )}
+        {historyView && (
+          <box
+            width="100%"
+            paddingY={1}
+            border={['top']}
+            borderColor="gray"
+            flexShrink={0}
+          >
+            <text fg="yellow" wordWrap="break-word" width="100%">
+              {historyView}
+            </text>
+          </box>
+        )}
+      </scrollbox>
 
       {/* Input bar */}
-      <box width="100%" maxWidth={78} paddingX={2}>
+      <box width="100%" maxWidth={78} paddingX={2} flexShrink={0}>
         <InputBar 
           onSubmit={handleSubmit}
           disabled={!isInitialized || isProcessing || showWelcome}
@@ -626,8 +652,6 @@ Current provider: ${provider?.name || 'none'}
         />
       </box>
 
-      {/* Status bar */}
-      <StatusBar />
     </box>
   );
 }
@@ -635,6 +659,34 @@ Current provider: ${provider?.name || 'none'}
 const renderer = await createCliRenderer({ exitOnCtrlC: false });
 
 renderer.keyInput.on('keypress', (key) => {
+  if (key.name === 'pageup' && activeChatScroll) {
+    activeChatScroll.scrollBy(-10);
+    key.preventDefault();
+    key.stopPropagation();
+    return;
+  }
+
+  if (key.name === 'pagedown' && activeChatScroll) {
+    activeChatScroll.scrollBy(10);
+    key.preventDefault();
+    key.stopPropagation();
+    return;
+  }
+
+  if (key.ctrl && key.name === 'home' && activeChatScroll) {
+    activeChatScroll.scrollTo(0);
+    key.preventDefault();
+    key.stopPropagation();
+    return;
+  }
+
+  if (key.ctrl && key.name === 'end' && activeChatScroll) {
+    activeChatScroll.scrollTo(Number.MAX_SAFE_INTEGER);
+    key.preventDefault();
+    key.stopPropagation();
+    return;
+  }
+
   if (!(key.ctrl && key.name === 'c')) return;
 
   const selectedText = renderer.getSelection()?.getSelectedText() || '';
