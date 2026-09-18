@@ -7,6 +7,7 @@ import { homedir } from 'node:os';
 const SOURCE_FILE = fileURLToPath(import.meta.url);
 export const SKYCODE_ROOT = resolve(dirname(SOURCE_FILE), '../../../..');
 const UPDATE_SETTINGS_FILE = join(homedir(), '.skycode', 'update.json');
+const MIN_BUN_VERSION = '1.4.0';
 
 export interface UpdateCheck {
   available: boolean;
@@ -38,6 +39,36 @@ function run(command: string, args: string[], cwd = SKYCODE_ROOT, timeout = 8000
       resolvePromise(stdout.trim());
     });
   });
+}
+
+function compareVersions(a: string, b: string): number {
+  const left = a.split('.').map((part) => Number(part) || 0);
+  const right = b.split('.').map((part) => Number(part) || 0);
+  const length = Math.max(left.length, right.length);
+
+  for (let i = 0; i < length; i += 1) {
+    const diff = (left[i] || 0) - (right[i] || 0);
+    if (diff !== 0) return diff;
+  }
+
+  return 0;
+}
+
+async function ensureCompatibleBun(): Promise<void> {
+  const current = await run('bun', ['--version']);
+  if (compareVersions(current, MIN_BUN_VERSION) >= 0) return;
+
+  console.log(
+    `SkyCode requires Bun ${MIN_BUN_VERSION} or newer. Upgrading Bun ${current}...`
+  );
+  await run('bun', ['upgrade'], SKYCODE_ROOT, 120000);
+
+  const upgraded = await run('bun', ['--version']);
+  if (compareVersions(upgraded, MIN_BUN_VERSION) < 0) {
+    throw new Error(
+      `Bun ${upgraded} is still too old. Install Bun ${MIN_BUN_VERSION} or newer and retry.`
+    );
+  }
 }
 
 export function getCurrentVersion(): string {
@@ -129,6 +160,7 @@ export async function performUpdate(): Promise<UpdateResult> {
     await run('git', ['merge', '--ff-only', 'origin/main']);
   }
 
+  await ensureCompatibleBun();
   await run('bun', ['install'], SKYCODE_ROOT, 120000);
   const currentSha = await run('git', ['rev-parse', 'HEAD']);
 
