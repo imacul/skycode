@@ -34,10 +34,22 @@ Write-Step "Installing SkyCode to $InstallRoot"
 
 if (Test-Path (Join-Path $InstallRoot ".git")) {
     Push-Location $InstallRoot
-    git fetch origin main
-    git checkout main
-    git pull --ff-only origin main
-    Pop-Location
+    try {
+        git fetch origin main
+        if ($LASTEXITCODE -ne 0) { throw "Failed to fetch SkyCode updates from GitHub." }
+
+        git checkout main
+        if ($LASTEXITCODE -ne 0) { throw "Failed to switch the managed SkyCode install to main." }
+
+        # This directory is fully managed by the installer. Resetting avoids
+        # failures when upstream history has been rewritten or the install has
+        # generated files such as bun.lock.
+        git reset --hard origin/main
+        if ($LASTEXITCODE -ne 0) { throw "Failed to synchronize SkyCode with origin/main." }
+    }
+    finally {
+        Pop-Location
+    }
 } else {
     $parent = Split-Path $InstallRoot -Parent
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
