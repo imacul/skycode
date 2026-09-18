@@ -178,13 +178,16 @@ function App() {
     setCurrentResponse('');
 
     try {
-      // Add user message to conversation
+      // Capture the existing history before adding this turn. Agents append
+      // request.input themselves, so passing the just-added user message would
+      // duplicate the prompt.
+      const previousMessages = useConversationStore
+        .getState()
+        .currentMessages
+        .filter((message) => message.role !== 'system');
+
       addMessage('user', text);
       setHistoryView(null);
-
-      const conversationState = useConversationStore.getState();
-      const activeConversation = conversationState.getCurrentConversation();
-      const messagesForContext = conversationState.currentMessages;
 
       // Create agent request
       const request: AgentRequest = {
@@ -211,8 +214,8 @@ function App() {
       // Create orchestrator and route request
       const orchestrator = createAgentOrchestrator();
       await orchestrator.initializeAll({
-        conversation: activeConversation,
-        messages: messagesForContext,
+        conversation: null,
+        messages: previousMessages,
         provider,
         model,
         workingDirectory: process.cwd(),
