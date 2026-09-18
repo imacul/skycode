@@ -453,16 +453,23 @@ export const useConversationStore = create<ConversationStore>()(
  */
 export function getSystemMessage(provider?: string, model?: string, customContent?: string): Message {
   let content = customContent || 'You are a helpful AI coding assistant.';
-  
-  if (!customContent) {
-    if (model) {
-      content += ` You are currently using the ${model} model.`;
-    }
-    
-    if (provider === 'openrouter') {
-      content += ' Respond with helpful, accurate, and concise answers.';
-    }
+
+  if (!customContent && provider === 'openrouter') {
+    content += ' Respond with helpful, accurate, and concise answers.';
   }
+
+  const identityFacts = [
+    'Identity and provenance rules:',
+    '- You are an AI assistant running inside SkyCode.',
+    '- SkyCode is the interface/harness you are currently operating through; do not confuse SkyCode with the underlying model provider or model creator.',
+    '- Do not invent or adopt a personal name unless the user explicitly gives you one.',
+    '- Do not invent a creator, company, lab, training history, ownership, affiliation, or model provenance.',
+    '- If asked who created you or the underlying model, only state facts provided below. If those facts are insufficient to identify the upstream model creator, say you do not know rather than guessing.',
+    `- Current provider: ${provider || 'unknown'}.`,
+    `- Current model: ${model || 'unknown'}.`,
+  ].join('\n');
+
+  content = `${content}\n\n${identityFacts}`;
 
   return {
     id: `system_${Date.now()}`,
