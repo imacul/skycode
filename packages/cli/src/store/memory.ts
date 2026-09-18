@@ -23,9 +23,12 @@ interface MemoryFile {
   memories: MemoryRecord[];
 }
 
-const MEMORY_FILE =
-  process.env.SKYCODE_MEMORY_PATH ||
-  join(homedir(), '.skycode', 'memory.json');
+function memoryFilePath(): string {
+  return (
+    process.env.SKYCODE_MEMORY_PATH ||
+    join(homedir(), '.skycode', 'memory.json')
+  );
+}
 
 const STOPWORDS = new Set([
   'the','a','an','and','or','but','to','of','in','on','for','with','is','are','was','were',
@@ -75,11 +78,11 @@ function hashText(value: string): string {
 
 function loadMemoryFile(): MemoryFile {
   try {
-    if (!existsSync(MEMORY_FILE)) {
+    if (!existsSync(memoryFilePath())) {
       return { version: 1, memories: [] };
     }
 
-    const parsed = JSON.parse(readFileSync(MEMORY_FILE, 'utf8')) as Partial<MemoryFile>;
+    const parsed = JSON.parse(readFileSync(memoryFilePath(), 'utf8')) as Partial<MemoryFile>;
     return {
       version: 1,
       memories: Array.isArray(parsed.memories) ? parsed.memories : [],
@@ -90,8 +93,8 @@ function loadMemoryFile(): MemoryFile {
 }
 
 function saveMemoryFile(file: MemoryFile): void {
-  mkdirSync(dirname(MEMORY_FILE), { recursive: true });
-  writeFileSync(MEMORY_FILE, JSON.stringify(file, null, 2) + '\n', 'utf8');
+  mkdirSync(dirname(memoryFilePath()), { recursive: true });
+  writeFileSync(memoryFilePath(), JSON.stringify(file, null, 2) + '\n', 'utf8');
 }
 
 function looksSensitive(value: string): boolean {
@@ -390,5 +393,5 @@ export function formatMemoryList(workspace = process.cwd()): string {
 }
 
 export function getMemoryPath(): string {
-  return MEMORY_FILE;
+  return memoryFilePath();
 }
