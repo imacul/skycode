@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 export interface ProviderSelectorProps {
   onSelect: (provider: string, config?: Record<string, string>) => void;
   onBack: () => void;
+  allowedProviders?: string[];
 }
 
 const PROVIDERS = [
@@ -27,7 +28,7 @@ const PROVIDERS = [
   {
     id: 'anthropic',
     name: 'Anthropic',
-    description: 'Claude 3.5, Claude 3 models',
+    description: 'Claude models through Anthropic',
     icon: '🎭',
     requiresApiKey: true,
     envVar: 'ANTHROPIC_API_KEY',
@@ -35,26 +36,30 @@ const PROVIDERS = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'GPT-4, GPT-3.5 models',
+    description: 'OpenAI models, including Codex-capable workflows',
     icon: '✨',
     requiresApiKey: true,
     envVar: 'OPENAI_API_KEY',
   },
 ];
 
-export function ProviderSelector({ onSelect, onBack }: ProviderSelectorProps) {
+export function ProviderSelector({ onSelect, onBack, allowedProviders }: ProviderSelectorProps) {
+  const visibleProviders = allowedProviders?.length
+    ? PROVIDERS.filter((provider) => allowedProviders.includes(provider.id))
+    : PROVIDERS;
+
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const handleSelect = useCallback(() => {
-    const provider = PROVIDERS[selectedIndex];
-    onSelect(provider.id);
-  }, [selectedIndex, onSelect]);
+    const provider = visibleProviders[selectedIndex];
+    if (provider) onSelect(provider.id);
+  }, [selectedIndex, onSelect, visibleProviders]);
 
   const handleKeyDown = useCallback((key: string) => {
     if (key === 'up') {
-      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : PROVIDERS.length - 1));
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : visibleProviders.length - 1));
     } else if (key === 'down') {
-      setSelectedIndex((prev) => (prev < PROVIDERS.length - 1 ? prev + 1 : 0));
+      setSelectedIndex((prev) => (prev < visibleProviders.length - 1 ? prev + 1 : 0));
     } else if (key === 'enter' || key === 'return') {
       handleSelect();
     }
@@ -83,7 +88,7 @@ export function ProviderSelector({ onSelect, onBack }: ProviderSelectorProps) {
 
       {/* Provider List */}
       <box flexDirection="column" gap={1}>
-        {PROVIDERS.map((provider, index) => (
+        {visibleProviders.map((provider, index) => (
           <box
             key={provider.id}
             flexDirection="row"
@@ -95,7 +100,7 @@ export function ProviderSelector({ onSelect, onBack }: ProviderSelectorProps) {
             onMouseMove={() => setSelectedIndex(index)}
             onMouseDown={() => {
               setSelectedIndex(index);
-              handleSelect();
+              onSelect(provider.id);
             }}
           >
             <text fg={selectedIndex === index ? 'cyan' : 'white'}>
@@ -114,14 +119,14 @@ export function ProviderSelector({ onSelect, onBack }: ProviderSelectorProps) {
       {/* Info */}
       <box flexDirection="column" gap={1} paddingTop={1} border={['top']} borderColor="gray">
         <text fg="yellow">
-          {PROVIDERS[selectedIndex].icon} {PROVIDERS[selectedIndex].name}
+          {visibleProviders[selectedIndex].icon} {visibleProviders[selectedIndex].name}
         </text>
         <text fg="gray">
-          {PROVIDERS[selectedIndex].description}
+          {visibleProviders[selectedIndex].description}
         </text>
-        {PROVIDERS[selectedIndex].requiresApiKey ? (
+        {visibleProviders[selectedIndex].requiresApiKey ? (
           <text fg="gray">
-            Requires: <text fg="cyan">{PROVIDERS[selectedIndex].envVar}</text>
+            Requires: <text fg="cyan">{visibleProviders[selectedIndex].envVar}</text>
           </text>
         ) : (
           <text fg="green">
@@ -140,7 +145,7 @@ export function ProviderSelector({ onSelect, onBack }: ProviderSelectorProps) {
           attributes={{ bold: true, underline: true }} 
           onMouseDown={handleSelect}
         >
-          Select {PROVIDERS[selectedIndex].name}
+          Select {visibleProviders[selectedIndex].name}
         </text>
       </box>
     </box>

@@ -122,6 +122,10 @@ bun run dev:cli
 | `/new` | Start a new conversation |
 | `/exit` | Quit the application |
 | `/model <name>` | Switch AI model |
+| `/addcloud` | Add a cloud AI provider such as Anthropic or OpenAI |
+| `/addlocal` | Add a local Ollama, LM Studio, or llama.cpp server |
+| `/openroute` | Add or update OpenRouter access |
+| `/setup` | Open the full provider setup flow |
 | `/help` | Show help |
 
 ### Example Session

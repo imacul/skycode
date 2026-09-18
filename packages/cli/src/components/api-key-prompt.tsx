@@ -116,6 +116,9 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
               For LM Studio: <text fg="cyan">http://localhost:1234/v1</text>
             </text>
             <text fg="gray">
+              For llama.cpp: <text fg="cyan">http://127.0.0.1:8080</text>
+            </text>
+            <text fg="gray">
               Or set environment variable: <text fg="cyan">LOCAL_LLM_BASE_URL</text>
             </text>
           </>

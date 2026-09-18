@@ -215,8 +215,30 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
       'documentation', 'docs', 'tutorial', 'guide', 'learn',
     ];
 
+    const planningKeywords = [
+      'plan', 'roadmap', 'milestone', 'schedule', 'implementation plan',
+      'project plan', 'launch plan', 'step-by-step plan', 'strategy plan',
+    ];
+
+    const businessKeywords = [
+      'business', 'market', 'pricing', 'revenue', 'customer', 'sales',
+      'go-to-market', 'gtm', 'business strategy', 'monetization',
+    ];
+
     const hasCodeKeyword = codeKeywords.some(kw => lowerInput.includes(kw));
     const hasChatKeyword = chatKeywords.some(kw => lowerInput.includes(kw));
+    const hasPlanningKeyword = planningKeywords.some((kw) =>
+      kw === 'plan' ? /\bplan\b/.test(lowerInput) : lowerInput.includes(kw)
+    );
+    const hasBusinessKeyword = businessKeywords.some(kw => lowerInput.includes(kw));
+
+    if (hasBusinessKeyword) {
+      return this.agents['business-agent'] || this.getDefaultAgent();
+    }
+
+    if (hasPlanningKeyword) {
+      return this.agents['planning-agent'] || this.getDefaultAgent();
+    }
 
     // If it contains code-related keywords, use coding agent
     if (hasCodeKeyword && !hasChatKeyword) {
