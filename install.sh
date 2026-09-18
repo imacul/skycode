@@ -61,5 +61,6 @@ fi
 printf '\n\033[32mSkyCode installed successfully.\033[0m\n'
 printf 'Run:\n'
 printf '  skycode\n'
-printf '  skycode resume\n\n'
-printf 'Run this same installer command again whenever you want to update.\n'
+printf '  skycode resume\n'
+printf '  skycode update\n\n'
+printf 'SkyCode checks for updates automatically. Use "skycode update --auto" to opt into automatic installation.\n'
