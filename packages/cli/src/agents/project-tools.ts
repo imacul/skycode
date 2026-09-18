@@ -1,4 +1,5 @@
-import { resolve, relative, isAbsolute } from 'node:path';
+import { resolve, relative, isAbsolute, dirname } from 'node:path';
+import { lstat, realpath } from 'node:fs/promises';
 import { executeTool } from '../tools';
 import type { AgentContext } from './types';
 import type { Message } from '../store/conversation';
@@ -64,8 +65,8 @@ export function parseProjectToolCalls(content: string): ProjectToolCall[] {
         });
       }
     } catch {
-      // Ignore malformed tool calls. The next model turn receives an explicit
-      // parser error from the caller and can repair the JSON.
+      // Ignore malformed tool calls. The coding-agent loop can ask the model
+      // for a corrected structured call before giving up.
     }
   }
 
@@ -100,6 +101,46 @@ function normalizeWorkspacePath(
   }
 
   return candidate;
+}
+
+async function assertNoSymlinkEscape(
+  workspace: string,
+  candidate: string
+): Promise<void> {
+  const root = await realpath(resolve(workspace)).catch(() => resolve(workspace));
+  let current = candidate;
+
+  // Walk upward until an existing path is found. New files/directories may not
+  // exist yet, but their nearest existing parent must still resolve inside the
+  // workspace and must not be a symlink that points elsewhere.
+  while (true) {
+    try {
+      const info = await lstat(current);
+      const resolvedCurrent = info.isSymbolicLink()
+        ? await realpath(current)
+        : await realpath(current).catch(() => current);
+
+      if (!isPathInsideWorkspace(root, resolvedCurrent)) {
+        throw new Error(
+          'Path resolves outside the active SkyCode workspace through a symbolic link.'
+        );
+      }
+      return;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        /outside the active SkyCode workspace/.test(error.message)
+      ) {
+        throw error;
+      }
+
+      const parent = dirname(current);
+      if (parent === current) {
+        throw new Error('Could not verify the requested workspace path.');
+      }
+      current = parent;
+    }
+  }
 }
 
 export function getProjectToolInstructions(workingDirectory: string): string {
@@ -143,6 +184,7 @@ export async function executeProjectToolCall(
       case 'read_file':
       case 'create_directory': {
         args.path = normalizeWorkspacePath(workspace, args.path, 'path');
+        await assertNoSymlinkEscape(workspace, args.path as string);
         args.cwd = workspace;
         break;
       }
@@ -152,6 +194,7 @@ export async function executeProjectToolCall(
           typeof args.path === 'string' ? args.path : '.',
           'path'
         );
+        await assertNoSymlinkEscape(workspace, args.path as string);
         args.cwd = workspace;
         break;
       }
@@ -161,6 +204,7 @@ export async function executeProjectToolCall(
           typeof args.path === 'string' ? args.path : '.',
           'path'
         );
+        await assertNoSymlinkEscape(workspace, args.path as string);
         args.cwd = workspace;
         break;
       }
