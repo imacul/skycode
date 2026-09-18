@@ -227,7 +227,9 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
 
     const hasCodeKeyword = codeKeywords.some(kw => lowerInput.includes(kw));
     const hasChatKeyword = chatKeywords.some(kw => lowerInput.includes(kw));
-    const hasPlanningKeyword = planningKeywords.some(kw => lowerInput.includes(kw));
+    const hasPlanningKeyword = planningKeywords.some((kw) =>
+      kw === 'plan' ? /\bplan\b/.test(lowerInput) : lowerInput.includes(kw)
+    );
     const hasBusinessKeyword = businessKeywords.some(kw => lowerInput.includes(kw));
 
     if (hasBusinessKeyword) {
