@@ -28,8 +28,6 @@ export {
   SearchFilesTool,
   CreateDirectoryTool,
   DeleteDirectoryTool,
-  RunCommandTool,
-  RunCommandStreamTool,
 } from './file-system';
 
 export { RunCommandTool, RunCommandStreamTool } from './command';
