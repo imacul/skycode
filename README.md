@@ -75,6 +75,14 @@ Run SkyCode:
 skycode
 ```
 
+Check the installed version:
+
+```bash
+skycode -v
+```
+
+`skycode --version` and `skycode version` are also supported.
+
 Open saved chat history:
 
 ```bash
