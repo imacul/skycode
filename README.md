@@ -42,6 +42,7 @@ SkyCode is under active development.
 - Autonomous coding-agent project creation with safe workspace-scoped file tools
 - Architecture-first project planning with stack-aware separation of concerns and clarification questions
 - Unified OpenRouter + local model catalog with FREE/PAID labels and provider-aware switching
+- Durable cross-chat memory with correction-aware facts, preferences, project memory, and relevant past-chat recall
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -232,6 +233,10 @@ Model availability changes frequently, so SkyCode discovers models at runtime. W
 | Command | Description |
 |---|---|
 | `/new` | Start a new conversation |
+| `/memory` | Show durable cross-chat memory |
+| `/remember <fact>` | Save a durable memory |
+| `/forget <query>` | Remove matching durable memory |
+| `/memory clear` | Clear all durable memory |
 | `/model` | List OpenRouter and running local models with FREE/PAID labels |
 | `/model search <query>` | Search across OpenRouter and local models |
 | `/model openrouter:<id>` | Switch to an OpenRouter model |
@@ -261,6 +266,36 @@ For long conversations, SkyCode now budgets the history sent to the model agains
 - `Ctrl + End` jumps back to the newest messages.
 - While you stay at the bottom, streaming replies follow automatically.
 - The input composer stays pinned below the transcript instead of being pushed off-screen.
+
+## Cross-chat memory
+
+SkyCode now has a local memory layer that is separate from ordinary chat history. It combines:
+
+- **Durable memory** for stable facts, preferences, and project decisions.
+- **Correction-aware updates** for recognized profile facts, so a newer value replaces the older value instead of producing conflicting copies.
+- **Workspace memory** for project-specific decisions that should only follow the project where they were learned.
+- **Relevant past-chat recall** that searches prior **user messages** and injects matching excerpts into a new chat when they are useful.
+- **Secret filtering** so likely passwords, API keys, seed phrases, PINs, and similar credentials are not intentionally persisted as durable memory.
+- **Context-aware retrieval** so only a bounded amount of relevant memory is injected into the active model rather than dumping the whole memory file into every prompt.
+
+Durable memory is stored locally at:
+
+```text
+~/.skycode/memory.json
+```
+
+Useful commands:
+
+```text
+/memory
+/remember I prefer concise TypeScript examples
+/forget concise TypeScript
+/memory clear
+```
+
+SkyCode also automatically captures some explicit durable statements such as `remember that ...`, `my ... is ...`, corrections to those profile facts, preferences, and project-specific rules. For anything important that you definitely want preserved, `/remember <fact>` is the explicit path.
+
+Memory is grounded with two rules: newer durable records are authoritative for the same recognized subject, and past-chat recalls are treated as excerpts from user messages rather than as independently verified facts.
 
 ## Conversation history
 
@@ -314,6 +349,7 @@ SkyCode
 │   ├── Anthropic
 │   └── OpenAI
 ├── persistent settings
+├── durable cross-chat memory + relevant history retrieval
 └── persistent conversation history
 ```
 
