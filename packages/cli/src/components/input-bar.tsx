@@ -88,7 +88,8 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
     replaceInput(command.takesArgs ? `${command.command} ` : command.command);
   };
 
-  const handleContentChange = (value: string) => {
+  const handleContentChange = () => {
+    const value = textareaRef.current?.editBuffer.getText() ?? '';
     setInputValue(value);
     setSelectedCommandIndex(0);
     setPickerDismissed(false);
