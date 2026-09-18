@@ -40,7 +40,7 @@ function run(command: string, args: string[], cwd = SKYCODE_ROOT, timeout = 8000
   });
 }
 
-function readLocalVersion(): string {
+export function getCurrentVersion(): string {
   try {
     const pkg = JSON.parse(readFileSync(join(SKYCODE_ROOT, 'package.json'), 'utf8'));
     return String(pkg.version || 'unknown');
@@ -83,7 +83,7 @@ export async function checkForUpdates(): Promise<UpdateCheck> {
   const remoteLine = await run('git', ['ls-remote', 'origin', 'refs/heads/main'], SKYCODE_ROOT, 5000);
   const remoteSha = remoteLine.split(/\s+/)[0] || currentSha;
   const [currentVersion, remoteVersion] = await Promise.all([
-    Promise.resolve(readLocalVersion()),
+    Promise.resolve(getCurrentVersion()),
     readRemoteVersion(),
   ]);
 
@@ -112,7 +112,7 @@ export async function performUpdate(): Promise<UpdateResult> {
       updated: false,
       previousSha,
       currentSha: previousSha,
-      version: readLocalVersion(),
+      version: getCurrentVersion(),
       message: 'SkyCode is already up to date.',
     };
   }
@@ -136,7 +136,7 @@ export async function performUpdate(): Promise<UpdateResult> {
     updated: true,
     previousSha,
     currentSha,
-    version: readLocalVersion(),
+    version: getCurrentVersion(),
     message: 'SkyCode updated successfully. Restart SkyCode to use the new version.',
   };
 }
