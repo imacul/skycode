@@ -33,6 +33,7 @@ SkyCode is under active development.
 - Persistent conversation history
 - Scrollable long-chat transcript with a fixed input composer
 - Grounded assistant identity and model/provider provenance
+- Interactive slash-command picker with filtering and keyboard navigation
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -190,6 +191,10 @@ Model availability changes frequently, so SkyCode avoids treating a hard-coded m
 | `/setup` | Open the full provider setup flow |
 | `/help` | Show available commands |
 | `/exit` | Exit SkyCode |
+
+### Slash commands
+
+Type `/` in the composer to open the command picker. Keep typing to filter it, use `↑` / `↓` to move through matches, press `Tab` to complete the highlighted command, or click a command with the mouse.
 
 ### Chat navigation
 
