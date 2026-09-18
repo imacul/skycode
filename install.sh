@@ -21,6 +21,13 @@ if ! command -v bun >/dev/null 2>&1; then
   export PATH="$HOME/.bun/bin:$PATH"
 fi
 
+if ! bun -e 'const [a,b,c]=Bun.version.split(".").map(Number); process.exit(a>1 || (a===1 && (b>4 || (b===4 && c>=0))) ? 0 : 1)' >/dev/null 2>&1; then
+  step "Your Bun version is too old for SkyCode. Upgrading Bun..."
+  bun upgrade
+fi
+
+step "Using Bun $(bun --version)"
+
 step "Installing SkyCode to $INSTALL_ROOT"
 mkdir -p "$(dirname "$INSTALL_ROOT")"
 
