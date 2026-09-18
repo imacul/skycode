@@ -29,6 +29,7 @@
       <a href="#providers">Providers</a>
       <a href="#commands">Commands</a>
       <a href="#history">Chat history</a>
+      <a href="#memory">Cross-chat memory</a>
       <a href="#project-tools">Project creation</a>
       <a href="#eval">AI evaluation</a>
     </aside>
@@ -138,6 +139,9 @@
           <div><code>/resume 1</code><span>Resume a saved chat by number.</span></div>
           <div><code>/copy</code><span>Copy the latest assistant reply.</span></div>
           <div><code>/model</code><span>Inspect or switch models.</span></div>
+          <div><code>/memory</code><span>Show durable cross-chat memory.</span></div>
+          <div><code>/remember &lt;fact&gt;</code><span>Save a durable memory.</span></div>
+          <div><code>/forget &lt;query&gt;</code><span>Remove matching memory.</span></div>
           <div><code>/new</code><span>Start a new conversation.</span></div>
           <div><code>Page Up / Page Down</code><span>Scroll through a long chat transcript.</span></div>
           <div><code>Ctrl + Home / Ctrl + End</code><span>Jump to the oldest or newest part of the transcript.</span></div>
@@ -162,6 +166,14 @@
         <div class="eyebrow">EVALUATION</div>
         <h2>Benchmark the local AI</h2>
         <p>Run <code>skycode eval</code> for the smoke suite or <code>skycode eval --all</code> for the full 100-case regression suite. Reports are saved locally under <code>~/.skycode/evals/</code> in Markdown and JSON.</p>
+      </section>
+
+      <section id="memory" class="plain-section">
+        <div class="eyebrow">MEMORY</div>
+        <h2>Consistent context across chats</h2>
+        <p>SkyCode combines durable facts and preferences, workspace-scoped project decisions, and relevant excerpts from earlier user messages. Newer durable records replace older recognized facts so corrections do not accumulate as contradictions.</p>
+        <p>Use <code>/remember &lt;fact&gt;</code> for anything important, <code>/memory</code> to inspect saved memory, <code>/forget &lt;query&gt;</code> to remove matching records, or <code>/memory clear</code> to clear durable memory.</p>
+        <p>Memory stays local under <code>~/.skycode/memory.json</code>. Likely credentials such as API keys, passwords, seed phrases, and PINs are rejected from durable memory.</p>
       </section>
 
       <section id="history" class="plain-section">
