@@ -75,9 +75,11 @@ function App() {
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [updateNotice, setUpdateNotice] = useState<string | null>(null);
+  const [activeAgent, setActiveAgent] = useState<string>('chat-agent');
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
   const messagesScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const orchestratorRef = useRef<ReturnType<typeof createAgentOrchestrator> | null>(null);
   
   const {
     currentMessages,
@@ -191,6 +193,7 @@ function App() {
           workingDirectory: process.cwd(),
           env: { ...process.env },
         });
+        orchestratorRef.current = orchestrator;
 
         setIsInitialized(true);
 
@@ -324,8 +327,11 @@ function App() {
         },
       };
 
-      // Create orchestrator and route request
-      const orchestrator = createAgentOrchestrator();
+      // Reuse one orchestrator across turns so route continuity and diagnostics
+      // survive follow-up messages.
+      const orchestrator = orchestratorRef.current || createAgentOrchestrator();
+      orchestratorRef.current = orchestrator;
+
       await orchestrator.initializeAll({
         conversation: null,
         messages: previousMessages,
@@ -334,8 +340,12 @@ function App() {
         workingDirectory: process.cwd(),
         env: { ...process.env },
       });
-      
-      await orchestrator.routeRequestStream(request);
+
+      const streamPromise = orchestrator.routeRequestStream(request);
+      const route = orchestrator.getLastRouteDecision();
+      if (route) setActiveAgent(route.agentName);
+
+      await streamPromise;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setIsProcessing(false);
@@ -574,6 +584,9 @@ Current provider: ${provider?.name || 'none'}
           }}
         >
           Chats ({getSortedConversations().length})
+        </text>
+        <text fg="gray" attributes={{ dim: true }}>
+          Agent: {activeAgent}
         </text>
       </box>
 

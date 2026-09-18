@@ -106,6 +106,7 @@ export interface AgentResponse {
     finishReason: string;
     tokensUsed?: number;
     executionTime?: number;
+    agent?: string;
   };
   
   // Actions to perform (for tool calling)

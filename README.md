@@ -36,6 +36,7 @@ SkyCode is under active development.
 - Interactive slash-command picker with filtering and keyboard navigation
 - Clickable saved-chat browser with one-click resume
 - Runtime-aware context budgeting for long conversations
+- Scored agent routing with visible active-agent diagnostics
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
