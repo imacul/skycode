@@ -3,7 +3,6 @@ import { createRoot } from '@opentui/react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
-import { StatusBar } from './components/satus-bar';
 import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
 import {
   useConversationStore,
@@ -554,16 +553,11 @@ Current provider: ${provider?.name || 'none'}
         gap={1}
         flexGrow={1}
         flexShrink={1}
-        height="auto"
+        minHeight={1}
+        height="100%"
         overflow="hidden"
         stickyScroll={true}
         stickyStart="bottom"
-        scrollbarOptions={{
-          trackOptions: {
-            foregroundColor: 'cyan',
-            backgroundColor: '#1A1A24',
-          },
-        }}
       >
         {currentMessages.length > 0 ? (
           currentMessages.map((msg, index) => (
