@@ -35,7 +35,7 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
   private agents: Record<string, BaseAgent> = {};
   private defaultAgentName: string;
 
-  constructor(defaultAgent: string = 'coding-agent') {
+  constructor(defaultAgent: string = 'chat-agent') {
     this.defaultAgentName = defaultAgent;
     
     // Register built-in agents
