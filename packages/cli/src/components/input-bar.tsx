@@ -182,9 +182,9 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
           paddingY={0}
         >
           <text fg="gray" attributes={{ dim: true }}>
-            Slash commands · ↑↓ navigate · Tab complete · Enter run
+            Slash commands · ↑↓ navigate · Tab complete · Enter choose/run
           </text>
-          {filteredCommands.slice(0, 8).map((item, index) => {
+          {filteredCommands.map((item, index) => {
             const selected = index === selectedCommandIndex;
             return (
               <box
