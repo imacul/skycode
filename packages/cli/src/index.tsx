@@ -539,5 +539,20 @@ Current provider: ${provider?.name || 'none'}
   );
 }
 
-const renderer = await createCliRenderer();
+const renderer = await createCliRenderer({ exitOnCtrlC: false });
+
+renderer.keyInput.on('keypress', (key) => {
+  if (!(key.ctrl && key.name === 'c')) return;
+
+  const selectedText = renderer.getSelection()?.getSelectedText() || '';
+  if (selectedText) {
+    copyToClipboard(selectedText);
+    key.preventDefault();
+    key.stopPropagation();
+    return;
+  }
+
+  renderer.destroy();
+});
+
 createRoot(renderer).render(<App />);
