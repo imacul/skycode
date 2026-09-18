@@ -27,7 +27,9 @@ mkdir -p "$(dirname "$INSTALL_ROOT")"
 if [ -d "$INSTALL_ROOT/.git" ]; then
   git -C "$INSTALL_ROOT" fetch origin main
   git -C "$INSTALL_ROOT" checkout main
-  git -C "$INSTALL_ROOT" pull --ff-only origin main
+  # The install directory is managed by SkyCode. Resetting avoids failures
+  # after an upstream history rewrite and removes generated-file drift.
+  git -C "$INSTALL_ROOT" reset --hard origin/main
 else
   rm -rf "$INSTALL_ROOT"
   git clone "$REPO" "$INSTALL_ROOT"
