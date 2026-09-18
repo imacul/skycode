@@ -353,6 +353,7 @@ function App() {
         workspace: process.cwd(),
         currentConversationId: conversationState.currentConversationId,
         conversations: conversationState.conversations,
+        maxChars: Math.min(6000, Math.max(1200, Math.floor(contextWindow * 0.6))),
       });
 
       const budget = createContextBudget(contextWindow, text);
