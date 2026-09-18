@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
 import { StatusBar } from './components/satus-bar';
-import { WelcomeScreen } from './components/welcome-screen';
+import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
 import { useConversationStore, createNewConversation } from './store/conversation';
 import { useSettingsStore, getProviderApiKey, setProviderApiKey, getConfiguredProviders } from './store/settings';
 import { createOpenRouterProvider } from './providers/openrouter';
@@ -39,6 +39,8 @@ function App() {
   const [provider, setProvider] = useState<BaseProvider | null>(null);
   const [model, setModel] = useState<string>('');
   const [showWelcome, setShowWelcome] = useState(false);
+  const [setupMode, setSetupMode] = useState<SetupMode>('all');
+  const [forceSetup, setForceSetup] = useState(false);
   
   const {
     currentMessages,
@@ -131,7 +133,9 @@ function App() {
   // Handle welcome screen completion
   const handleWelcomeComplete = useCallback(() => {
     setShowWelcome(false);
-    // Re-initialize
+    setForceSetup(false);
+    setSetupMode('all');
+    // Re-initialize with the newly configured provider.
     setTimeout(() => {
       window.location.reload();
     }, 100);
@@ -246,6 +250,18 @@ Current model: ${model}
       setModel(modelName);
       updateModelSettings({ defaultModel: modelName });
       addMessage('system', `Switched to model: ${modelName}`);
+    } else if (command === '/addcloud') {
+      setSetupMode('cloud');
+      setForceSetup(true);
+      setShowWelcome(true);
+    } else if (command === '/addlocal') {
+      setSetupMode('local');
+      setForceSetup(true);
+      setShowWelcome(true);
+    } else if (command === '/openroute' || command === '/addopenrouter') {
+      setSetupMode('openrouter');
+      setForceSetup(true);
+      setShowWelcome(true);
     } else if (command === '/help') {
       const helpText = `
 Available commands:
@@ -254,7 +270,10 @@ Available commands:
   /model     - List available models
   /model <name> - Switch model
   /help      - Show this help
-  /setup     - Configure API keys
+  /setup     - Configure any provider
+  /addcloud  - Add a cloud AI provider (Anthropic or OpenAI)
+  /addlocal  - Add a local AI server (Ollama, LM Studio, llama.cpp)
+  /openroute - Add or update OpenRouter access
   /clear     - Clear current conversation
 
 Example usage:
@@ -267,6 +286,8 @@ Current provider: ${provider?.name || 'none'}
 `.trim();
       addMessage('system', helpText);
     } else if (command === '/setup') {
+      setSetupMode('all');
+      setForceSetup(true);
       setShowWelcome(true);
     } else if (command === '/clear') {
       clearMessages();
@@ -285,7 +306,11 @@ Current provider: ${provider?.name || 'none'}
         height="100%"
         backgroundColor="#0D0D12"
       >
-        <WelcomeScreen onComplete={handleWelcomeComplete} />
+        <WelcomeScreen
+          onComplete={handleWelcomeComplete}
+          mode={setupMode}
+          forceSetup={forceSetup}
+        />
       </box>
     );
   }
