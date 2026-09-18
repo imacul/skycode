@@ -13,6 +13,7 @@ import {
 import { copyToClipboard } from './utils/clipboard';
 import {
   checkForUpdates,
+  getCurrentVersion,
   getUpdatePreferences,
   performUpdate,
   runUpdateCommand,
@@ -28,6 +29,11 @@ import type { AgentRequest, AgentResponse } from './agents/types';
 
 const CLI_ARGS = process.argv.slice(2);
 const STARTUP_COMMAND = CLI_ARGS[0]?.toLowerCase();
+
+if (STARTUP_COMMAND === '-v' || STARTUP_COMMAND === '--version' || STARTUP_COMMAND === 'version') {
+  console.log(`SkyCode v${getCurrentVersion()}`);
+  process.exit(0);
+}
 
 if (STARTUP_COMMAND === 'update') {
   const exitCode = await runUpdateCommand(CLI_ARGS.slice(1));
@@ -426,7 +432,10 @@ Available commands:
   /copy      - Copy the latest assistant reply
   /clear     - Clear current conversation
 
-CLI update commands:
+CLI commands:
+  skycode -v             - Show the installed SkyCode version
+  skycode --version      - Show the installed SkyCode version
+  skycode version        - Show the installed SkyCode version
   skycode update         - Install the latest SkyCode
   skycode update --check - Check without installing
   skycode update --auto  - Enable automatic updates and update now
