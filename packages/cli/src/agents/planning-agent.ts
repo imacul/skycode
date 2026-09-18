@@ -109,7 +109,8 @@ export class PlanningAgent implements BaseAgent {
     return getSystemMessage(
       this.context.provider?.name || 'openrouter',
       this.context.model,
-      `${systemPrompt}\n\n${modePrompt}`
+      `${systemPrompt}\n\n${modePrompt}`,
+      this.context.memoryContext
     );
   }
 
