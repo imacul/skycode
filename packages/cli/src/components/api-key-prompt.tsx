@@ -1,6 +1,6 @@
 // API Key Prompt Component
 // Shows when no API key is configured and prompts user to enter one
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { TextareaRenderable } from '@opentui/core';
 
 export interface ApiKeyPromptProps {
@@ -37,7 +37,7 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const textareaRef = useState<TextareaRenderable | null>(null);
+  const textareaRef = useRef<TextareaRenderable | null>(null);
 
   const info = PROVIDER_INFO[provider];
 
@@ -100,27 +100,15 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
       <box flexDirection="column" gap={1}>
         {provider !== 'local' ? (
           <>
-            <text fg="gray">
-              Get your API key from: <text fg="cyan">{info.url}</text>
-            </text>
-            <text fg="gray">
-              Or set environment variable: <text fg="cyan">{info.envVar}</text>
-            </text>
+            <text fg="gray">{`Get your API key from: ${info.url}`}</text>
+            <text fg="gray">{`Or set environment variable: ${info.envVar}`}</text>
           </>
         ) : (
           <>
-            <text fg="gray">
-              For Ollama: <text fg="cyan">http://localhost:11434</text>
-            </text>
-            <text fg="gray">
-              For LM Studio: <text fg="cyan">http://localhost:1234/v1</text>
-            </text>
-            <text fg="gray">
-              For llama.cpp: <text fg="cyan">http://127.0.0.1:8080</text>
-            </text>
-            <text fg="gray">
-              Or set environment variable: <text fg="cyan">LOCAL_LLM_BASE_URL</text>
-            </text>
+            <text fg="gray">For Ollama: http://localhost:11434</text>
+            <text fg="gray">For LM Studio: http://localhost:1234/v1</text>
+            <text fg="gray">For llama.cpp: http://127.0.0.1:8080</text>
+            <text fg="gray">Or set environment variable: LOCAL_LLM_BASE_URL</text>
           </>
         )}
       </box>
