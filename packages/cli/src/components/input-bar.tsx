@@ -61,6 +61,9 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
     // Regular message submission
     onSubmit(text);
     setInputValue('');
+    if (textareaRef.current) {
+      textareaRef.current.editBuffer.setText('');
+    }
   };
 
   return (
