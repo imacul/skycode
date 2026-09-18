@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   executeProjectToolCall,
+  parseProjectClarification,
+  parseProjectPlan,
   parseProjectToolCalls,
   shouldUseProjectTools,
 } from '../agents/project-tools';
@@ -44,6 +46,23 @@ describe('project tool protocol', () => {
       )
     ).toBe(true);
     expect(shouldUseProjectTools('Explain how Array.map works')).toBe(false);
+  });
+
+  it('parses blocking clarification requests', () => {
+    expect(
+      parseProjectClarification(
+        '<clarification>Which stack should this use?</clarification>'
+      )
+    ).toBe('Which stack should this use?');
+  });
+
+  it('parses an architecture plan without treating it as a tool call', () => {
+    const plan = parseProjectPlan(
+      '<project_plan>{"stack":"React","structure":["src/features","src/components"]}</project_plan>'
+    );
+
+    expect(plan?.stack).toBe('React');
+    expect(plan?.structure).toEqual(['src/features', 'src/components']);
   });
 
   it('parses supported structured tool calls', () => {
