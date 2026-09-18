@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SkyCode Docs</title>
+  <meta name="description" content="Install and use SkyCode, a multi-model AI agent harness for the terminal." />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top"><span class="mark">SKY</span><span>CODE</span></a>
+    <nav>
+      <a class="active" href="#install">Docs</a>
+      <a href="#providers">Providers</a>
+      <a href="#commands">Commands</a>
+      <a href="https://github.com/imacul/skycode">GitHub ↗</a>
+    </nav>
+  </header>
+
+  <div class="layout" id="top">
+    <aside class="sidebar">
+      <div class="side-title">Get started</div>
+      <a href="#install">Install SkyCode</a>
+      <a href="#run">Run & resume</a>
+      <a href="#local">Local AI</a>
+      <div class="side-title">Reference</div>
+      <a href="#providers">Providers</a>
+      <a href="#commands">Commands</a>
+      <a href="#history">Chat history</a>
+    </aside>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow">SKYCODE / DOCUMENTATION</div>
+        <h1>Your AI harness.<br />Cloud or local.</h1>
+        <p>Install once, then use <code>skycode</code> from anywhere. Connect local models, Claude, OpenAI, OpenRouter, and more from one terminal UI.</p>
+      </section>
+
+      <section id="install" class="doc-section">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h2>Install SkyCode</h2>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="windows">Windows</button>
+            <button class="tab" data-tab="unix">macOS / Linux</button>
+          </div>
+
+          <div class="panel active" data-panel="windows">
+            <p>Open PowerShell and run:</p>
+            <div class="codebox">
+              <code>irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex</code>
+              <button class="copy" data-copy="irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex">Copy</button>
+            </div>
+          </div>
+
+          <div class="panel" data-panel="unix">
+            <p>Open your terminal and run:</p>
+            <div class="codebox">
+              <code>curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | sh</code>
+              <button class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | sh">Copy</button>
+            </div>
+          </div>
+
+          <div class="note">The installer places SkyCode under your user profile, installs dependencies, and creates a global <code>skycode</code> command. Running the same install command again updates SkyCode.</div>
+        </div>
+      </section>
+
+      <section id="run" class="doc-section">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h2>Run SkyCode</h2>
+          <p>Start a fresh session:</p>
+          <div class="codebox"><code>skycode</code><button class="copy" data-copy="skycode">Copy</button></div>
+          <p>Open your saved chat history:</p>
+          <div class="codebox"><code>skycode resume</code><button class="copy" data-copy="skycode resume">Copy</button></div>
+        </div>
+      </section>
+
+      <section id="local" class="doc-section">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h2>Add a local model</h2>
+          <p>Inside SkyCode, run:</p>
+          <div class="codebox"><code>/addlocal</code><button class="copy" data-copy="/addlocal">Copy</button></div>
+          <p>SkyCode supports Ollama, LM Studio, llama.cpp, and OpenAI-compatible local servers. For your llama.cpp server, use:</p>
+          <div class="codebox"><code>http://127.0.0.1:8080</code><button class="copy" data-copy="http://127.0.0.1:8080">Copy</button></div>
+        </div>
+      </section>
+
+      <section id="providers" class="plain-section">
+        <div class="eyebrow">PROVIDERS</div>
+        <h2>One interface, many models</h2>
+        <div class="cards">
+          <article><span>🏡</span><h3>Local AI</h3><p>Ollama, LM Studio, llama.cpp and compatible local servers.</p></article>
+          <article><span>☁️</span><h3>Cloud AI</h3><p>Connect Anthropic and OpenAI providers from <code>/addcloud</code>.</p></article>
+          <article><span>🌐</span><h3>OpenRouter</h3><p>Use <code>/openroute</code> for access to many hosted models through one gateway.</p></article>
+        </div>
+      </section>
+
+      <section id="commands" class="plain-section">
+        <div class="eyebrow">COMMANDS</div>
+        <h2>Useful commands</h2>
+        <div class="command-table">
+          <div><code>/addlocal</code><span>Add or update a local AI server.</span></div>
+          <div><code>/addcloud</code><span>Add Anthropic or OpenAI.</span></div>
+          <div><code>/openroute</code><span>Add or update OpenRouter.</span></div>
+          <div><code>/history</code><span>List saved chats with dates and activity.</span></div>
+          <div><code>/resume 1</code><span>Resume a saved chat by number.</span></div>
+          <div><code>/copy</code><span>Copy the latest assistant reply.</span></div>
+          <div><code>/model</code><span>Inspect or switch models.</span></div>
+          <div><code>/new</code><span>Start a new conversation.</span></div>
+        </div>
+      </section>
+
+      <section id="history" class="plain-section">
+        <div class="eyebrow">HISTORY</div>
+        <h2>Your chats stay local</h2>
+        <p>Conversation history is stored on your machine under <code>~/.skycode/conversations.json</code>. Provider settings are stored under <code>~/.skycode/settings.json</code>.</p>
+      </section>
+
+      <footer>SkyCode · Built for local + cloud AI workflows.</footer>
+    </main>
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>

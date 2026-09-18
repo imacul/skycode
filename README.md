@@ -1,217 +1,525 @@
-# SkyCode
+# Sky Code - AI Agent Harness
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun-000000.svg)](https://bun.sh)
-[![React 19](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev)
-[![OpenTUI](https://img.shields.io/badge/UI-OpenTUI-00D4AA.svg)](https://github.com/opentui/opentui)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Bun](https://img.shields.io/badge/Runtime-Bun-ff69b4.svg)](https://bun.sh)
+[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev)
+[![OpenTUI](https://img.shields.io/badge/OpenTUI-0.2.15-00D4AA.svg)](https://github.com/opentui/opentui)
 
-**SkyCode** is an open-source terminal AI harness for working with local and cloud models from one interface.
+**Sky Code** is a **powerful AI Agent Harness** built for the terminal. It provides a **CLI-based interface** for interacting with multiple AI models, including **open-weight models** via OpenRouter, local LLMs (Ollama, LM Studio), Anthropic, and OpenAI.
 
-It supports local OpenAI-compatible servers such as llama.cpp, Ollama, and LM Studio, plus hosted providers including OpenAI, Anthropic, and OpenRouter. SkyCode also includes streaming responses, persistent chat history, provider setup commands, and lightweight agent routing for chat, coding, planning, and business tasks.
+## ✨ Features
 
-## Why SkyCode
+### 🎯 Core Capabilities
+- ✅ **Multi-Provider Support** - OpenRouter, Local LLMs (Ollama/LM Studio), Anthropic, OpenAI
+- ✅ **Agent System** - Specialized agents for coding, chat, debugging, and more
+- ✅ **Intelligent Routing** - Automatically selects the best agent for your task
+- ✅ **Streaming Responses** - Real-time AI responses
+- ✅ **Conversation History** - Persistent chat sessions
+- ✅ **File System Integration** - Read, write, search, and manage files
+- ✅ **Tool Calling** - Execute commands and interact with your system
+- ✅ **Token Management** - Track usage and costs
 
-- Run local models fully offline.
-- Switch between local and cloud providers from one CLI.
-- Stream responses in real time.
-- Resume persistent conversations across sessions.
-- Route different kinds of work to specialized agents.
-- Keep provider configuration and chat history on your own machine.
+### 🤖 AI Providers
 
-## Status
+| Provider | Models | Open Weights | API Key Required |
+|---------|--------|--------------|-----------------|
+| **OpenRouter** | 100+ models | ✅ Yes | `OPENROUTER_API_KEY` |
+| **Local LLM** | Ollama, LM Studio | ✅ Yes | No (local server) |
+| **Anthropic** | Claude 3.5, Claude 3 | ❌ No | `ANTHROPIC_API_KEY` |
+| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 | ❌ No | `OPENAI_API_KEY` |
 
-SkyCode is under active development.
+### 🎨 Agents
 
-### Available today
+| Agent | Specialization | Capabilities |
+|-------|---------------|--------------|
+| **Coding Agent** | Code tasks | Code completion, explanation, bug fixing, refactoring, testing |
+| **Chat Agent** | General conversation | Chat, documentation, search |
 
-- Multi-provider support: OpenRouter, OpenAI, Anthropic, and local LLM servers
-- Local OpenAI-compatible servers, including llama.cpp
-- Ollama and LM Studio support
-- Streaming responses
-- Chat, coding, planning, and business agents
-- Automatic agent routing
-- Persistent conversation history
-- `/history`, `/resume`, and `skycode resume`
-- Copy controls and `/copy`
-- Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
+### 🔧 Tools
 
-### Experimental
+| Category | Tools |
+|----------|-------|
+| **File System** | `read_file`, `write_file`, `delete_file`, `list_files`, `search_files`, `create_directory`, `delete_directory` |
+| **Commands** | `run_command`, `run_command_stream` |
 
-- Automatic routing heuristics
-- Provider/model discovery across different local runtimes
-- Tool infrastructure for file-system and command execution
+---
 
-### Planned
+## 🚀 Quick Start
 
-- Agent tool-calling integration
-- More provider integrations
-- Custom agents and provider plugins
-- Better model management
-- Desktop and web interfaces
-- Multimodal input
-- Voice support
-- Collaboration and session sharing
+### One-Command Install
 
-## Quick start
+#### macOS / Linux (Terminal):
+```bash
+curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | bash
+```
 
-### Windows PowerShell
-
+#### Windows PowerShell:
 ```powershell
 irm https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 | iex
 ```
 
-### macOS / Linux
+#### Windows CMD:
+```cmd
+curl -L https://raw.githubusercontent.com/imacul/skycode/main/install.ps1 -o install.ps1 && .\install.ps1
+```
+
+#### iOS / Android (Termux):
+```bash
+pkg install curl && curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | bash
+```
+
+This will:
+1. Install Bun (if not already installed)
+2. Clone Sky Code
+3. Install dependencies
+4. Start the app
+
+### Manual Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imacul/skycode/main/install.sh | sh
+# Clone the repository
+git clone https://github.com/imacul/skycode.git
+cd skycode
+
+# Install dependencies
+bun install
 ```
 
-The installer places SkyCode under your user profile, installs dependencies, and creates a global `skycode` command.
+### Set API Keys (Optional)
 
-Run SkyCode:
+For **OpenRouter** (open-weight models):
+```bash
+export OPENROUTER_API_KEY="your-openrouter-api-key"
+```
+
+For **Anthropic**:
+```bash
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+```
+
+For **OpenAI**:
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+```
+
+For **Local LLMs** (Ollama, LM Studio): No API key needed - just run your local server!
+
+### Run Sky Code
 
 ```bash
-skycode
+# Start the CLI
+bun run dev:cli
 ```
 
-Open saved chat history:
+---
+
+## 📖 Usage
+
+### Basic Commands
+
+| Command | Description |
+|---------|-------------|
+| `/new` | Start a new conversation |
+| `/exit` | Quit the application |
+| `/model <name>` | Switch AI model |
+| `/addcloud` | Add a cloud AI provider such as Anthropic or OpenAI |
+| `/addlocal` | Add a local Ollama, LM Studio, or llama.cpp server |
+| `/openroute` | Add or update OpenRouter access |
+| `/setup` | Open the full provider setup flow |
+| `/help` | Show help |
+
+### Example Session
+
+```
+$ bun run dev:cli
+
+┌─────────────────────────────────────────────────────────┐
+│                    🌌 Sky Code                           │
+├─────────────────────────────────────────────────────────┤
+│ Welcome to Sky Code!                                        │
+│ Type a message to start chatting with AI.                   │
+│ Use /help for available commands.                         │
+└─────────────────────────────────────────────────────────┘
+
+> Fix this JavaScript function
+> function add(a, b) { return a + b; }
+
+🤖 Assistant: The function looks correct! Here's an improved version...
+
+> /model meta-llama/llama-3.1-70b-instruct
+Switched to meta-llama/llama-3.1-70b-instruct
+
+> /new
+Started new conversation
+
+> /exit
+```
+
+---
+
+## 📦 Configuration
+
+### Environment Variables
 
 ```bash
-skycode resume
+# OpenRouter (for open-weight models)
+OPENROUTER_API_KEY="your-api-key"
+OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+
+# Anthropic
+ANTHROPIC_API_KEY="your-api-key"
+
+# OpenAI
+OPENAI_API_KEY="your-api-key"
+OPENAI_ORGANIZATION="your-org-id"
+
+# Local LLM (Ollama - default)
+LOCAL_LLM_BASE_URL="http://localhost:11434"
+
+# Local LLM (LM Studio)
+LOCAL_LLM_BASE_URL="http://localhost:1234/v1"
 ```
 
-> If your shell was already open before installation, you may need to open a new terminal window before the `skycode` command is available.
+### Settings
 
-## Local models
+Sky Code persists your settings automatically. You can configure:
 
-Inside SkyCode:
+- **Default provider** (openrouter, local, anthropic, openai)
+- **Default model** (any supported model)
+- **Temperature** (0-2)
+- **Max tokens** (response length)
+- **Theme** (dark, light, system)
+- **Font size**
+- **Agent settings**
 
-```text
-/addlocal
+---
+
+## 🏗️ Architecture
+
+```
+skycode/
+├── packages/
+│   └── cli/
+│       ├── src/
+│       │   ├── agents/              # AI Agents
+│       │   │   ├── types.ts         # Agent types & interfaces
+│       │   │   ├── coding-agent.ts  # Coding specialist
+│       │   │   ├── chat-agent.ts    # General conversation
+│       │   │   ├── orchestrator.ts  # Multi-agent manager
+│       │   │   └── index.ts         # Agent exports
+│       │   │
+│       │   ├── providers/           # AI Model Providers
+│       │   │   ├── base.ts          # Base provider interface
+│       │   │   ├── openrouter.ts    # OpenRouter (open weights)
+│       │   │   ├── local.ts         # Local LLMs (Ollama, LM Studio)
+│       │   │   ├── anthropic.ts     # Anthropic (Claude)
+│       │   │   ├── openai.ts        # OpenAI (GPT)
+│       │   │   └── index.ts         # Provider exports
+│       │   │
+│       │   ├── store/               # State Management
+│       │   │   ├── conversation.ts  # Conversation history
+│       │   │   ├── settings.ts      # User preferences
+│       │   │   └── index.ts         # Store exports
+│       │   │
+│       │   ├── tools/              # System Tools
+│       │   │   ├── types.ts         # Tool types
+│       │   │   ├── file-system.ts   # File operations
+│       │   │   ├── command.ts       # Command execution
+│       │   │   └── index.ts         # Tool exports
+│       │   │
+│       │   ├── utils/              # Utilities
+│       │   │   ├── stream.ts        # Streaming helpers
+│       │   │   ├── tokens.ts        # Token counting
+│       │   │   └── index.ts         # Utility exports
+│       │   │
+│       │   ├── components/          # UI Components
+│       │   │   ├── header.tsx       # App header
+│       │   │   ├── input-bar.tsx    # User input
+│       │   │   ├── status-bar.tsx   # Status display
+│       │   │   └── ...
+│       │   │
+│       │   └── index.tsx            # Main app
+│       │
+│       └── package.json            # Dependencies
+│
+└── README.md
 ```
 
-Examples:
+---
 
-| Runtime | Typical endpoint |
-|---|---|
-| Ollama | `http://localhost:11434` |
-| LM Studio | `http://localhost:1234/v1` |
-| llama.cpp | `http://127.0.0.1:8080` |
+## 🔌 Providers
 
-For llama.cpp or another OpenAI-compatible local server, SkyCode can use the standard `/v1/chat/completions` API.
+### OpenRouter (Open Weights)
 
-Example environment configuration:
+**Default provider** - Access 100+ models including open-weight models.
+
+**Supported Models:**
+- `meta-llama/llama-3.1-70b-instruct` (Default)
+- `meta-llama/llama-3.1-8b-instruct`
+- `mistralai/mistral-7b-instruct`
+- `mistralai/mixtral-8x7b-instruct`
+- `google/gemma-7b-it`
+- `phi-3-mini-4k-instruct`
+- `phi-3-small-8k-instruct`
+- `openchat/openchat-7b`
+- And many more!
+
+**Setup:**
+```bash
+export OPENROUTER_API_KEY="your-api-key"
+# Or set in Sky Code settings
+```
+
+**Website:** [https://openrouter.ai](https://openrouter.ai)
+
+### Local LLM (Ollama, LM Studio, llama.cpp)
+
+Run AI models **locally** without API keys!
+
+Sky Code also supports any OpenAI-compatible local server, including `llama.cpp`'s `llama-server`.
+
+For a llama.cpp server running on port 8080:
 
 ```powershell
 $env:LOCAL_LLM_BASE_URL="http://127.0.0.1:8080"
 $env:LOCAL_LLM_MODEL="local-qwen"
 $env:LOCAL_LLM_THINKING="false"
-
-skycode
+bun run dev:cli
 ```
 
-Local inference continues to work without internet access as long as the model server is running on your machine.
+`LOCAL_LLM_BASE_URL` may include `/v1` or omit it. Sky Code normalizes either form. For Qwen3-style models, `LOCAL_LLM_THINKING=false` keeps normal assistant responses in the standard `content` field instead of spending the response budget on hidden reasoning.
 
-## Cloud providers
+**Supported Models (Ollama):**
+- `llama3.1:70b-instruct`
+- `llama3.1:8b-instruct`
+- `llama3:70b-instruct`
+- `llama3:8b-instruct`
+- `mistral:7b-instruct`
+- `mixtral:8x7b-instruct`
+- `gemma:7b-instruct`
+- `phi3:3.8b-mini-instruct`
+- `phi3:7b-small-instruct`
+- `qwen2:7b-instruct`
 
-SkyCode currently supports:
-
-| Provider | Setup |
-|---|---|
-| OpenRouter | `/openroute` |
-| Anthropic | `/addcloud` |
-| OpenAI | `/addcloud` |
-
-You can also configure credentials through environment variables:
-
+**Setup (Ollama):**
 ```bash
-OPENROUTER_API_KEY="..."
-ANTHROPIC_API_KEY="..."
-OPENAI_API_KEY="..."
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull a model
+ollama pull llama3.1:70b-instruct
+
+# Run Ollama server (automatic)
+# Sky Code will connect to http://localhost:11434
 ```
 
-Model availability changes frequently, so SkyCode avoids treating a hard-coded model list as authoritative.
-
-## Commands
-
-| Command | Description |
-|---|---|
-| `/new` | Start a new conversation |
-| `/model` | Show model information |
-| `/model <name>` | Switch model |
-| `/addlocal` | Add or update a local AI server |
-| `/addcloud` | Add a cloud provider |
-| `/openroute` | Add or update OpenRouter |
-| `/history` | Show saved conversations |
-| `/resume <number-or-id>` | Resume a saved conversation |
-| `/copy` | Copy the latest assistant reply |
-| `/clear` | Clear the current conversation |
-| `/setup` | Open the full provider setup flow |
-| `/help` | Show available commands |
-| `/exit` | Exit SkyCode |
-
-## Conversation history
-
-SkyCode stores conversation history locally at:
-
-```text
-~/.skycode/conversations.json
-```
-
-Settings are stored at:
-
-```text
-~/.skycode/settings.json
-```
-
-Use:
-
-```text
-/history
-```
-
-and:
-
-```text
-/resume 1
-```
-
-or launch directly into the history view:
-
+**Setup (LM Studio):**
 ```bash
-skycode resume
+# Install LM Studio from https://lmstudio.ai
+# Start the server on port 1234
+# Sky Code will connect to http://localhost:1234/v1
 ```
 
-## Architecture
+### Anthropic (Claude)
 
-```text
-SkyCode
-├── terminal UI (OpenTUI + React)
-├── agent orchestrator
-│   ├── chat agent
-│   ├── coding agent
-│   ├── planning agent
-│   └── business agent
-├── provider layer
-│   ├── local / OpenAI-compatible
-│   ├── OpenRouter
-│   ├── Anthropic
-│   └── OpenAI
-├── persistent settings
-└── persistent conversation history
+Access **Claude 3.5, Claude 3, and Claude 2** models.
+
+**Supported Models:**
+- `claude-3-5-sonnet-20241022` (Latest)
+- `claude-3-opus-20240229`
+- `claude-3-sonnet-20240229`
+- `claude-3-haiku-20240307`
+- `claude-2:1`
+- `claude-instant-1:2`
+
+**Setup:**
+```bash
+export ANTHROPIC_API_KEY="your-api-key"
 ```
 
-The provider layer keeps local and hosted models behind a common interface so the terminal UI and agent system do not need provider-specific logic for every request.
+**Website:** [https://anthropic.com](https://anthropic.com)
 
-## Development
+### OpenAI (GPT)
 
-Requirements:
+Access **GPT-4, GPT-4o, GPT-3.5** models.
 
-- Git
-- Bun
-- Node.js 18+ is recommended for package tooling
+**Supported Models:**
+- `gpt-4o-mini` (Recommended)
+- `gpt-4o`
+- `gpt-4-turbo`
+- `gpt-4`
+- `gpt-3.5-turbo`
+- `o1-preview` (Reasoning)
+- `o1-mini` (Reasoning)
 
-Clone and install:
+**Setup:**
+```bash
+export OPENAI_API_KEY="your-api-key"
+```
+
+**Website:** [https://openai.com](https://openai.com)
+
+---
+
+## 🤖 Agents
+
+### Coding Agent
+
+Specialized for **code-related tasks**:
+
+- ✅ **Code Completion** - Finish incomplete code
+- ✅ **Code Explanation** - Explain how code works
+- ✅ **Bug Fixing** - Find and fix bugs
+- ✅ **Refactoring** - Improve code structure
+- ✅ **Testing** - Generate tests
+
+**Modes:**
+- `code` (default) - General coding assistance
+- `debug` - Debugging mode
+- `explain` - Code explanation
+- `refactor` - Code refactoring
+- `test` - Test generation
+
+**Usage:**
+```
+> Explain this function
+> function fibonacci(n) { ... }
+
+> Fix this bug
+> The function returns wrong results for n > 100
+
+> Refactor this code
+> Make it more maintainable
+```
+
+### Chat Agent
+
+For **general conversation and knowledge**:
+
+- ✅ **Chat** - General conversation
+- ✅ **Documentation** - Generate docs
+- ✅ **Search** - Find information
+
+**Modes:**
+- `chat` (default) - General conversation
+- `explain` - Detailed explanations
+- `search` - Information search
+
+**Usage:**
+```
+> What is TypeScript?
+
+> Explain how React hooks work
+
+> Search for information about WebSockets
+```
+
+---
+
+## 🛠️ Tools
+
+### File System Tools
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `read_file` | Read file contents | `read_file(path: "src/index.ts")` |
+| `write_file` | Write to a file | `write_file(path: "output.txt", content: "Hello")` |
+| `delete_file` | Delete a file | `delete_file(path: "temp.txt")` |
+| `list_files` | List files in directory | `list_files(path: ".", recursive: true)` |
+| `search_files` | Search files by name/content | `search_files(query: "function", searchContent: true)` |
+| `create_directory` | Create a directory | `create_directory(path: "new-dir")` |
+| `delete_directory` | Delete a directory | `delete_directory(path: "old-dir")` |
+
+### Command Tools
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `run_command` | Execute shell command | `run_command(command: "ls -la")` |
+| `run_command_stream` | Execute with streaming | `run_command_stream(command: "npm install")` |
+
+---
+
+## 💡 Tips & Tricks
+
+### Switch Models
+
+```
+# OpenRouter models
+/model meta-llama/llama-3.1-70b-instruct
+/model mistralai/mistral-7b-instruct
+
+# Local models (Ollama)
+/model llama3.1:70b-instruct
+/model mistral:7b-instruct
+
+# Anthropic models
+/model claude-3-5-sonnet-20241022
+/model claude-3-opus-20240229
+
+# OpenAI models
+/model gpt-4o-mini
+/model gpt-4
+```
+
+### Agent Selection
+
+The orchestrator **automatically selects the best agent** based on your input:
+
+- Code-related queries → **Coding Agent**
+- General questions → **Chat Agent**
+
+You can also **explicitly specify** an agent in your request.
+
+### Token Management
+
+Sky Code tracks your **token usage** and **costs** (for paid models).
+
+- View token count in the status bar
+- See cost estimates for each response
+- Set token budgets to avoid surprises
+
+---
+
+## 🎯 Roadmap
+
+### ✅ Completed
+- [x] OpenRouter provider (open weights)
+- [x] Local LLM provider (Ollama, LM Studio)
+- [x] Anthropic provider
+- [x] OpenAI provider
+- [x] Coding Agent
+- [x] Chat Agent
+- [x] Agent Orchestrator
+- [x] Conversation Store
+- [x] Settings Store
+- [x] File System Tools
+- [x] Command Tools
+- [x] Streaming Support
+- [x] Token Management
+- [x] Comprehensive Tests
+
+### 🚧 In Progress
+- [ ] Tool calling integration with agents
+- [ ] Plugin system for custom providers
+- [ ] Custom agent creation
+- [ ] Model fine-tuning support
+
+### 📋 Planned
+- [ ] Web UI version
+- [ ] Desktop app (Tauri)
+- [ ] Mobile support
+- [ ] Voice input/output
+- [ ] Multi-modal support (images, audio)
+- [ ] Collaborative sessions
+- [ ] Session sharing
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how you can help:
+
+### Development Setup
 
 ```bash
 git clone https://github.com/imacul/skycode.git
@@ -219,79 +527,83 @@ cd skycode
 bun install
 ```
 
-Run the CLI in development mode:
+### Run Tests
 
 ```bash
-bun run dev:cli
+bun test            # Run all tests
+bun test --watch   # Run tests in watch mode
+bun test --coverage # Run tests with coverage
 ```
 
-Build:
+### Project Structure
 
-```bash
-bun run build
 ```
-
-Run tests:
-
-```bash
-bun test
-```
-
-## Project structure
-
-```text
 packages/cli/src/
-├── agents/
-├── components/
-├── providers/
-├── store/
-├── tools/
-├── utils/
-└── index.tsx
+├── agents/       # AI agents
+├── providers/    # Model providers
+├── store/        # State management
+├── tools/        # System tools
+├── utils/        # Utilities
+└── components/   # UI components
 ```
 
-## Contributing
+### Adding a New Provider
 
-Contributions are welcome.
+1. Create a new file in `packages/cli/src/providers/`
+2. Implement the `BaseProvider` interface
+3. Add to `packages/cli/src/providers/index.ts`
+4. Add tests in `packages/cli/src/tests/`
 
-A useful contribution flow is:
+### Adding a New Agent
 
-1. Fork the repository.
-2. Create a focused branch.
-3. Make and test your changes.
-4. Open a pull request with a clear description of the behavior you changed.
-5. Keep unrelated refactors out of feature PRs when possible.
+1. Create a new file in `packages/cli/src/agents/`
+2. Implement the `BaseAgent` interface
+3. Register in the orchestrator
+4. Add tests
 
-For provider work, implement the shared provider interface and keep provider-specific behavior isolated in `packages/cli/src/providers/`.
+### Adding a New Tool
 
-For agent work, register new agents through the orchestrator instead of coupling them directly to the UI.
+1. Create a new file in `packages/cli/src/tools/`
+2. Implement the `BaseTool` interface
+3. Add to `packages/cli/src/tools/index.ts`
+4. Add tests
 
-## Documentation
+---
 
-Project documentation:
+## 📜 License
 
-**https://imacul.github.io/skycode/**
-
-Repository:
-
-**https://github.com/imacul/skycode**
-
-## Support
-
-Use GitHub Issues for bugs and feature requests:
-
-**https://github.com/imacul/skycode/issues**
-
-Use GitHub Discussions for broader questions and ideas:
-
-**https://github.com/imacul/skycode/discussions**
-
-## License
-
-SkyCode is available under the [MIT License](./LICENSE).
+[MIT License](https://opensource.org/licenses/MIT)
 
 Copyright (c) 2026 Imacul
 
-## Star History
+---
+
+## 🆘 Support
+
+- **Issues:** [GitHub Issues](https://github.com/imacul/skycode/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/imacul/skycode/discussions)
+- **Contact:** imacul77@gmail.com
+
+---
+
+## 🙏 Acknowledgments
+
+- **[Bun](https://bun.sh)** - Fast JavaScript runtime
+- **[React](https://react.dev)** - UI framework
+- **[OpenTUI](https://github.com/opentui/opentui)** - Terminal UI
+- **[Zustand](https://github.com/pmndrs/zustand)** - State management
+- **[OpenRouter](https://openrouter.ai)** - AI model aggregator
+- **[Ollama](https://ollama.com)** - Local LLM runner
+- **[LM Studio](https://lmstudio.ai)** - Local AI studio
+- **[Anthropic](https://anthropic.com)** - Claude AI
+- **[OpenAI](https://openai.com)** - GPT models
+
+---
+
+## 🌟 Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=imacul/skycode&type=Date)](https://star-history.com/#imacul/skycode&Date)
+
+---
+
+**Built with ❤️ and AI**
