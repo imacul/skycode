@@ -39,6 +39,7 @@ SkyCode is under active development.
 - Scored agent routing with visible active-agent diagnostics
 - Compose while generating, queue follow-up messages, and cancel active local inference
 - Built-in AI evaluation harness with smoke tests and a 100-case regression suite
+- Autonomous coding-agent project creation with safe workspace-scoped file tools
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -48,11 +49,11 @@ SkyCode is under active development.
 
 - Automatic routing heuristics
 - Provider/model discovery across different local runtimes
-- Tool infrastructure for file-system and command execution
+- Command execution infrastructure (not yet exposed to autonomous project builds)
 
 ### Planned
 
-- Agent tool-calling integration
+- MCP tool/server integration
 - More provider integrations
 - Custom agents and provider plugins
 - Better model management
@@ -128,6 +129,28 @@ skycode update --no-auto
 ```
 
 Automatic updates are opt-in. Without `--auto`, SkyCode only notifies you when a newer build is available.
+
+## Project creation
+
+When a coding request explicitly asks SkyCode to create, scaffold, build, edit, or modify project files, the coding agent can now work directly in the directory where SkyCode was launched.
+
+For example, launch SkyCode from the parent directory where you want the project:
+
+```bash
+cd projects
+skycode
+```
+
+Then ask:
+
+```text
+Create a portfolio website in ./portfolio using HTML, CSS, and JavaScript.
+Add a hero, project cards, and a contact section.
+```
+
+The coding agent can create directories and write/read/search files instead of only returning code blocks in chat. Tool activity is shown in the conversation as it happens.
+
+Autonomous project tools are deliberately workspace-scoped. SkyCode currently exposes only non-destructive project operations to this loop: listing, reading, searching, creating directories, and writing files. Attempts to escape the directory where SkyCode was launched are blocked. Shell execution, package installation, and file deletion are not part of the autonomous project loop yet.
 
 ## AI evaluation
 
