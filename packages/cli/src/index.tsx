@@ -11,6 +11,7 @@ import {
   formatRelativeTime,
 } from './store/conversation';
 import { copyToClipboard } from './utils/clipboard';
+import { createContextBudget, fitHistoryToBudget } from './utils/context-window';
 import {
   checkForUpdates,
   getCurrentVersion,
@@ -65,6 +66,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState<BaseProvider | null>(null);
   const [model, setModel] = useState<string>('');
+  const [contextWindow, setContextWindow] = useState<number>(8192);
   const [showWelcome, setShowWelcome] = useState(false);
   const [setupMode, setSetupMode] = useState<SetupMode>('all');
   const [forceSetup, setForceSetup] = useState(false);
@@ -167,6 +169,20 @@ function App() {
         }
         setModel(defaultModel);
 
+        try {
+          const explicitContext = Number(
+            process.env.LOCAL_LLM_CONTEXT_LENGTH || process.env.SKYCODE_CONTEXT_LENGTH || ''
+          );
+          const modelInfo = await providerInstance.getModel(defaultModel);
+          const resolvedContext =
+            Number.isFinite(explicitContext) && explicitContext > 0
+              ? explicitContext
+              : modelInfo?.contextLength || 8192;
+          setContextWindow(resolvedContext);
+        } catch {
+          setContextWindow(8192);
+        }
+
         // Initialize agents with context
         const orchestrator = createAgentOrchestrator();
         await orchestrator.initializeAll({
@@ -268,10 +284,14 @@ function App() {
       // Capture the existing history before adding this turn. Agents append
       // request.input themselves, so passing the just-added user message would
       // duplicate the prompt.
-      const previousMessages = useConversationStore
+      const fullHistory = useConversationStore
         .getState()
         .currentMessages
         .filter((message) => message.role !== 'system');
+
+      const budget = createContextBudget(contextWindow, text);
+      const fittedHistory = fitHistoryToBudget(fullHistory, budget.historyBudget);
+      const previousMessages = fittedHistory.messages;
 
       addMessage('user', text);
       setHistoryView(null);
@@ -280,6 +300,11 @@ function App() {
       // Create agent request
       const request: AgentRequest = {
         input: text,
+        context: {
+          maxTokens: budget.responseReserve,
+          contextWindow: budget.contextWindow,
+          droppedHistoryMessages: fittedHistory.droppedCount,
+        },
         // Leave mode unset so the orchestrator can route general work,
         // coding, planning, and business requests intelligently.
         onStream: (chunk) => {
@@ -315,7 +340,7 @@ function App() {
       setError(err instanceof Error ? err.message : String(err));
       setIsProcessing(false);
     }
-  }, [provider, isInitialized, isProcessing, model, addMessage]);
+  }, [provider, isInitialized, isProcessing, model, contextWindow, addMessage]);
 
   // Handle command execution
   const handleCommand = useCallback(async (command: string) => {
