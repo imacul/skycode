@@ -268,9 +268,22 @@ export OPENROUTER_API_KEY="your-api-key"
 
 **Website:** [https://openrouter.ai](https://openrouter.ai)
 
-### Local LLM (Ollama, LM Studio)
+### Local LLM (Ollama, LM Studio, llama.cpp)
 
 Run AI models **locally** without API keys!
+
+Sky Code also supports any OpenAI-compatible local server, including `llama.cpp`'s `llama-server`.
+
+For a llama.cpp server running on port 8080:
+
+```powershell
+$env:LOCAL_LLM_BASE_URL="http://127.0.0.1:8080"
+$env:LOCAL_LLM_MODEL="local-qwen"
+$env:LOCAL_LLM_THINKING="false"
+bun run dev:cli
+```
+
+`LOCAL_LLM_BASE_URL` may include `/v1` or omit it. Sky Code normalizes either form. For Qwen3-style models, `LOCAL_LLM_THINKING=false` keeps normal assistant responses in the standard `content` field instead of spending the response budget on hidden reasoning.
 
 **Supported Models (Ollama):**
 - `llama3.1:70b-instruct`
