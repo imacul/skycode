@@ -13,6 +13,15 @@ import type { CodingAgentConfig } from './types';
 import type { BaseProvider } from '../providers/base';
 import type { Message } from '../store/conversation';
 import { getSystemMessage } from '../store/conversation';
+import {
+  executeProjectToolCall,
+  getProjectToolInstructions,
+  parseProjectToolCalls,
+  projectToolResultMessage,
+  shouldUseProjectTools,
+  stripProjectToolCalls,
+  type ProjectToolExecution,
+} from './project-tools';
 
 /**
  * Default coding agent configuration
@@ -110,22 +119,25 @@ export class CodingAgent implements BaseAgent {
   /**
    * Get the system message based on current mode
    */
-  private getSystemMessage(): Message {
+  private getSystemMessage(enableProjectTools = false): Message {
     const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.code;
     const systemPrompt = this.config.systemPrompt || DEFAULT_CODING_AGENT_CONFIG.systemPrompt;
-    
+    const toolPrompt = enableProjectTools
+      ? '\n\n' + getProjectToolInstructions(this.context.workingDirectory)
+      : '';
+
     return getSystemMessage(
       this.context.provider?.name || 'openrouter',
       this.context.model,
-      `${systemPrompt}\n\n${modePrompt}`
+      `${systemPrompt}\n\n${modePrompt}${toolPrompt}`
     );
   }
 
   /**
    * Build messages for the provider
    */
-  private buildProviderMessages(request: AgentRequest): Message[] {
-    const systemMessage = this.getSystemMessage();
+  private buildProviderMessages(request: AgentRequest, enableProjectTools = false): Message[] {
+    const systemMessage = this.getSystemMessage(enableProjectTools);
     const messages = [systemMessage];
 
     // Add conversation history
@@ -190,6 +202,72 @@ export class CodingAgent implements BaseAgent {
     }
   }
 
+  private async runProjectToolLoop(
+    request: AgentRequest,
+    onToolExecution?: (execution: ProjectToolExecution) => void
+  ): Promise<{
+    content: string;
+    finishReason: string;
+    tokensUsed: number;
+  }> {
+    if (!this.context.provider) {
+      throw new Error('Provider not initialized');
+    }
+
+    const maxTokens = (request.context as any)?.maxTokens || 4096;
+    const messages = this.buildProviderMessages(request, true);
+    const maxIterations = 8;
+    let tokensUsed = 0;
+    let finishReason = 'stop';
+
+    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      const response = await this.context.provider.chat({
+        messages,
+        model: this.context.model,
+        temperature: 0.2,
+        maxTokens,
+        signal: request.context?.signal,
+      });
+
+      tokensUsed += response.usage?.totalTokens || 0;
+      finishReason = response.finishReason || finishReason;
+
+      const calls = parseProjectToolCalls(response.content);
+
+      if (calls.length === 0) {
+        return {
+          content: stripProjectToolCalls(response.content) || response.content.trim(),
+          finishReason,
+          tokensUsed,
+        };
+      }
+
+      messages.push({
+        id: 'assistant_tool_plan_' + Date.now() + '_' + iteration,
+        role: 'assistant',
+        content: response.content,
+        timestamp: new Date(),
+      });
+
+      const executions: ProjectToolExecution[] = [];
+      for (const call of calls.slice(0, 8)) {
+        const execution = await executeProjectToolCall(call, this.context);
+        executions.push(execution);
+        onToolExecution?.(execution);
+      }
+
+      messages.push(projectToolResultMessage(executions));
+    }
+
+    return {
+      content:
+        'I stopped after the maximum number of project-tool steps to avoid an uncontrolled loop. ' +
+        'Review the files that were created or changed before continuing.',
+      finishReason: 'tool_iteration_limit',
+      tokensUsed,
+    };
+  }
+
   /**
    * Process a request
    */
@@ -204,12 +282,32 @@ export class CodingAgent implements BaseAgent {
     }
 
     try {
+      if (shouldUseProjectTools(request.input)) {
+        const toolResult = await this.runProjectToolLoop(request);
+        const executionTime = Date.now() - startTime;
+
+        return {
+          content: toolResult.content,
+          type: this.detectResponseType(toolResult.content),
+          metadata: {
+            model: this.context.model,
+            provider: this.context.provider?.name || 'openrouter',
+            finishReason: toolResult.finishReason,
+            tokensUsed: toolResult.tokensUsed,
+            executionTime,
+          },
+          codeBlocks: this.extractCodeBlocks(toolResult.content),
+          suggestions: [],
+        };
+      }
+
       const maxTokens = (request.context as any)?.maxTokens || 4096;
       const response = await this.context.provider.chat({
         messages,
         model: this.context.model,
         temperature: this.config.codeSettings?.autoFormat ? 0.3 : 0.7,
         maxTokens,
+        signal: request.context?.signal,
       });
 
       const executionTime = Date.now() - startTime;
@@ -247,6 +345,46 @@ export class CodingAgent implements BaseAgent {
     }
 
     try {
+      if (shouldUseProjectTools(request.input)) {
+        const toolLines: string[] = [];
+        const toolResult = await this.runProjectToolLoop(request, (execution) => {
+          const path =
+            typeof execution.call.args.path === 'string'
+              ? ' ' + execution.call.args.path
+              : '';
+          const line =
+            (execution.success ? '✓ ' : '✗ ') +
+            execution.call.name +
+            path +
+            '\n';
+          toolLines.push(line);
+          request.onStream?.(line);
+        });
+
+        if (toolResult.content) {
+          const spacer = toolLines.length > 0 ? '\n' : '';
+          request.onStream?.(spacer + toolResult.content);
+        }
+
+        request.onComplete?.({
+          content:
+            toolLines.join('') +
+            (toolLines.length > 0 && toolResult.content ? '\n' : '') +
+            toolResult.content,
+          type: this.detectResponseType(toolResult.content),
+          metadata: {
+            model: this.context.model,
+            provider: this.context.provider?.name || 'openrouter',
+            finishReason: toolResult.finishReason,
+            tokensUsed: toolResult.tokensUsed,
+            executionTime: Date.now() - startTime,
+          },
+          codeBlocks: this.extractCodeBlocks(toolResult.content),
+          suggestions: [],
+        });
+        return;
+      }
+
       const maxTokens = (request.context as any)?.maxTokens || 4096;
       await this.context.provider.chatStream(
         {
