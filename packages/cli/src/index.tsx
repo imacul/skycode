@@ -361,15 +361,12 @@ function App() {
 
       await streamPromise;
     } catch (err) {
-      const wasCancelled = activeAbortControllerRef.current?.signal.aborted === true;
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const wasCancelled =
+        activeAbortControllerRef.current?.signal.aborted === true ||
+        /abort|cancel/i.test(errorMessage);
       activeAbortControllerRef.current = null;
-      setError(
-        wasCancelled
-          ? 'Generation cancelled.'
-          : err instanceof Error
-            ? err.message
-            : String(err)
-      );
+      setError(wasCancelled ? 'Generation cancelled.' : errorMessage);
       setIsProcessing(false);
     }
   }, [provider, isInitialized, isProcessing, model, contextWindow, addMessage]);
@@ -384,7 +381,6 @@ function App() {
 
   const cancelGeneration = useCallback(() => {
     activeAbortControllerRef.current?.abort();
-    activeAbortControllerRef.current = null;
     setQueuedMessages([]);
   }, []);
 
