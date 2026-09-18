@@ -31,9 +31,16 @@ export const BUILT_IN_AGENTS: AgentRegistry = {
 /**
  * Agent Orchestrator implementation
  */
+export interface RouteDecision {
+  agentName: string;
+  reason: string;
+  scores: Record<string, number>;
+}
+
 export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
   private agents: Record<string, BaseAgent> = {};
   private defaultAgentName: string;
+  private lastRouteDecision: RouteDecision | null = null;
 
   constructor(defaultAgent: string = 'chat-agent') {
     this.defaultAgentName = defaultAgent;
@@ -151,107 +158,159 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
    * Uses intelligent routing based on request content and capabilities
    */
   async routeRequest(request: AgentRequest): Promise<AgentResponse> {
-    // Determine which agent to use
-    const agent = this.selectAgent(request);
-    
-    return agent.process(request);
+    const decision = this.explainRoute(request);
+    this.lastRouteDecision = decision;
+    const agent = this.agents[decision.agentName] || this.getDefaultAgent();
+    const response = await agent.process(request);
+
+    return {
+      ...response,
+      metadata: response.metadata
+        ? { ...response.metadata, agent: decision.agentName }
+        : response.metadata,
+    };
   }
 
   /**
    * Route a request with streaming
    */
   async routeRequestStream(request: AgentRequest): Promise<void> {
-    const agent = this.selectAgent(request);
-    
-    await agent.processStream(request);
+    const decision = this.explainRoute(request);
+    this.lastRouteDecision = decision;
+    const agent = this.agents[decision.agentName] || this.getDefaultAgent();
+
+    await agent.processStream({
+      ...request,
+      onComplete: request.onComplete
+        ? (response) =>
+            request.onComplete?.({
+              ...response,
+              metadata: response.metadata
+                ? { ...response.metadata, agent: decision.agentName }
+                : response.metadata,
+            })
+        : undefined,
+    });
   }
 
   /**
-   * Select the best agent for a request
+   * Explain which agent would handle a request and why.
    */
-  private selectAgent(request: AgentRequest): BaseAgent {
-    const explicitAgent = request.context?.agent as string;
-    
-    // If agent is explicitly specified, use it
+  explainRoute(request: AgentRequest): RouteDecision {
+    const explicitAgent = request.context?.agent as string | undefined;
     if (explicitAgent && this.agents[explicitAgent]) {
-      return this.agents[explicitAgent];
+      return {
+        agentName: explicitAgent,
+        reason: 'explicit agent override',
+        scores: {},
+      };
     }
 
-    // Check if mode suggests a specific agent
-    const mode = request.mode || request.context?.mode as string;
-    
-    if (mode === 'code' || mode === 'debug' || mode === 'refactor' || mode === 'test') {
-      return this.agents['coding-agent'] || this.getDefaultAgent();
+    const mode = request.mode || (request.context?.mode as AgentMode | undefined);
+    const modeMap: Partial<Record<AgentMode, string>> = {
+      code: 'coding-agent',
+      debug: 'coding-agent',
+      refactor: 'coding-agent',
+      test: 'coding-agent',
+      explain: 'chat-agent',
+      search: 'chat-agent',
+      chat: 'chat-agent',
+      plan: 'planning-agent',
+      build: 'planning-agent',
+      business: 'business-agent',
+    };
+
+    if (mode && modeMap[mode]) {
+      return {
+        agentName: modeMap[mode]!,
+        reason: `explicit mode: ${mode}`,
+        scores: {},
+      };
     }
 
-    if (mode === 'chat' || mode === 'explain' || mode === 'search') {
-      return this.agents['chat-agent'] || this.getDefaultAgent();
+    const input = request.input.toLowerCase();
+    const scores: Record<string, number> = {
+      'chat-agent': 0,
+      'coding-agent': 0,
+      'planning-agent': 0,
+      'business-agent': 0,
+    };
+
+    const add = (agentName: keyof typeof scores, amount: number, patterns: RegExp[]) => {
+      for (const pattern of patterns) {
+        if (pattern.test(input)) scores[agentName] += amount;
+      }
+    };
+
+    add('coding-agent', 3, [
+      /\b(debug|bug|fix|refactor|test|implement|function|class|typescript|javascript|react|node(?:\.js)?|python|sql)\b/,
+      /\b(api|endpoint|database|promise|async|await|component|hook|compiler|runtime)\b/,
+      /\b(code|coding|program|algorithm)\b/,
+    ]);
+    add('coding-agent', 2, [
+      /\b(explain|review|inspect)\b.*\b(code|function|react|api|typescript|javascript|node)\b/,
+      /\bbusiness logic\b.*\b(bug|function|code|fix)\b/,
+    ]);
+
+    add('planning-agent', 3, [
+      /\b(roadmap|milestone|implementation plan|launch plan|project plan|rollout plan)\b/,
+      /\bplan\b.*\b(launch|build|implement|project|beta|release)\b/,
+    ]);
+    add('planning-agent', 1, [/\b(schedule|timeline|phases|steps)\b/]);
+
+    add('business-agent', 3, [
+      /\b(pricing|revenue|sales|monetization|go-to-market|gtm|market strategy|customer acquisition)\b/,
+      /\b(business model|business strategy|unit economics)\b/,
+    ]);
+    add('business-agent', 1, [/\b(market|customer|saas|startup)\b/]);
+
+    add('chat-agent', 2, [
+      /\b(joke|story|chat|conversation|hello|hi|who is|what is|tell me about)\b/,
+      /\b(explain|describe)\b/,
+    ]);
+
+    // Technical evidence should beat generic conversational words such as
+    // "explain", and code-specific bugs should beat the word "business".
+    if (scores['coding-agent'] > 0 && /\b(code|bug|debug|function|react|api|endpoint)\b/.test(input)) {
+      scores['chat-agent'] = Math.max(0, scores['chat-agent'] - 1);
+      if (/\bbusiness logic\b/.test(input)) {
+        scores['business-agent'] = Math.max(0, scores['business-agent'] - 2);
+      }
     }
 
-    if (mode === 'plan' || mode === 'build') {
-      return this.agents['planning-agent'] || this.getDefaultAgent();
+    const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    const [topAgent, topScore] = ranked[0];
+    const secondScore = ranked[1]?.[1] ?? 0;
+
+    if (topScore === 0) {
+      const shortFollowUp = input.trim().split(/\s+/).length <= 8;
+      if (shortFollowUp && this.lastRouteDecision) {
+        return {
+          agentName: this.lastRouteDecision.agentName,
+          reason: 'short follow-up retained previous route',
+          scores,
+        };
+      }
+
+      return {
+        agentName: this.defaultAgentName,
+        reason: 'no strong routing signal',
+        scores,
+      };
     }
 
-    if (mode === 'business') {
-      return this.agents['business-agent'] || this.getDefaultAgent();
-    }
+    return {
+      agentName: topAgent,
+      reason:
+        topScore === secondScore
+          ? `routing tie resolved by score order (${topScore})`
+          : `highest routing score (${topScore})`,
+      scores,
+    };
+  }
 
-    // Analyze request input for keywords
-    const lowerInput = request.input.toLowerCase();
-    
-    // Code-related keywords
-    const codeKeywords = [
-      'code', 'function', 'class', 'variable', 'loop', 'if statement',
-      'write code', 'fix bug', 'debug', 'refactor', 'test', 'testing',
-      'javascript', 'typescript', 'python', 'react', 'node', 'express',
-      'algorithm', 'data structure', 'api', 'endpoint', 'database',
-      'fix this', 'why is this not working', 'how do i write',
-    ];
-    
-    // Chat-related keywords
-    const chatKeywords = [
-      'explain', 'what is', 'how does', 'tell me', 'describe',
-      'who is', 'when was', 'where is', 'why does', 'history',
-      'documentation', 'docs', 'tutorial', 'guide', 'learn',
-    ];
-
-    const planningKeywords = [
-      'plan', 'roadmap', 'milestone', 'schedule', 'implementation plan',
-      'project plan', 'launch plan', 'step-by-step plan', 'strategy plan',
-    ];
-
-    const businessKeywords = [
-      'business', 'market', 'pricing', 'revenue', 'customer', 'sales',
-      'go-to-market', 'gtm', 'business strategy', 'monetization',
-    ];
-
-    const hasCodeKeyword = codeKeywords.some(kw => lowerInput.includes(kw));
-    const hasChatKeyword = chatKeywords.some(kw => lowerInput.includes(kw));
-    const hasPlanningKeyword = planningKeywords.some((kw) =>
-      kw === 'plan' ? /\bplan\b/.test(lowerInput) : lowerInput.includes(kw)
-    );
-    const hasBusinessKeyword = businessKeywords.some(kw => lowerInput.includes(kw));
-
-    if (hasBusinessKeyword) {
-      return this.agents['business-agent'] || this.getDefaultAgent();
-    }
-
-    if (hasPlanningKeyword) {
-      return this.agents['planning-agent'] || this.getDefaultAgent();
-    }
-
-    // If it contains code-related keywords, use coding agent
-    if (hasCodeKeyword && !hasChatKeyword) {
-      return this.agents['coding-agent'] || this.getDefaultAgent();
-    }
-
-    // If it contains chat-related keywords, use chat agent
-    if (hasChatKeyword) {
-      return this.agents['chat-agent'] || this.getDefaultAgent();
-    }
-
-    // Default to the configured default agent
-    return this.getDefaultAgent();
+  getLastRouteDecision(): RouteDecision | null {
+    return this.lastRouteDecision ? { ...this.lastRouteDecision, scores: { ...this.lastRouteDecision.scores } } : null;
   }
 
   /**
