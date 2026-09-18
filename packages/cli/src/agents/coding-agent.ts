@@ -255,6 +255,7 @@ export class CodingAgent implements BaseAgent {
           temperature: this.config.codeSettings?.autoFormat ? 0.3 : 0.7,
           maxTokens,
           stream: true,
+          signal: request.context?.signal,
         },
         (chunk) => {
           fullContent += chunk.content;
