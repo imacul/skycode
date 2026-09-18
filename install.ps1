@@ -75,5 +75,6 @@ Write-Host "SkyCode installed successfully." -ForegroundColor Green
 Write-Host "Run:" -ForegroundColor Gray
 Write-Host "  skycode" -ForegroundColor White
 Write-Host "  skycode resume" -ForegroundColor White
+Write-Host "  skycode update" -ForegroundColor White
 Write-Host ""
-Write-Host "To update later, run this same installer command again." -ForegroundColor Gray
+Write-Host "SkyCode checks for updates automatically. Use 'skycode update --auto' to opt into automatic installation." -ForegroundColor Gray

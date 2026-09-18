@@ -11,6 +11,12 @@ import {
   formatConversationHistory,
 } from './store/conversation';
 import { copyToClipboard } from './utils/clipboard';
+import {
+  checkForUpdates,
+  getUpdatePreferences,
+  performUpdate,
+  runUpdateCommand,
+} from './utils/updater';
 import { useSettingsStore, getProviderApiKey, setProviderApiKey, getConfiguredProviders } from './store/settings';
 import { createOpenRouterProvider } from './providers/openrouter';
 import { createLocalLLMProvider } from './providers/local';
@@ -20,7 +26,13 @@ import { createAgentOrchestrator } from './agents';
 import type { BaseProvider } from './providers/base';
 import type { AgentRequest, AgentResponse } from './agents/types';
 
-const STARTUP_COMMAND = process.argv.slice(2)[0]?.toLowerCase();
+const CLI_ARGS = process.argv.slice(2);
+const STARTUP_COMMAND = CLI_ARGS[0]?.toLowerCase();
+
+if (STARTUP_COMMAND === 'update') {
+  const exitCode = await runUpdateCommand(CLI_ARGS.slice(1));
+  process.exit(exitCode);
+}
 
 // Provider factory
 function createProvider(provider: string): BaseProvider | null {
@@ -51,7 +63,9 @@ function App() {
   const [initVersion, setInitVersion] = useState(0);
   const [historyView, setHistoryView] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   const startupCommandHandled = useRef(false);
+  const updateCheckHandled = useRef(false);
   
   const {
     currentMessages,
@@ -158,6 +172,61 @@ function App() {
 
     init();
   }, [initVersion]);
+
+  // Check for updates after startup without blocking local/offline use.
+  useEffect(() => {
+    if (!isInitialized || updateCheckHandled.current) return;
+    updateCheckHandled.current = true;
+
+    let cancelled = false;
+
+    const checkUpdates = async () => {
+      try {
+        const check = await checkForUpdates();
+        if (cancelled || !check.available) return;
+
+        const preferences = getUpdatePreferences();
+        const versionLabel =
+          check.remoteVersion !== 'unknown'
+            ? `v${check.remoteVersion}`
+            : check.remoteSha.slice(0, 7);
+
+        if (!preferences.autoUpdate) {
+          setUpdateNotice(
+            `SkyCode ${versionLabel} is available. Run "skycode update" to install it.`
+          );
+          return;
+        }
+
+        setUpdateNotice(`Updating SkyCode automatically to ${versionLabel}...`);
+
+        try {
+          const result = await performUpdate();
+          if (!cancelled && result.updated) {
+            setUpdateNotice(
+              `SkyCode updated to v${result.version}. Restart SkyCode to use the update.`
+            );
+          }
+        } catch (updateError) {
+          if (!cancelled) {
+            setUpdateNotice(
+              `Automatic update could not be installed: ${
+                updateError instanceof Error ? updateError.message : String(updateError)
+              }`
+            );
+          }
+        }
+      } catch {
+        // Offline or remote unavailable. SkyCode should continue normally.
+      }
+    };
+
+    checkUpdates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isInitialized]);
 
   // Handle welcome screen completion
   const handleWelcomeComplete = useCallback(() => {
@@ -357,6 +426,12 @@ Available commands:
   /copy      - Copy the latest assistant reply
   /clear     - Clear current conversation
 
+CLI update commands:
+  skycode update         - Install the latest SkyCode
+  skycode update --check - Check without installing
+  skycode update --auto  - Enable automatic updates and update now
+  skycode update --no-auto - Disable automatic updates
+
 Example usage:
   /model meta-llama/llama-3.1-70b-instruct
   /model claude-3-5-sonnet-20241022
@@ -427,6 +502,12 @@ Current provider: ${provider?.name || 'none'}
           <text fg="gray" attributes={{ dim: true }}>
             {' Type /setup to configure API keys or use /help'}
           </text>
+        </box>
+      )}
+
+      {updateNotice && !showWelcome && (
+        <box width="100%" maxWidth={78} paddingX={2}>
+          <text fg="cyan">{updateNotice}</text>
         </box>
       )}
 
