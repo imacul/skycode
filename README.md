@@ -37,6 +37,7 @@ SkyCode is under active development.
 - Clickable saved-chat browser with one-click resume
 - Runtime-aware context budgeting for long conversations
 - Scored agent routing with visible active-agent diagnostics
+- Compose while generating, queue follow-up messages, and cancel active local inference
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -190,6 +191,7 @@ Model availability changes frequently, so SkyCode avoids treating a hard-coded m
 | `/history` | Show saved conversations |
 | `/resume <number-or-id>` | Resume a saved conversation |
 | `/copy` | Copy the latest assistant reply |
+| `/cancel` | Cancel the active generation |
 | `/clear` | Clear the current conversation |
 | `/setup` | Open the full provider setup flow |
 | `/help` | Show available commands |
