@@ -219,6 +219,7 @@ export class CodingAgent implements BaseAgent {
     const maxIterations = 8;
     let tokensUsed = 0;
     let finishReason = 'stop';
+    let hasExecutedTools = false;
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const response = await this.context.provider.chat({
@@ -235,6 +236,25 @@ export class CodingAgent implements BaseAgent {
       const calls = parseProjectToolCalls(response.content);
 
       if (calls.length === 0) {
+        if (!hasExecutedTools && iteration < 2) {
+          messages.push({
+            id: 'assistant_invalid_tool_plan_' + Date.now() + '_' + iteration,
+            role: 'assistant',
+            content: response.content,
+            timestamp: new Date(),
+          });
+          messages.push({
+            id: 'tool_retry_' + Date.now() + '_' + iteration,
+            role: 'system',
+            content:
+              'The user asked you to modify real project files, but no valid project tool call was produced. ' +
+              'Use the exact <tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
+              'Do not merely paste code in chat.',
+            timestamp: new Date(),
+          });
+          continue;
+        }
+
         return {
           content: stripProjectToolCalls(response.content) || response.content.trim(),
           finishReason,
@@ -250,6 +270,7 @@ export class CodingAgent implements BaseAgent {
       });
 
       const executions: ProjectToolExecution[] = [];
+      hasExecutedTools = true;
       for (const call of calls.slice(0, 8)) {
         const execution = await executeProjectToolCall(call, this.context);
         executions.push(execution);
