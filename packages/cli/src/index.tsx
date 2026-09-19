@@ -1131,6 +1131,9 @@ Current provider: ${provider?.name || 'none'}
         <InputBar 
           onSubmit={handleSubmit}
           disabled={!isInitialized || showWelcome}
+          loadModelCatalog={loadUnifiedModelCatalog}
+          currentProvider={provider?.name || ''}
+          currentModel={model}
           onCommand={(command) => {
             if (command === '/cancel') {
               if (isProcessing) {
