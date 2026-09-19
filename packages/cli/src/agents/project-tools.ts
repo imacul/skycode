@@ -10,6 +10,7 @@ export const PROJECT_TOOL_NAMES = [
   'search_files',
   'create_directory',
   'write_file',
+  'run_command',
 ] as const;
 
 export type ProjectToolName = typeof PROJECT_TOOL_NAMES[number];
@@ -227,6 +228,98 @@ export function stripProjectToolCalls(content: string): string {
     .replace(PROJECT_PLAN_RE, '')
     .replace(CLARIFICATION_RE, '$1')
     .trim();
+}
+
+
+export interface ProjectCommandPolicy {
+  allowed: boolean;
+  risk: 'read' | 'verify' | 'workspace' | 'blocked';
+  reason?: string;
+}
+
+export function classifyProjectCommand(command: string): ProjectCommandPolicy {
+  const clean = command.trim();
+
+  if (!clean) {
+    return { allowed: false, risk: 'blocked', reason: 'Command is empty.' };
+  }
+
+  if (/[\r\n;&|><\x60]/.test(clean) || /\$\(/.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'blocked',
+      reason:
+        'Shell chaining, redirects, pipes, command substitution, and multiline commands are not allowed autonomously.',
+    };
+  }
+
+  const destructive =
+    /\b(rm|rmdir|del|erase|format|mkfs|shutdown|reboot|halt|poweroff)\b|\bgit\s+(reset|clean|checkout\s+--|restore\s+--staged|push|commit|rebase)\b|\b(remove-item|clear-content|set-acl)\b/i;
+
+  if (destructive.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'blocked',
+      reason:
+        'Destructive, publishing, or history-rewriting commands require a future approval flow.',
+    };
+  }
+
+  const packageMutation =
+    /^(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|uninstall|update|upgrade|link|publish|init|create)\b|^npx\s+(?!tsc\b)/i;
+
+  if (packageMutation.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'workspace',
+      reason:
+        'Package installation/generation is workspace-changing and requires a future approval flow.',
+    };
+  }
+
+  const readOnlyPatterns = [
+    /^git\s+(?:status|diff|log|show|branch(?:\s+--show-current)?|rev-parse|ls-files)\b/i,
+    /^(?:node|npm|pnpm|yarn|bun|python|python3|pip|pip3|cargo|rustc|go|java|javac|dotnet)\s+(?:--version|-v|version)\b/i,
+    /^where\s+\S+/i,
+    /^which\s+\S+/i,
+  ];
+
+  if (readOnlyPatterns.some((pattern) => pattern.test(clean))) {
+    return { allowed: true, risk: 'read' };
+  }
+
+  const verifyPatterns = [
+    /^(?:npm|pnpm|yarn)\s+(?:test|run\s+(?:test|build|lint|typecheck|check)(?::[\w-]+)?)\b/i,
+    /^bun\s+(?:test|run\s+(?:test|build|lint|typecheck|check)(?::[\w-]+)?)\b/i,
+    /^npx\s+tsc\b/i,
+    /^tsc\b/i,
+    /^(?:pytest|python\s+-m\s+pytest|python3\s+-m\s+pytest)\b/i,
+    /^cargo\s+(?:test|check|build|clippy|fmt\s+--\s+--check)\b/i,
+    /^go\s+(?:test|vet|build)\b/i,
+    /^dotnet\s+(?:test|build)\b/i,
+    /^mvn\s+(?:test|verify)\b/i,
+    /^gradle\s+(?:test|build)\b/i,
+    /^\.\/gradlew\s+(?:test|build)\b/i,
+  ];
+
+  if (verifyPatterns.some((pattern) => pattern.test(clean))) {
+    return { allowed: true, risk: 'verify' };
+  }
+
+  return {
+    allowed: false,
+    risk: 'blocked',
+    reason: 'Command is outside SkyCode’s autonomous safe-terminal allowlist.',
+  };
+}
+
+function terminalPreview(content: string): string[] {
+  const lines = content
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .filter(Boolean);
+  const tail = lines.slice(-12);
+  return tail.length > 0 ? tail : ['(no output)'];
 }
 
 function lineDiffSummary(before: string, after: string): {
