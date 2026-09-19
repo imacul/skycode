@@ -128,7 +128,7 @@ export function parseProjectToolCalls(content: string): ProjectToolCall[] {
   // calls even when asked for SkyCode's XML+JSON envelope. Accept that native
   // form rather than making the model retry repeatedly.
   const dsmlJsonRe =
-    /<\|DSML\|(?:tool_call_invoke|invoke_json)>\s*([\s\S]*?)\s*<\/\|DSML\|(?:tool_call_invoke|invoke_json)>/gi;
+    /<\|DSML\|(?:tool_call_invoke|invoke_json)>\s*([\s\S]*?)\s*(?=<\/\|DSML\|(?:tool_call_invoke|invoke_json|tool_call)>)/gi;
   while ((match = dsmlJsonRe.exec(normalized)) !== null) {
     try {
       const parsed = JSON.parse(match[1]) as {
