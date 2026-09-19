@@ -74,8 +74,18 @@ export function InputBar({
   );
 
   const filteredModels = useMemo(
-    () => filterModelPickerItems(modelPickerItems, modelQuery, 8),
+    () => filterModelPickerItems(modelPickerItems, modelQuery, Math.max(1, modelPickerItems.length)),
     [modelPickerItems, modelQuery]
+  );
+
+  const MODEL_PICKER_ROWS = 5;
+  const modelWindowStart = Math.min(
+    Math.max(0, selectedModelIndex - Math.floor(MODEL_PICKER_ROWS / 2)),
+    Math.max(0, filteredModels.matches.length - MODEL_PICKER_ROWS)
+  );
+  const visibleModelRows = filteredModels.matches.slice(
+    modelWindowStart,
+    modelWindowStart + MODEL_PICKER_ROWS
   );
 
   const showModelPicker =
@@ -140,6 +150,12 @@ export function InputBar({
       Math.min(selectedModelIndex, Math.max(0, filteredModels.matches.length - 1))
     ];
 
+  const closeModelPicker = () => {
+    setModelPickerOpen(false);
+    setPickerDismissed(true);
+    setSelectedModelIndex(0);
+  };
+
   const replaceInput = (value: string) => {
     const textarea = textareaRef.current;
     setInputValue(value);
@@ -193,8 +209,7 @@ export function InputBar({
   const handleKeyDown = (key: KeyEvent) => {
     if (showModelPicker) {
       if (key.name === 'escape') {
-        setPickerDismissed(true);
-        setModelPickerOpen(false);
+        closeModelPicker();
         key.preventDefault();
         key.stopPropagation();
         return;
@@ -319,7 +334,9 @@ export function InputBar({
       {showModelPicker && (
         <box
           width="100%"
+          maxHeight={16}
           flexDirection="column"
+          flexShrink={0}
           backgroundColor="#12121A"
           border={['top', 'left', 'right']}
           borderColor="cyan"
@@ -327,17 +344,17 @@ export function InputBar({
           paddingY={0}
         >
           <box width="100%" flexDirection="row" justifyContent="space-between">
-            <text fg="cyan" attributes={{ bold: true }}>{'Models'}</text>
-            <text fg="gray" attributes={{ dim: true }}>
-              {modelCatalogLoading
-                ? 'Loading model catalog...'
-                : modelCatalogError
-                  ? 'Could not load models'
-                  : filteredModels.total + ' matches'}
+            <text fg="cyan" attributes={{ bold: true }}>
+              {'Models' + (!modelCatalogLoading && !modelCatalogError ? ' · ' + filteredModels.total : '')}
             </text>
+            <text
+              fg="gray"
+              attributes={{ dim: true, underline: true }}
+              onMouseDown={closeModelPicker}
+            >{'Close'}</text>
           </box>
           <text fg="gray" attributes={{ dim: true }}>
-            {'Type to filter · ↑↓ navigate · Enter switch · Tab fill · click to switch · Esc close'}
+            {'Type to filter · ↑↓ browse all · Enter switch · Tab fill · click switch · Esc close'}
           </text>
 
           {modelCatalogError ? (
@@ -347,8 +364,9 @@ export function InputBar({
           ) : filteredModels.matches.length === 0 ? (
             <text fg="yellow">{'No models match "' + modelQuery + '".'}</text>
           ) : (
-            filteredModels.matches.map((item, index) => {
-              const selected = index === selectedModelIndex;
+            visibleModelRows.map((item, index) => {
+              const absoluteIndex = modelWindowStart + index;
+              const selected = absoluteIndex === selectedModelIndex;
               return (
                 <box
                   key={item.key}
@@ -371,9 +389,6 @@ export function InputBar({
                     </text>
                   </box>
                   <text fg="gray" attributes={{ dim: true }}>
-                    {String(item.selector)}
-                  </text>
-                  <text fg="gray" attributes={{ dim: true }}>
                     {String(item.meta)}
                   </text>
                 </box>
@@ -381,9 +396,15 @@ export function InputBar({
             })
           )}
 
-          {!modelCatalogLoading && !modelCatalogError && filteredModels.total > filteredModels.matches.length && (
+          {!modelCatalogLoading && !modelCatalogError && filteredModels.total > 0 && (
             <text fg="gray" attributes={{ dim: true }}>
-              {'Showing ' + filteredModels.matches.length + ' of ' + filteredModels.total + ' matches — keep typing to narrow the list.'}
+              {'Showing ' +
+                (modelWindowStart + 1) +
+                '–' +
+                Math.min(modelWindowStart + visibleModelRows.length, filteredModels.total) +
+                ' of ' +
+                filteredModels.total +
+                ' · keep typing to narrow the list'}
             </text>
           )}
         </box>
