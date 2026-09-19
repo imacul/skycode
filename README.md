@@ -46,6 +46,7 @@ SkyCode is under active development.
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
+- Hardened slash-command registry with validation, safe failure handling, and `/doctor` diagnostics
 - Built-in update checks and `skycode update`
 
 ### Experimental
@@ -260,10 +261,13 @@ Model availability changes frequently, so SkyCode discovers models at runtime. W
 | `/cancel` | Cancel the active generation |
 | `/clear` | Clear the current conversation |
 | `/setup` | Open the full provider setup flow |
+| `/doctor` | Check slash-command wiring, active provider/model, chat storage, memory path, and workspace |
 | `/help` | Show available commands |
 | `/exit` | Exit SkyCode |
 
 ### Slash commands
+
+Slash commands are validated before execution. Missing required arguments now return usage guidance instead of silently doing nothing, unknown commands point to `/help`, and unexpected command errors are caught and surfaced inside the chat instead of crashing the terminal UI. Run `/doctor` before a demo to inspect the current command/provider/storage state.
 
 Type `/` in the composer to open the command picker. Keep typing to filter it, use `↑` / `↓` to move through matches, press `Tab` to complete the highlighted command, or click a command with the mouse.
 

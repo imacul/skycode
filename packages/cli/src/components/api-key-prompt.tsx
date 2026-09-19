@@ -1,7 +1,7 @@
 // API Key Prompt Component
 // Shows when no API key is configured and prompts user to enter one
 import { useState, useCallback, useRef } from 'react';
-import type { KeyBinding, TextareaRenderable } from '@opentui/core';
+import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 
 export interface ApiKeyPromptProps {
   provider: 'openrouter' | 'anthropic' | 'openai' | 'local';
@@ -80,6 +80,17 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
     }
   }, []);
 
+  const handleKeyDown = useCallback((key: KeyEvent) => {
+    if (key.name !== 'escape') return;
+    key.preventDefault();
+    key.stopPropagation();
+    if (provider === 'local') {
+      onBack();
+    } else {
+      onSkip();
+    }
+  }, [provider, onBack, onSkip]);
+
   return (
     <box
       flexDirection="column"
@@ -128,6 +139,7 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
           keyBindings={SETUP_TEXTAREA_KEY_BINDINGS}
           placeholder={provider === 'local' ? 'http://localhost:11434' : 'sk-...'}
           onChange={handleKeyChange}
+          onKeyDown={handleKeyDown}
           onSubmit={handleSubmit}
           width="100%"
         />
@@ -141,7 +153,7 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
       {/* Actions */}
       <box flexDirection="row" gap={2} justifyContent="flex-end">
         <text fg="gray" attributes={{ dim: true }}>
-          Press Enter to submit, Esc to skip
+          {provider === 'local' ? 'Press Enter to submit, Esc to go back' : 'Press Enter to submit, Esc to skip'}
         </text>
       </box>
 
