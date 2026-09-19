@@ -44,6 +44,7 @@ SkyCode is under active development.
 - Unified OpenRouter + local model catalog with FREE/PAID labels and provider-aware switching
 - Interactive searchable `/model` picker with keyboard/mouse selection and compact model metadata
 - Durable cross-chat memory with correction-aware facts, preferences, project memory, and relevant past-chat recall
+- Clean chat transcripts: internal system/identity prompts stay hidden from the visible conversation
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
