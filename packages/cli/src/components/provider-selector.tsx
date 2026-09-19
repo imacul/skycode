@@ -125,9 +125,10 @@ export function ProviderSelector({ onSelect, onBack, allowedProviders }: Provide
           {visibleProviders[selectedIndex].description}
         </text>
         {visibleProviders[selectedIndex].requiresApiKey ? (
-          <text fg="gray">
-            Requires: <text fg="cyan">{visibleProviders[selectedIndex].envVar}</text>
-          </text>
+          <box flexDirection="row" gap={1}>
+            <text fg="gray">Requires:</text>
+            <text fg="cyan">{visibleProviders[selectedIndex].envVar}</text>
+          </box>
         ) : (
           <text fg="green">
             No API key required - Just run your local server!
