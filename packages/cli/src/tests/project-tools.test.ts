@@ -318,6 +318,60 @@ describe('project tool protocol', () => {
     expect(completed).toContain('Built the project successfully.');
   });
 
+  it('keeps successful workspace changes and returns a summary if the model stops afterwards', async () => {
+    const root = await workspace();
+    let calls = 0;
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+
+        if (calls === 1) {
+          return {
+            content:
+              '<tool_call>{"name":"create_directory","args":{"path":"demo"}}</tool_call>' +
+              '<tool_call>{"name":"write_file","args":{"path":"demo/index.ts","content":"export const built = true;\\n"}}</tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+
+        throw new Error('provider returned no visible answer');
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    let completed: any;
+    await agent.processStream({
+      input: 'Build a TypeScript project here',
+      onComplete: (response) => {
+        completed = response;
+      },
+    });
+
+    expect(await stat(join(root, 'demo/index.ts'))).toBeDefined();
+    expect(completed.content).toContain('SkyCode kept the workspace changes');
+    expect(completed.content).toContain('Updated 1 file.');
+    expect(completed.metadata.finishReason).toBe('provider_stopped_after_tools');
+  });
+
   it('lets the coding agent create a real multi-file project from model tool calls', async () => {
     const root = await workspace();
     let call = 0;
