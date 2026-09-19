@@ -29,6 +29,7 @@ import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
+import { shouldContinueProjectTools } from './agents/project-tools';
 import type { BaseProvider } from './providers/base';
 import type { AgentActivity, AgentRequest, AgentResponse } from './agents/types';
 import {
@@ -404,6 +405,11 @@ function App() {
       activeAbortControllerRef.current = abortController;
 
       // Create agent request
+      const continuingProjectWork = shouldContinueProjectTools(
+        text,
+        previousMessages
+      );
+
       const request: AgentRequest = {
         input: text,
         context: {
@@ -411,6 +417,7 @@ function App() {
           contextWindow: budget.contextWindow,
           droppedHistoryMessages: fittedHistory.droppedCount,
           signal: abortController.signal,
+          ...(continuingProjectWork ? { agent: 'coding-agent' } : {}),
         },
         // Leave mode unset so the orchestrator can route general work,
         // coding, planning, and business requests intelligently.
@@ -1010,8 +1017,7 @@ Current provider: ${provider?.name || 'none'}
 
       {showHistoryPanel && (
         <box
-          width="100%"
-          maxWidth={78}
+          width="96%"
           paddingX={2}
           flexDirection="column"
           flexShrink={0}
@@ -1102,8 +1108,7 @@ Current provider: ${provider?.name || 'none'}
       {/* Messages display */}
       <scrollbox
         ref={messagesScrollRef}
-        width="100%"
-        maxWidth={78}
+        width="96%"
         paddingX={2}
         flexDirection="column"
         gap={1}
@@ -1119,6 +1124,7 @@ Current provider: ${provider?.name || 'none'}
           visibleMessages.map((msg) => (
             <box
               key={msg.id}
+              width="100%"
               flexDirection="column"
               gap={0.5}
               paddingY={0.5}
@@ -1150,7 +1156,7 @@ Current provider: ${provider?.name || 'none'}
           ))
         ) : (
           !isProcessing && !showWelcome && (
-            <box flexDirection="column" gap={1}>
+            <box width="100%" flexDirection="column" gap={1}>
               <text fg="gray" attributes={{ dim: true }}>
                 Welcome to Sky Code!
               </text>
@@ -1166,20 +1172,20 @@ Current provider: ${provider?.name || 'none'}
 
         {/* Streaming response */}
         {isProcessing && currentResponse && (
-          <box flexDirection="column" gap={0.5} paddingY={0.5}>
+          <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <ResponseContent content={currentResponse} streaming={true} />
           </box>
         )}
 
         {isProcessing && workActivities.length > 0 && (
-          <box flexDirection="column" gap={0.5} paddingY={0.5}>
+          <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <WorkActivityView activities={workActivities} />
           </box>
         )}
 
         {isProcessing && !currentResponse && workActivities.length === 0 && (
-          <box flexDirection="column" gap={0.5} paddingY={0.5}>
+          <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <text attributes={{ blink: true }}>Thinking...</text>
           </box>

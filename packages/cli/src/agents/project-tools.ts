@@ -57,6 +57,25 @@ export function shouldUseProjectTools(input: string): boolean {
   return directFileIntent.test(text) || (projectNouns.test(text) && mutationVerbs.test(text));
 }
 
+
+export function shouldContinueProjectTools(
+  input: string,
+  messages: Message[]
+): boolean {
+  const clean = input.trim().toLowerCase();
+  const continuation =
+    /^(?:please\s+)?(?:proceed|continue|continue please|go ahead|keep going|carry on|finish(?: it)?|complete(?: it)?|resume|do it|yes|yeah|yep|ok|okay)(?:\s+(?:please|with it|from there|the work|the project))?[.!?]*$/i;
+
+  if (!continuation.test(clean)) return false;
+
+  const recentUserMessages = [...messages]
+    .reverse()
+    .filter((message) => message.role === 'user')
+    .slice(0, 6);
+
+  return recentUserMessages.some((message) => shouldUseProjectTools(message.content));
+}
+
 function coerceDsmlScalar(value: string, declaredString?: string): unknown {
   const clean = value.trim();
 
