@@ -51,6 +51,7 @@ SkyCode is under active development.
 - OpenRouter fast-visible mode: reasoning models default to low/excluded reasoning so user-facing text starts sooner; blank generations retry once with reasoning disabled and empty assistant bubbles are never committed
 - Strict-provider tool-loop compatibility: project tool feedback uses provider-safe user turns and OpenRouter normalizes message sequences for upstreams that reject mid-conversation system messages
 - Project-build empty-response recovery: non-streaming OpenRouter tool-planning calls retry with reasoning disabled, then without reasoning metadata, so weak/free coding models get multiple chances to emit visible tool calls
+- Live project work UI: Codex-style workspace activity shows planning, files being read/created/updated, +/− line counts, and compact diff previews while the model works
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -157,6 +158,12 @@ If an older pre-bootstrap-safe install is already broken, rerun the official ins
 SkyCode separates the raw model from the capabilities of the harness around it. Coding models are explicitly told that SkyCode can inspect the active workspace and create/read/search/write project files and directories. Software-creation prompts are routed toward the coding agent, while pure capability questions such as `Can you create software?` are answered from SkyCode's real capabilities instead of the upstream model's generic chatbot disclaimer.
 
 For actual build requests, SkyCode retries models that incorrectly answer with raw-model limitations instead of using workspace tools. If a weak model repeatedly refuses or fails to emit the structured tool protocol, SkyCode reports that the selected model failed the tool protocol rather than falsely claiming that SkyCode cannot create software.
+
+## Live workspace activity
+
+For real build/edit requests, SkyCode now separates the agent's working state from the final chat response. While the coding agent operates, the chat shows a bounded live work panel with workspace inspection, directory creation, file writes, change counts, and compact red/green diff previews. The panel auto-follows the active work so the input stays visible.
+
+If a provider stops after some workspace tools have already succeeded, SkyCode preserves those changes and emits a deterministic summary instead of leaving the chat hanging with no final response.
 
 ## Project creation
 
