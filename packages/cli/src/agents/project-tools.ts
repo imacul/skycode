@@ -130,6 +130,39 @@ function pushProjectToolCall(
   }
 }
 
+function pushLooseProjectToolCall(
+  calls: ProjectToolCall[],
+  value: unknown
+): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+
+  const parsed = value as Record<string, unknown>;
+  const explicitArgs =
+    parsed.args && typeof parsed.args === 'object' && !Array.isArray(parsed.args)
+      ? parsed.args
+      : undefined;
+
+  if (typeof parsed.name === 'string' && explicitArgs) {
+    pushProjectToolCall(calls, parsed.name, explicitArgs);
+    return;
+  }
+
+  // DeepSeek v4 flash sometimes emits the write-file arguments directly in
+  // the tool envelope and drops both the tool name and the args wrapper:
+  // {"path":"src/a.js","contents":"...","calls":[]}
+  // A path plus textual contents is unambiguous enough to recover safely.
+  if (
+    typeof parsed.path === 'string' &&
+    (typeof parsed.contents === 'string' || typeof parsed.content === 'string')
+  ) {
+    pushProjectToolCall(calls, 'write_file', {
+      path: parsed.path,
+      content:
+        typeof parsed.contents === 'string' ? parsed.contents : parsed.content,
+    });
+  }
+}
+
 export function parseProjectToolCalls(content: string): ProjectToolCall[] {
   const calls: ProjectToolCall[] = [];
   const normalized = normalizeDsmlMarkup(content);
@@ -142,7 +175,7 @@ export function parseProjectToolCalls(content: string): ProjectToolCall[] {
         name?: string;
         args?: Record<string, unknown>;
       };
-      pushProjectToolCall(calls, parsed.name, parsed.args);
+      pushLooseProjectToolCall(calls, parsed);
     } catch {
       // Other model-native tool syntaxes are handled below.
     }
