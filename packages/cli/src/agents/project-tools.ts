@@ -544,6 +544,27 @@ export async function executeProjectToolCall(
         args.cwd = workspace;
         break;
       }
+      case 'run_command': {
+        if (typeof args.command !== 'string' || !args.command.trim()) {
+          throw new Error('command must be a non-empty string.');
+        }
+
+        const policy = classifyProjectCommand(args.command);
+        if (!policy.allowed) {
+          throw new Error(
+            'Terminal command blocked: ' +
+              (policy.reason || 'This command is not allowed autonomously.')
+          );
+        }
+
+        args.cwd = workspace;
+        args.timeout = Math.min(
+          Math.max(Number(args.timeout || 120000), 1000),
+          120000
+        );
+        args.captureOutput = true;
+        break;
+      }
     }
 
     const result = await executeTool(call.name, args as any, context);
@@ -557,6 +578,11 @@ export async function executeProjectToolCall(
 
     if (typeof args.path === 'string') {
       execution.displayPath = workspaceDisplayPath(workspace, args.path);
+    }
+
+    if (call.name === 'run_command') {
+      execution.displayPath = '.';
+      execution.preview = terminalPreview(execution.content);
     }
 
     if (
@@ -598,6 +624,10 @@ export function projectToolResultMessage(
         '[content omitted from tool-result echo: ' +
         safeArgs.content.length +
         ' chars]';
+    }
+
+    if (execution.call.name === 'run_command') {
+      delete safeArgs.cwd;
     }
 
     return JSON.stringify({
