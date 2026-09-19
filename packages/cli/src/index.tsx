@@ -416,7 +416,21 @@ function App() {
           scrollChatToBottom();
         },
         onComplete: (response: AgentResponse) => {
-          // Add assistant response to conversation
+          const finalContent = response.content.trim();
+
+          // Never commit an empty assistant bubble. Empty output is a provider
+          // failure, not a valid chat message.
+          if (!finalContent) {
+            activeAbortControllerRef.current = null;
+            setCurrentResponse('');
+            setError(
+              'The selected model returned no visible answer. SkyCode did not add an empty assistant message; try again or switch models.'
+            );
+            setIsProcessing(false);
+            scrollChatToBottom();
+            return;
+          }
+
           addMessage('assistant', response.content, {
             model: response.metadata?.model,
             finishReason: response.metadata?.finishReason,
@@ -429,8 +443,10 @@ function App() {
         onError: (err) => {
           const wasCancelled = abortController.signal.aborted;
           activeAbortControllerRef.current = null;
+          setCurrentResponse('');
           setError(wasCancelled ? 'Generation cancelled.' : err.message);
           setIsProcessing(false);
+          scrollChatToBottom();
         },
       };
 

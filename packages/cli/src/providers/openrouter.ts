@@ -42,6 +42,10 @@ interface OpenRouterRequest {
   stop?: string[];
   // OpenRouter-specific
   app_name?: string;
+  reasoning?: {
+    effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
+    exclude?: boolean;
+  };
 }
 
 /**
@@ -59,6 +63,8 @@ interface OpenRouterResponse {
         | string
         | Array<{ type?: string; text?: string }>
         | null;
+      reasoning?: string | null;
+      reasoning_details?: unknown[];
     };
     finish_reason: string | null;
   }>;
@@ -84,6 +90,10 @@ interface OpenRouterStreamChunk {
         | string
         | Array<{ type?: string; text?: string }>
         | null;
+      text?: string | null;
+      reasoning?: string | null;
+      reasoning_content?: string | null;
+      reasoning_details?: unknown[];
     };
     finish_reason: string | null;
   }>;
@@ -393,6 +403,8 @@ export class OpenRouterProvider implements BaseProvider {
     let finishReason: string | undefined;
     let usage: ChatResponse['usage'] | undefined;
     let completionSent = false;
+    let visibleContentLength = 0;
+    let reasoningSeen = false;
 
     const processEvent = (event: string) => {
       const data = getSseData(event);
@@ -423,9 +435,21 @@ export class OpenRouterProvider implements BaseProvider {
         }
 
         const choice = chunk.choices?.[0];
-        const deltaContent = textFromContent(choice?.delta?.content);
+        const delta = choice?.delta;
+        const deltaContent =
+          textFromContent(delta?.content) ||
+          (typeof delta?.text === 'string' ? delta.text : '');
+
+        if (
+          (typeof delta?.reasoning === 'string' && delta.reasoning.length > 0) ||
+          (typeof delta?.reasoning_content === 'string' && delta.reasoning_content.length > 0) ||
+          (Array.isArray(delta?.reasoning_details) && delta.reasoning_details.length > 0)
+        ) {
+          reasoningSeen = true;
+        }
 
         if (deltaContent) {
+          visibleContentLength += deltaContent.length;
           onChunk({
             content: deltaContent,
             finishReason: undefined,
@@ -472,6 +496,55 @@ export class OpenRouterProvider implements BaseProvider {
       for (const event of finalEvents.events) {
         processEvent(event);
       }
+    }
+
+    if (visibleContentLength === 0) {
+      // Some reasoning-heavy OpenRouter models can consume a streamed
+      // generation entirely in hidden reasoning and return no visible content.
+      // Retry once with low/excluded reasoning so SkyCode still receives a
+      // user-facing answer instead of leaving the transcript blank.
+      const fallbackBody: OpenRouterRequest = {
+        ...body,
+        stream: false,
+        reasoning: {
+          effort: 'low',
+          exclude: true,
+        },
+      };
+
+      const fallbackResponse = await fetch(`${this.config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(fallbackBody),
+        signal: this.getRequestSignal(request),
+      });
+
+      if (fallbackResponse.ok) {
+        const fallbackData = (await fallbackResponse.json()) as OpenRouterResponse;
+        const fallbackChoice = fallbackData.choices?.[0];
+        const fallbackContent = textFromContent(fallbackChoice?.message?.content).trim();
+
+        if (fallbackContent) {
+          onChunk({
+            content: fallbackContent,
+            finishReason: fallbackChoice?.finish_reason || 'stop',
+            usage: fallbackData.usage
+              ? {
+                  promptTokens: fallbackData.usage.prompt_tokens,
+                  completionTokens: fallbackData.usage.completion_tokens,
+                  totalTokens: fallbackData.usage.total_tokens,
+                }
+              : usage,
+          });
+          return;
+        }
+      }
+
+      throw new Error(
+        reasoningSeen
+          ? `OpenRouter model ${model} completed its reasoning but returned no visible answer. SkyCode retried once with reduced reasoning and still received no content. Try again or switch models.`
+          : `OpenRouter model ${model} returned an empty response. SkyCode retried once and still received no visible content. Try again or switch models.`
+      );
     }
 
     if (!completionSent) {
