@@ -101,6 +101,7 @@ export function InputBar({
       .catch((error) => {
         if (cancelled) return;
         setModelCatalogError(error instanceof Error ? error.message : String(error));
+        setModelCatalogLoaded(true);
       })
       .finally(() => {
         if (!cancelled) setModelCatalogLoading(false);
@@ -108,6 +109,7 @@ export function InputBar({
 
     return () => {
       cancelled = true;
+      setModelCatalogLoading(false);
     };
   }, [showModelPicker, modelCatalogLoaded, modelCatalogLoading, loadModelCatalog]);
 
