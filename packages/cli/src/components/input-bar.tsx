@@ -2,7 +2,6 @@ import { useMemo, useRef, useState } from 'react';
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { StatusBar } from './satus-bar';
 import { SLASH_COMMANDS } from '../utils/slash-commands';
-import type { SlashCommand } from '../utils/slash-commands';
 
 type Props = {
   onSubmit: (text: string) => void;
