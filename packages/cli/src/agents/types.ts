@@ -110,7 +110,7 @@ export interface AgentApprovalRequest {
   description: string;
   command: string;
   permissionKey: string;
-  risk: 'workspace' | 'git-write';
+  risk: 'verify' | 'workspace' | 'git-write';
 }
 
 export interface AgentActivity {
