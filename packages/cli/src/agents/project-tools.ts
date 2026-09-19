@@ -685,7 +685,9 @@ export async function executeProjectToolCall(
             title:
               policy.risk === 'git-write'
                 ? 'Approve Git workspace change'
-                : 'Approve workspace command',
+                : policy.risk === 'verify'
+                  ? 'Approve verification command'
+                  : 'Approve workspace command',
             description:
               policy.description ||
               'This command can change the active workspace.',
