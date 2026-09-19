@@ -1,12 +1,20 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { StatusBar } from './satus-bar';
 import { SLASH_COMMANDS } from '../utils/slash-commands';
+import {
+  createModelPickerItems,
+  filterModelPickerItems,
+  type CatalogModel,
+} from '../utils/model-catalog';
 
 type Props = {
   onSubmit: (text: string) => void;
   disabled?: boolean;
   onCommand?: (command: string) => void;
+  loadModelCatalog?: () => Promise<CatalogModel[]>;
+  currentProvider?: string;
+  currentModel?: string;
 };
 
 const COMMAND_PREFIX = '/';
@@ -27,14 +35,88 @@ export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
   { name: 'kpenter', meta: true, action: 'submit' },
 ];
 
-export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
+export function InputBar({
+  onSubmit,
+  disabled = false,
+  onCommand,
+  loadModelCatalog,
+  currentProvider = '',
+  currentModel = '',
+}: Props) {
   const textareaRef = useRef<TextareaRenderable | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [pickerDismissed, setPickerDismissed] = useState(false);
+  const [modelCatalog, setModelCatalog] = useState<CatalogModel[]>([]);
+  const [modelCatalogLoaded, setModelCatalogLoaded] = useState(false);
+  const [modelCatalogLoading, setModelCatalogLoading] = useState(false);
+  const [modelCatalogError, setModelCatalogError] = useState<string | null>(null);
+  const [selectedModelIndex, setSelectedModelIndex] = useState(0);
 
   const isCommandMode = inputValue.startsWith(COMMAND_PREFIX);
   const commandToken = inputValue.trimStart().split(/\s+/)[0] || '';
+  const isModelPickerMode =
+    inputValue.trim() === '/model' || inputValue.startsWith('/model ');
+  const rawModelQuery = inputValue.startsWith('/model ')
+    ? inputValue.slice('/model '.length).trim()
+    : '';
+  const modelQuery = rawModelQuery.toLowerCase().startsWith('search ')
+    ? rawModelQuery.slice('search '.length).trim()
+    : rawModelQuery;
+
+  const modelPickerItems = useMemo(
+    () =>
+      createModelPickerItems(modelCatalog, {
+        provider: currentProvider,
+        model: currentModel,
+      }),
+    [modelCatalog, currentProvider, currentModel]
+  );
+
+  const filteredModels = useMemo(
+    () => filterModelPickerItems(modelPickerItems, modelQuery, 8),
+    [modelPickerItems, modelQuery]
+  );
+
+  const showModelPicker =
+    !disabled &&
+    !pickerDismissed &&
+    isModelPickerMode;
+
+  useEffect(() => {
+    if (!showModelPicker || modelCatalogLoaded || modelCatalogLoading || !loadModelCatalog) {
+      return;
+    }
+
+    let cancelled = false;
+    setModelCatalogLoading(true);
+    setModelCatalogError(null);
+
+    void loadModelCatalog()
+      .then((catalog) => {
+        if (cancelled) return;
+        setModelCatalog(catalog);
+        setModelCatalogLoaded(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setModelCatalogError(error instanceof Error ? error.message : String(error));
+        setModelCatalogLoaded(true);
+      })
+      .finally(() => {
+        if (!cancelled) setModelCatalogLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      setModelCatalogLoading(false);
+    };
+  }, [showModelPicker, modelCatalogLoaded, modelCatalogLoading, loadModelCatalog]);
+
+  useEffect(() => {
+    setSelectedModelIndex(0);
+  }, [modelQuery]);
+
 
   const filteredCommands = useMemo(() => {
     if (!isCommandMode) return [];
@@ -47,11 +129,17 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
     !disabled &&
     !pickerDismissed &&
     isCommandMode &&
+    !isModelPickerMode &&
     !hasCommandArguments &&
     filteredCommands.length > 0;
 
   const selectedCommand =
     filteredCommands[Math.min(selectedCommandIndex, Math.max(0, filteredCommands.length - 1))];
+
+  const selectedModel =
+    filteredModels.matches[
+      Math.min(selectedModelIndex, Math.max(0, filteredModels.matches.length - 1))
+    ];
 
   const replaceInput = (value: string) => {
     const textarea = textareaRef.current;
@@ -68,6 +156,17 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
     replaceInput(command.takesArgs ? `${command.command} ` : command.command);
   };
 
+  const applySelectedModel = () => {
+    if (!selectedModel) return;
+    replaceInput('/model ' + selectedModel.selector);
+  };
+
+  const submitSelectedModel = () => {
+    if (!selectedModel) return;
+    onCommand?.('/model ' + selectedModel.selector);
+    clearInput();
+  };
+
   const handleContentChange = () => {
     const value = textareaRef.current?.editBuffer.getText() ?? '';
     setInputValue(value);
@@ -76,6 +175,45 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
   };
 
   const handleKeyDown = (key: KeyEvent) => {
+    if (showModelPicker) {
+      if (key.name === 'escape') {
+        setPickerDismissed(true);
+        key.preventDefault();
+        key.stopPropagation();
+        return;
+      }
+
+      if (key.name === 'up' && filteredModels.matches.length > 0) {
+        setSelectedModelIndex((index) =>
+          (index - 1 + filteredModels.matches.length) % filteredModels.matches.length
+        );
+        key.preventDefault();
+        key.stopPropagation();
+        return;
+      }
+
+      if (key.name === 'down' && filteredModels.matches.length > 0) {
+        setSelectedModelIndex((index) => (index + 1) % filteredModels.matches.length);
+        key.preventDefault();
+        key.stopPropagation();
+        return;
+      }
+
+      if (key.name === 'tab' && selectedModel) {
+        applySelectedModel();
+        key.preventDefault();
+        key.stopPropagation();
+        return;
+      }
+
+      if (key.name === 'return' || key.name === 'enter' || key.name === 'kpenter') {
+        if (selectedModel) submitSelectedModel();
+        key.preventDefault();
+        key.stopPropagation();
+        return;
+      }
+    }
+
     if (!showCommandPicker) {
       if (key.name === 'escape' && isCommandMode) {
         setPickerDismissed(true);
@@ -128,6 +266,7 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
     setInputValue('');
     setSelectedCommandIndex(0);
     setPickerDismissed(false);
+    setSelectedModelIndex(0);
     if (textareaRef.current) {
       textareaRef.current.editBuffer.setText('');
       textareaRef.current.cursorOffset = 0;
@@ -152,6 +291,79 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
 
   return (
     <box width="100%" flexDirection="column">
+      {showModelPicker && (
+        <box
+          width="100%"
+          flexDirection="column"
+          backgroundColor="#12121A"
+          border={['top', 'left', 'right']}
+          borderColor="cyan"
+          paddingX={1}
+          paddingY={0}
+        >
+          <box width="100%" flexDirection="row" justifyContent="space-between">
+            <text fg="cyan" attributes={{ bold: true }}>{'Models'}</text>
+            <text fg="gray" attributes={{ dim: true }}>
+              {modelCatalogLoading
+                ? 'Loading model catalog...'
+                : modelCatalogError
+                  ? 'Could not load models'
+                  : filteredModels.total + ' matches'}
+            </text>
+          </box>
+          <text fg="gray" attributes={{ dim: true }}>
+            {'Type to filter · ↑↓ navigate · Enter switch · Tab fill · click to switch · Esc close'}
+          </text>
+
+          {modelCatalogError ? (
+            <text fg="red">{String(modelCatalogError)}</text>
+          ) : modelCatalogLoading ? (
+            <text fg="gray">{'Fetching OpenRouter and local models...'}</text>
+          ) : filteredModels.matches.length === 0 ? (
+            <text fg="yellow">{'No models match "' + modelQuery + '".'}</text>
+          ) : (
+            filteredModels.matches.map((item, index) => {
+              const selected = index === selectedModelIndex;
+              return (
+                <box
+                  key={item.key}
+                  width="100%"
+                  flexDirection="column"
+                  backgroundColor={selected ? '#16303A' : '#12121A'}
+                  paddingX={1}
+                  paddingY={0}
+                  onMouseDown={() => {
+                    onCommand?.('/model ' + item.selector);
+                    clearInput();
+                  }}
+                >
+                  <box width="100%" flexDirection="row" justifyContent="space-between">
+                    <text fg={selected ? 'cyan' : 'white'} attributes={{ bold: selected }}>
+                      {String(item.name)}
+                    </text>
+                    <text fg={item.current ? 'green' : item.local || item.free ? 'green' : 'gray'}>
+                      {item.current ? 'CURRENT' : item.local ? 'LOCAL' : item.free ? 'FREE' : 'PAID'}
+                    </text>
+                  </box>
+                  <text fg="gray" attributes={{ dim: true }}>
+                    {String(item.selector)}
+                  </text>
+                  <text fg="gray" attributes={{ dim: true }}>
+                    {String(item.meta)}
+                  </text>
+                </box>
+              );
+            })
+          )}
+
+          {!modelCatalogLoading && !modelCatalogError && filteredModels.total > filteredModels.matches.length && (
+            <text fg="gray" attributes={{ dim: true }}>
+              {'Showing ' + filteredModels.matches.length + ' of ' + filteredModels.total + ' matches — keep typing to narrow the list.'}
+            </text>
+          )}
+        </box>
+      )}
+
       {showCommandPicker && (
         <box
           width="100%"
@@ -206,9 +418,11 @@ export function InputBar({ onSubmit, disabled = false, onCommand }: Props) {
               onKeyDown={handleKeyDown}
               onSubmit={handleSubmit}
               placeholder={
-                isCommandMode
-                  ? 'Type a command or use ↑↓ to choose'
-                  : 'Ask anything ... "Fix a bug in the database"'
+                isModelPickerMode
+                  ? 'Type a model name, provider, free, paid, local...'
+                  : isCommandMode
+                    ? 'Type a command or use ↑↓ to choose'
+                    : 'Ask anything ... "Fix a bug in the database"'
               }
             />
             <StatusBar />

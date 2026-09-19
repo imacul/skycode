@@ -60,3 +60,93 @@ export function formatCatalogLine(entry: CatalogModel, current?: {
     selected
   );
 }
+
+
+export interface ModelPickerItem {
+  key: string;
+  selector: string;
+  providerLabel: string;
+  name: string;
+  meta: string;
+  searchText: string;
+  current: boolean;
+  free: boolean;
+  local: boolean;
+}
+
+export function createModelPickerItems(
+  entries: CatalogModel[],
+  current?: { provider: string; model: string }
+): ModelPickerItem[] {
+  return entries
+    .map((entry) => {
+      const selector = entry.provider + ':' + entry.model.id;
+      const currentMatch =
+        current?.provider === entry.provider && current?.model === entry.model.id;
+      const context = entry.model.contextLength
+        ? Math.round(entry.model.contextLength / 1000) + 'K ctx'
+        : 'context unknown';
+
+      const cost = entry.local
+        ? 'LOCAL · FREE'
+        : entry.free
+          ? 'FREE'
+          : formatPricePerMillion(entry.model.pricing?.prompt) +
+            ' in · ' +
+            formatPricePerMillion(entry.model.pricing?.completion) +
+            ' out';
+
+      const providerLabel = entry.local ? 'LOCAL' : 'OPENROUTER';
+      const name = entry.model.name || entry.model.id;
+      const meta = providerLabel + ' · ' + cost + ' · ' + context;
+
+      return {
+        key: selector,
+        selector,
+        providerLabel,
+        name,
+        meta,
+        searchText: [
+          selector,
+          entry.model.id,
+          entry.model.name,
+          entry.model.description,
+          ...(entry.model.tags || []),
+          entry.provider,
+          entry.free ? 'free' : 'paid',
+          entry.local ? 'local' : '',
+        ]
+          .join(' ')
+          .toLowerCase(),
+        current: !!currentMatch,
+        free: entry.free,
+        local: entry.local,
+      };
+    })
+    .sort((a, b) => {
+      if (a.current !== b.current) return a.current ? -1 : 1;
+      if (a.local !== b.local) return a.local ? -1 : 1;
+      if (a.free !== b.free) return a.free ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+export function filterModelPickerItems(
+  items: ModelPickerItem[],
+  query: string,
+  limit = 12
+): { matches: ModelPickerItem[]; total: number } {
+  const clean = query.trim().toLowerCase();
+  const words = clean.split(/\s+/).filter(Boolean);
+
+  const filtered = words.length === 0
+    ? items
+    : items.filter((item) =>
+        words.every((word) => item.searchText.includes(word))
+      );
+
+  return {
+    matches: filtered.slice(0, limit),
+    total: filtered.length,
+  };
+}
