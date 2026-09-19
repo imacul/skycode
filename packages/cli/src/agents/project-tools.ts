@@ -192,7 +192,7 @@ export function parseProjectToolCalls(content: string): ProjectToolCall[] {
         name?: string;
         args?: Record<string, unknown>;
       };
-      pushProjectToolCall(calls, parsed.name, parsed.args);
+      pushLooseProjectToolCall(calls, parsed);
     } catch {
       // Ignore malformed JSON and continue to the tag parser.
     }
