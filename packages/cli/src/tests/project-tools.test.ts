@@ -84,24 +84,72 @@ describe('project tool protocol', () => {
     expect(shouldContinueProjectTools('tell me a joke', history)).toBe(false);
   });
 
-  it('allows safe verification commands and blocks risky shell commands', () => {
+  it('allows safe verification commands, requires approval for workspace changes, and blocks destructive commands', () => {
     expect(classifyProjectCommand('git status')).toEqual({
       allowed: true,
+      requiresApproval: false,
       risk: 'read',
     });
     expect(classifyProjectCommand('npm test')).toEqual({
       allowed: true,
+      requiresApproval: false,
       risk: 'verify',
     });
     expect(classifyProjectCommand('npm run build')).toEqual({
       allowed: true,
+      requiresApproval: false,
       risk: 'verify',
     });
 
-    expect(classifyProjectCommand('npm install react').allowed).toBe(false);
+    const install = classifyProjectCommand('npm install react');
+    expect(install.allowed).toBe(true);
+    expect(install.requiresApproval).toBe(true);
+    expect(install.permissionKey).toBe('terminal:packages');
+
+    const commit = classifyProjectCommand('git commit -m "checkpoint"');
+    expect(commit.allowed).toBe(true);
+    expect(commit.requiresApproval).toBe(true);
+    expect(commit.permissionKey).toBe('terminal:git-write');
+
     expect(classifyProjectCommand('git push').allowed).toBe(false);
     expect(classifyProjectCommand('rm -rf .').allowed).toBe(false);
     expect(classifyProjectCommand('npm test && git status').allowed).toBe(false);
+  });
+
+  it('asks for approval before a workspace-mutating terminal command and honors denial', async () => {
+    const root = await workspace();
+    let approvalRequest: any;
+
+    const result = await executeProjectToolCall(
+      {
+        name: 'run_command',
+        args: { command: 'git add .' },
+      },
+      context(root),
+      async (request) => {
+        approvalRequest = request;
+        return 'deny';
+      }
+    );
+
+    expect(approvalRequest.permissionKey).toBe('terminal:git-write');
+    expect(approvalRequest.command).toBe('git add .');
+    expect(result.success).toBe(false);
+    expect(result.content).toContain('User denied terminal command');
+  });
+
+  it('does not execute approval-required commands when no approval callback exists', async () => {
+    const root = await workspace();
+    const result = await executeProjectToolCall(
+      {
+        name: 'run_command',
+        args: { command: 'npm install react' },
+      },
+      context(root)
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.content).toContain('requires user approval');
   });
 
   it('executes safe terminal commands inside the active workspace', async () => {
