@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   executeProjectToolCall,
+  isProjectCapabilityQuestion,
   parseProjectClarification,
   parseProjectPlan,
   parseProjectToolCalls,
@@ -46,6 +47,16 @@ describe('project tool protocol', () => {
       )
     ).toBe(true);
     expect(shouldUseProjectTools('Explain how Array.map works')).toBe(false);
+  });
+
+  it('routes broad software creation intents to project tools but not capability-only questions', () => {
+    expect(shouldUseProjectTools('Build me a desktop application with Electron')).toBe(true);
+    expect(shouldUseProjectTools('Create a Python CLI project with clean architecture')).toBe(true);
+    expect(shouldUseProjectTools('Develop a full-stack web app in this folder')).toBe(true);
+
+    expect(isProjectCapabilityQuestion('Can you create software?')).toBe(true);
+    expect(isProjectCapabilityQuestion('Are you able to build desktop apps?')).toBe(true);
+    expect(shouldUseProjectTools('Can you create software?')).toBe(false);
   });
 
   it('parses blocking clarification requests', () => {
