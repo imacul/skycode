@@ -29,6 +29,7 @@ import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
+import { shouldContinueProjectTools } from './agents/project-tools';
 import type { BaseProvider } from './providers/base';
 import type { AgentActivity, AgentRequest, AgentResponse } from './agents/types';
 import {
@@ -404,6 +405,11 @@ function App() {
       activeAbortControllerRef.current = abortController;
 
       // Create agent request
+      const continuingProjectWork = shouldContinueProjectTools(
+        text,
+        previousMessages
+      );
+
       const request: AgentRequest = {
         input: text,
         context: {
@@ -411,6 +417,7 @@ function App() {
           contextWindow: budget.contextWindow,
           droppedHistoryMessages: fittedHistory.droppedCount,
           signal: abortController.signal,
+          ...(continuingProjectWork ? { agent: 'coding-agent' } : {}),
         },
         // Leave mode unset so the orchestrator can route general work,
         // coding, planning, and business requests intelligently.
