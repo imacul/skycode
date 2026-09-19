@@ -79,16 +79,24 @@ $shim = @'
 @echo off
 setlocal
 
-if /I "%~1"=="update" (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.skycode\app\update.ps1" %*
-  exit /b %ERRORLEVEL%
-)
-
+if /I "%~1"=="update" goto :update
 if /I "%~1"=="-v" goto :version
 if /I "%~1"=="--version" goto :version
 if /I "%~1"=="version" goto :version
 
 bun "%USERPROFILE%\.skycode\app\packages\cli\src\index.tsx" %*
+exit /b %ERRORLEVEL%
+
+:update
+if exist "%USERPROFILE%\.skycode\app\update.ps1" goto :localupdate
+goto :repair
+
+:localupdate
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.skycode\app\update.ps1" %*
+exit /b %ERRORLEVEL%
+
+:repair
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$u = 'https://raw.githubusercontent.com/imacul/skycode/main/install.ps1?ts=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); irm $u | iex"
 exit /b %ERRORLEVEL%
 
 :version
