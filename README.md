@@ -49,7 +49,7 @@ SkyCode is under active development.
 - Rich assistant responses with headings, lists, quotes, dedicated writing cards, themed code blocks, line numbers, syntax colors, and per-block copy controls
 - Wide chat layout: transcript, messages, streaming responses, errors, history panel, and composer use about 96% of the terminal width instead of a narrow fixed column
 - Project continuation routing: short follow-ups like "please proceed" and "continue" stay on the coding agent and keep workspace tools active when the recent chat is a project build
-- Permission-aware internal agent terminal: safe verification runs automatically, while dependency changes, generators, format/fix scripts, and git add/commit can request Allow once / Allow session / Always allow / Deny
+- Permission-aware internal agent terminal: read-only metadata checks can run automatically, while tests/builds, dependency changes, generators, format/fix scripts, and git add/commit can request Allow once / Allow session / Always allow / Deny
 - Realtime stream-follow: chat automatically follows the active assistant response and commits the full provider stream at EOF
 - OpenRouter fast-visible mode: reasoning models default to low/excluded reasoning so user-facing text starts sooner; blank generations retry once with reasoning disabled and empty assistant bubbles are never committed
 - Strict-provider tool-loop compatibility: project tool feedback uses provider-safe user turns and OpenRouter normalizes message sequences for upstreams that reject mid-conversation system messages
@@ -166,7 +166,7 @@ For actual build requests, SkyCode retries models that incorrectly answer with r
 
 ## Permission and approval engine
 
-SkyCode now separates automatic-safe terminal work from workspace-changing commands. Read-only inspection and common verification commands can run without interruption. Commands that can modify dependencies, generated files, formatting, or Git staging/history pause the agent and show an interactive approval card.
+SkyCode now separates read-only terminal inspection from commands that execute project code or mutate the workspace. Read-only metadata checks such as `git status`, `git diff`, and runtime version checks can run without interruption. Tests/builds, dependency changes, generators, format/fix scripts, and Git staging/history changes pause the agent and show an interactive approval card.
 
 Approval choices:
 - **Allow once** — run only this command.
