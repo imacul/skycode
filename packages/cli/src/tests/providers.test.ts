@@ -40,6 +40,78 @@ describe('Providers', () => {
       expect(model?.id).toBe('meta-llama/llama-3.1-70b-instruct');
     });
 
+    it('should normalize strict-provider message sequences', async () => {
+      let requestBody: any;
+
+      globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body || '{}'));
+        return new Response(
+          JSON.stringify({
+            id: 'or-normalize',
+            model: 'test/model',
+            choices: [
+              {
+                index: 0,
+                message: { role: 'assistant', content: 'ok' },
+                finish_reason: 'stop',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }) as typeof fetch;
+
+      try {
+        const provider = createOpenRouterProvider();
+        await provider.initialize({ apiKey: 'test-key' });
+
+        await provider.chat({
+          model: 'test/model',
+          messages: [
+            {
+              id: 's1',
+              role: 'system',
+              content: 'top system',
+              timestamp: new Date(),
+            },
+            {
+              id: 'u1',
+              role: 'user',
+              content: 'build it',
+              timestamp: new Date(),
+            },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: '<tool_call>{}</tool_call>',
+              timestamp: new Date(),
+            },
+            {
+              id: 's2',
+              role: 'system',
+              content: 'tool result that used to break strict providers',
+              timestamp: new Date(),
+            },
+            {
+              id: 'blank',
+              role: 'assistant',
+              content: '   ',
+              timestamp: new Date(),
+            },
+          ],
+        });
+
+        expect(requestBody.messages).toEqual([
+          { role: 'system', content: 'top system' },
+          { role: 'user', content: 'build it' },
+          { role: 'assistant', content: '<tool_call>{}</tool_call>' },
+          { role: 'user', content: 'tool result that used to break strict providers' },
+        ]);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     it('should parse OpenAI-compatible chat completion responses', async () => {
       globalThis.fetch = (async () =>
         new Response(
