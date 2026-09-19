@@ -146,6 +146,8 @@
           <div><code>/forget &lt;query&gt;</code><span>Remove matching memory.</span></div>
           <div><code>/new</code><span>Start a new conversation.</span></div>
           <div><code>/doctor</code><span>Check slash-command, provider, storage, and workspace health before a demo.</span></div>
+          <div><code>/permissions</code><span>Inspect persistent and session tool approvals.</span></div>
+          <div><code>/permissions reset</code><span>Clear saved and session approvals.</span></div>
           <div><code>Page Up / Page Down</code><span>Scroll through a long chat transcript.</span></div>
           <div><code>Ctrl + Home / Ctrl + End</code><span>Jump to the oldest or newest part of the transcript.</span></div>
         </div>
@@ -162,7 +164,8 @@
         <h2>Create real project files</h2>
         <p>Launch SkyCode in a workspace and ask the coding agent to create, scaffold, build, edit, or modify a project. It can create directories and write, read, list, and search files directly inside that workspace.</p>
         <div class="codebox"><code>Create a portfolio website in ./portfolio using HTML, CSS, and JavaScript.</code></div>
-        <p>Autonomous file operations are restricted to the directory where SkyCode was launched. Shell commands, package installation, deletion, and paths outside the active workspace are not exposed to this project-building loop.</p>
+        <p>File operations are restricted to the directory where SkyCode was launched. The coding agent also has a permission-aware workspace terminal: read-only metadata checks can run directly, while tests/builds, dependency changes, generators, format/fix scripts, and Git staging/commit commands pause for an interactive approval.</p>
+        <p>Choose <strong>Allow once</strong>, <strong>Allow session</strong>, <strong>Always allow</strong>, or <strong>Deny</strong>. Destructive commands, package publishing, Git push/history rewrites, and system-management commands remain blocked.</p>
       </section>
 
       <section id="eval" class="plain-section">
