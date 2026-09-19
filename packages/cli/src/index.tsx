@@ -1010,8 +1010,7 @@ Current provider: ${provider?.name || 'none'}
 
       {showHistoryPanel && (
         <box
-          width="100%"
-          maxWidth={78}
+          width="96%"
           paddingX={2}
           flexDirection="column"
           flexShrink={0}
@@ -1102,8 +1101,7 @@ Current provider: ${provider?.name || 'none'}
       {/* Messages display */}
       <scrollbox
         ref={messagesScrollRef}
-        width="100%"
-        maxWidth={78}
+        width="96%"
         paddingX={2}
         flexDirection="column"
         gap={1}
