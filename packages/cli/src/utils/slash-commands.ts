@@ -20,6 +20,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/clear', description: 'Clear the current conversation' },
   { command: '/setup', description: 'Configure providers' },
   { command: '/doctor', description: 'Check command/provider/storage health' },
+  { command: '/permissions', description: 'Show or reset persistent tool approvals', takesArgs: true },
   { command: '/help', description: 'Show available commands' },
   { command: '/exit', description: 'Exit SkyCode' },
 ];
@@ -38,6 +39,7 @@ const EXACT_COMMANDS = new Set([
   '/clear',
   '/setup',
   '/doctor',
+  '/permissions',
   '/help',
   '/exit',
 ]);
@@ -61,6 +63,13 @@ export function validateSlashCommand(raw: string): SlashValidation {
   if (normalized === '/memory' || normalized === '/memory clear') {
     return { ok: true, normalized };
   }
+  if (
+    normalized === '/permissions' ||
+    normalized === '/permissions reset'
+  ) {
+    return { ok: true, normalized };
+  }
+
 
   if (normalized === '/remember') {
     return {
