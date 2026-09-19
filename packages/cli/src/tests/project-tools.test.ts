@@ -9,6 +9,7 @@ import {
   parseProjectPlan,
   parseProjectToolCalls,
   projectToolResultMessage,
+  shouldContinueProjectTools,
   shouldUseProjectTools,
   stripProjectToolCalls,
 } from '../agents/project-tools';
@@ -59,6 +60,27 @@ describe('project tool protocol', () => {
     expect(isProjectCapabilityQuestion('Can you create software?')).toBe(true);
     expect(isProjectCapabilityQuestion('Are you able to build desktop apps?')).toBe(true);
     expect(shouldUseProjectTools('Can you create software?')).toBe(false);
+  });
+
+  it('keeps short proceed/continue follow-ups in project tool mode when recent history contains a build request', () => {
+    const history = [
+      {
+        id: 'u1',
+        role: 'user' as const,
+        content: 'Build a desktop notes app with Electron and TypeScript in this workspace.',
+        timestamp: new Date(),
+      },
+      {
+        id: 'a1',
+        role: 'assistant' as const,
+        content: 'I will inspect the workspace first.',
+        timestamp: new Date(),
+      },
+    ];
+
+    expect(shouldContinueProjectTools('please proceed', history)).toBe(true);
+    expect(shouldContinueProjectTools('continue', history)).toBe(true);
+    expect(shouldContinueProjectTools('tell me a joke', history)).toBe(false);
   });
 
   it('parses DeepSeek DSML invoke syntax without forcing a retry', () => {
@@ -419,6 +441,69 @@ describe('project tool protocol', () => {
     expect(completed.content).toContain('SkyCode kept the workspace changes');
     expect(completed.content).toContain('Updated 1 file.');
     expect(completed.metadata.finishReason).toBe('provider_stopped_after_tools');
+  });
+
+  it('uses project tools on a short continuation instead of falling back to plain chat', async () => {
+    const root = await workspace();
+    let calls = 0;
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+
+        if (calls === 1) {
+          return {
+            content:
+              '<tool_call>{"name":"write_file","args":{"path":"continued.txt","content":"continued"}}</tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+
+        return {
+          content: 'Continued the project and updated continued.txt.',
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [
+        {
+          id: 'u1',
+          role: 'user',
+          content: 'Build a TypeScript project in this workspace.',
+          timestamp: new Date(),
+        },
+      ],
+    });
+
+    let completed = '';
+    await agent.processStream({
+      input: 'please proceed',
+      onComplete: (response) => {
+        completed = response.content;
+      },
+    });
+
+    expect((await stat(join(root, 'continued.txt'))).isFile()).toBe(true);
+    expect(completed).toContain('Continued the project');
   });
 
   it('lets the coding agent create a real multi-file project from model tool calls', async () => {
