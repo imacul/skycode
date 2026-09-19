@@ -1124,6 +1124,7 @@ Current provider: ${provider?.name || 'none'}
           visibleMessages.map((msg) => (
             <box
               key={msg.id}
+              width="100%"
               flexDirection="column"
               gap={0.5}
               paddingY={0.5}
@@ -1155,7 +1156,7 @@ Current provider: ${provider?.name || 'none'}
           ))
         ) : (
           !isProcessing && !showWelcome && (
-            <box flexDirection="column" gap={1}>
+            <box width="100%" flexDirection="column" gap={1}>
               <text fg="gray" attributes={{ dim: true }}>
                 Welcome to Sky Code!
               </text>
@@ -1171,20 +1172,20 @@ Current provider: ${provider?.name || 'none'}
 
         {/* Streaming response */}
         {isProcessing && currentResponse && (
-          <box flexDirection="column" gap={0.5} paddingY={0.5}>
+          <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <ResponseContent content={currentResponse} streaming={true} />
           </box>
         )}
 
         {isProcessing && workActivities.length > 0 && (
-          <box flexDirection="column" gap={0.5} paddingY={0.5}>
+          <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <WorkActivityView activities={workActivities} />
           </box>
         )}
 
         {isProcessing && !currentResponse && workActivities.length === 0 && (
-          <box flexDirection="column" gap={0.5} paddingY={0.5}>
+          <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <text attributes={{ blink: true }}>Thinking...</text>
           </box>
