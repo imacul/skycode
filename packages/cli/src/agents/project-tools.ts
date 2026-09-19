@@ -691,7 +691,12 @@ export async function executeProjectToolCall(
               'This command can change the active workspace.',
             command: args.command,
             permissionKey: policy.permissionKey,
-            risk: policy.risk === 'git-write' ? 'git-write' : 'workspace',
+            risk:
+              policy.risk === 'git-write'
+                ? 'git-write'
+                : policy.risk === 'verify'
+                  ? 'verify'
+                  : 'workspace',
           });
 
           if (decision === 'deny') {
