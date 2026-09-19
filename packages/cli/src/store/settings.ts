@@ -68,6 +68,10 @@ export interface AgentSettings {
   fixBugs: boolean;
 }
 
+export interface PermissionSettings {
+  alwaysAllow: string[];
+}
+
 /**
  * All settings combined
  */
@@ -76,6 +80,7 @@ export interface Settings {
   ui: UISettings;
   model: ModelSettings;
   agent: AgentSettings;
+  permissions: PermissionSettings;
   // Version for migrations
   version: number;
 }
@@ -127,6 +132,9 @@ export const DEFAULT_SETTINGS: Settings = {
     explainCode: true,
     fixBugs: true,
   },
+  permissions: {
+    alwaysAllow: [],
+  },
 };
 
 /**
@@ -150,6 +158,9 @@ interface SettingsActions {
   
   // Update agent settings
   updateAgentSettings: (settings: Partial<AgentSettings>) => void;
+
+  // Update persistent permission settings
+  updatePermissionSettings: (settings: Partial<PermissionSettings>) => void;
   
   // Reset to defaults
   resetSettings: () => void;
@@ -235,6 +246,14 @@ export const useSettingsStore = create<SettingsStore>()(
         set((state) => ({
           agent: {
             ...state.agent,
+            ...settings,
+          },
+        })),
+
+      updatePermissionSettings: (settings) =>
+        set((state) => ({
+          permissions: {
+            ...(state.permissions || DEFAULT_SETTINGS.permissions),
             ...settings,
           },
         })),

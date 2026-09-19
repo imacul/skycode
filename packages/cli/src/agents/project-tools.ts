@@ -1,7 +1,11 @@
 import { resolve, relative, isAbsolute, dirname } from 'node:path';
 import { lstat, realpath, readFile } from 'node:fs/promises';
 import { executeTool } from '../tools';
-import type { AgentContext } from './types';
+import type {
+  AgentApprovalDecision,
+  AgentApprovalRequest,
+  AgentContext,
+} from './types';
 import type { Message } from '../store/conversation';
 
 export const PROJECT_TOOL_NAMES = [
@@ -233,7 +237,10 @@ export function stripProjectToolCalls(content: string): string {
 
 export interface ProjectCommandPolicy {
   allowed: boolean;
-  risk: 'read' | 'verify' | 'workspace' | 'blocked';
+  requiresApproval: boolean;
+  risk: 'read' | 'verify' | 'workspace' | 'git-write' | 'blocked';
+  permissionKey?: string;
+  description?: string;
   reason?: string;
 }
 
@@ -241,48 +248,97 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   const clean = command.trim();
 
   if (!clean) {
-    return { allowed: false, risk: 'blocked', reason: 'Command is empty.' };
+    return {
+      allowed: false,
+      requiresApproval: false,
+      risk: 'blocked',
+      reason: 'Command is empty.',
+    };
   }
 
   if (/[\r\n;&|><\x60]/.test(clean) || /\$\(/.test(clean)) {
     return {
       allowed: false,
+      requiresApproval: false,
       risk: 'blocked',
       reason:
-        'Shell chaining, redirects, pipes, command substitution, and multiline commands are not allowed autonomously.',
+        'Shell chaining, redirects, pipes, command substitution, and multiline commands are not allowed.',
     };
   }
 
   if (/(?:^|\s)(?:\.\.[\\/]|[A-Za-z]:[\\/]|\/(?!\/))/.test(clean)) {
     return {
       allowed: false,
+      requiresApproval: false,
       risk: 'blocked',
       reason:
-        'Terminal commands must use paths inside the active workspace and may not reference parent or absolute paths.',
+        'Terminal commands must stay inside the active workspace and may not reference parent or absolute paths.',
     };
   }
 
   const destructive =
-    /\b(rm|rmdir|del|erase|format|mkfs|shutdown|reboot|halt|poweroff)\b|\bgit\s+(reset|clean|checkout\s+--|restore\s+--staged|push|commit|rebase)\b|\b(remove-item|clear-content|set-acl)\b/i;
+    /\b(rm|rmdir|del|erase|format|mkfs|shutdown|reboot|halt|poweroff)\b|\bgit\s+(reset|clean|checkout\s+--|restore\s+--staged|push|rebase)\b|\b(remove-item|clear-content|set-acl)\b/i;
 
   if (destructive.test(clean)) {
     return {
       allowed: false,
+      requiresApproval: false,
       risk: 'blocked',
       reason:
-        'Destructive, publishing, or history-rewriting commands require a future approval flow.',
+        'Destructive, publishing, history-rewriting, or system-management commands are blocked.',
+    };
+  }
+
+  if (/^(?:npm|pnpm|yarn|bun)\s+publish\b/i.test(clean)) {
+    return {
+      allowed: false,
+      requiresApproval: false,
+      risk: 'blocked',
+      reason: 'Package publishing is blocked from autonomous terminal access.',
+    };
+  }
+
+  if (/^git\s+(?:add|commit)\b/i.test(clean)) {
+    return {
+      allowed: true,
+      requiresApproval: true,
+      risk: 'git-write',
+      permissionKey: 'terminal:git-write',
+      description: 'This command changes Git staging/history in the active workspace.',
+    };
+  }
+
+  const formatter =
+    /^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:format|fix)(?::[\w-]+)?\b/i;
+  if (formatter.test(clean)) {
+    return {
+      allowed: true,
+      requiresApproval: true,
+      risk: 'workspace',
+      permissionKey: 'terminal:format',
+      description: 'This command may rewrite project files using a formatter or fixer.',
     };
   }
 
   const packageMutation =
-    /^(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|uninstall|update|upgrade|link|publish|init|create)\b|^npx\s+(?!tsc\b)/i;
-
+    /^(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|uninstall|update|upgrade|link|init|create)\b/i;
   if (packageMutation.test(clean)) {
     return {
-      allowed: false,
+      allowed: true,
+      requiresApproval: true,
       risk: 'workspace',
-      reason:
-        'Package installation/generation is workspace-changing and requires a future approval flow.',
+      permissionKey: 'terminal:packages',
+      description: 'This command may install/remove packages or modify dependency files.',
+    };
+  }
+
+  if (/^npx\s+(?!tsc\b)/i.test(clean)) {
+    return {
+      allowed: true,
+      requiresApproval: true,
+      risk: 'workspace',
+      permissionKey: 'terminal:generator',
+      description: 'This command may download/execute a package or generator in the workspace.',
     };
   }
 
@@ -294,7 +350,7 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   ];
 
   if (readOnlyPatterns.some((pattern) => pattern.test(clean))) {
-    return { allowed: true, risk: 'read' };
+    return { allowed: true, requiresApproval: false, risk: 'read' };
   }
 
   const verifyPatterns = [
@@ -312,13 +368,21 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   ];
 
   if (verifyPatterns.some((pattern) => pattern.test(clean))) {
-    return { allowed: true, risk: 'verify' };
+    return {
+      allowed: true,
+      requiresApproval: true,
+      risk: 'verify',
+      permissionKey: 'terminal:verify',
+      description:
+        'This command executes project tooling or code to test/build/check the workspace.',
+    };
   }
 
   return {
     allowed: false,
+    requiresApproval: false,
     risk: 'blocked',
-    reason: 'Command is outside SkyCode’s autonomous safe-terminal allowlist.',
+    reason: 'Command is outside SkyCode’s terminal policy.',
   };
 }
 
@@ -526,19 +590,20 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- run_command: {"command":"npm test","timeout":120000} — safe verification/read commands only; SkyCode runs it inside the active workspace.',
     '',
     'Terminal rules:',
-    '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks.',
+    '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks. Read-only metadata commands can run automatically; project-executing verification commands require approval.',
     '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
     '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
     '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
-    '- Package installation, package generators, git publishing/history rewrites, destructive filesystem commands, and system-management commands are blocked until SkyCode has an explicit approval UI.',
-    '- If a needed command is blocked, continue with file work where possible and tell the user exactly which manual/approval-requiring command remains.',
+    '- Package installation/removal, generators, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
+    '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
+    '- If a needed command is blocked, continue with file work where possible and tell the user exactly which command remains unavailable.',
     '',
     'Rules:',
     '- All paths must stay inside the workspace root.',
     '- Prefer relative paths.',
     '- Never claim a file was created or changed unless the tool result says success.',
     '- Inspect existing files before overwriting when the request targets an existing project.',
-    '- Do not delete files, install packages, publish code, rewrite git history, or access paths outside the workspace. Shell access is limited to the safe run_command policy above.',
+    '- Do not delete files, publish code, rewrite git history, or access paths outside the workspace. Package/dependency changes and approved git workspace changes are allowed only through the interactive permission flow.',
     '- For a small plain HTML/CSS/JavaScript project, normally keep markup in index.html, shared presentation in one or more CSS files, and behavior in JavaScript modules instead of embedding everything in index.html.',
     '- For larger projects, create a folder structure appropriate to the stack before writing implementation files.',
     '- Batch independent tool calls in the same response whenever possible. Do not spend one model round trip per file; SkyCode can execute multiple create_directory/write_file calls from one response.',
@@ -548,7 +613,10 @@ export function getProjectToolInstructions(workingDirectory: string): string {
 
 export async function executeProjectToolCall(
   call: ProjectToolCall,
-  context: AgentContext
+  context: AgentContext,
+  requestApproval?: (
+    request: AgentApprovalRequest
+  ) => Promise<AgentApprovalDecision>
 ): Promise<ProjectToolExecution> {
   const workspace = resolve(context.workingDirectory || process.cwd());
   const args: Record<string, unknown> = { ...call.args };
@@ -599,8 +667,43 @@ export async function executeProjectToolCall(
         if (!policy.allowed) {
           throw new Error(
             'Terminal command blocked: ' +
-              (policy.reason || 'This command is not allowed autonomously.')
+              (policy.reason || 'This command is not allowed by SkyCode.')
           );
+        }
+
+        if (policy.requiresApproval) {
+          if (!requestApproval || !policy.permissionKey) {
+            throw new Error(
+              'Terminal command requires user approval before it can run: ' +
+                args.command
+            );
+          }
+
+          const decision = await requestApproval({
+            id: 'approval_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            type: 'terminal',
+            title:
+              policy.risk === 'git-write'
+                ? 'Approve Git workspace change'
+                : policy.risk === 'verify'
+                  ? 'Approve verification command'
+                  : 'Approve workspace command',
+            description:
+              policy.description ||
+              'This command can change the active workspace.',
+            command: args.command,
+            permissionKey: policy.permissionKey,
+            risk:
+              policy.risk === 'git-write'
+                ? 'git-write'
+                : policy.risk === 'verify'
+                  ? 'verify'
+                  : 'workspace',
+          });
+
+          if (decision === 'deny') {
+            throw new Error('User denied terminal command: ' + args.command);
+          }
         }
 
         args.cwd = workspace;
