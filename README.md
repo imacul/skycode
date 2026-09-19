@@ -239,7 +239,7 @@ ANTHROPIC_API_KEY="..."
 OPENAI_API_KEY="..."
 ```
 
-Model availability changes frequently, so SkyCode discovers models at runtime. Type `/model` to open an inline picker styled like the slash-command menu. Keep typing to filter by model name, provider, tag, `free`, `paid`, or `local`; use ↑/↓ to move, Enter or click to switch, and Tab to fill the exact selector without switching yet. The picker shows compact provider, price, context-window, and current-model metadata.
+Model availability changes frequently, so SkyCode discovers models at runtime. Select `/model` from the slash-command picker (or type `/model` and press Enter) to open the model picker. The model list does not appear until the command is explicitly chosen. Keep typing to filter by model name, provider, tag, `free`, `paid`, or `local`; use ↑/↓ to move, Enter or click to switch, and Tab to fill the exact selector without switching yet. The picker shows compact provider, price, context-window, and current-model metadata.
 
 ## Commands
 
