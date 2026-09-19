@@ -376,6 +376,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- Do not delete files, run shell commands, install packages, or access paths outside the workspace through this tool set.',
     '- For a small plain HTML/CSS/JavaScript project, normally keep markup in index.html, shared presentation in one or more CSS files, and behavior in JavaScript modules instead of embedding everything in index.html.',
     '- For larger projects, create a folder structure appropriate to the stack before writing implementation files.',
+    '- Batch independent tool calls in the same response whenever possible. Do not spend one model round trip per file; SkyCode can execute multiple create_directory/write_file calls from one response.',
     '- After tools finish, give a concise summary of the architecture and what was actually created or changed.',
   ].join('\n');
 }
