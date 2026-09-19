@@ -28,6 +28,7 @@
       <div class="side-title">Reference</div>
       <a href="#providers">Providers</a>
       <a href="#commands">Commands</a>
+      <a href="#responses">Rich responses</a>
       <a href="#history">Chat history</a>
       <a href="#memory">Cross-chat memory</a>
       <a href="#project-tools">Project creation</a>
@@ -139,12 +140,14 @@
           <div><code>/history</code><span>List saved chats with dates and activity.</span></div>
           <div><code>/resume 1</code><span>Resume a saved chat by number.</span></div>
           <div><code>/copy</code><span>Copy the latest assistant reply.</span></div>
-          <div><code>/model</code><span>Inspect or switch models.</span></div>
+          <div><code>/model</code><span>Open the interactive model picker; type to filter and press Enter or click to switch.</span></div>
           <div><code>/memory</code><span>Show durable cross-chat memory.</span></div>
           <div><code>/remember &lt;fact&gt;</code><span>Save a durable memory.</span></div>
           <div><code>/forget &lt;query&gt;</code><span>Remove matching memory.</span></div>
           <div><code>/new</code><span>Start a new conversation.</span></div>
           <div><code>/doctor</code><span>Check slash-command, provider, storage, and workspace health before a demo.</span></div>
+          <div><code>/permissions</code><span>Inspect persistent and session tool approvals.</span></div>
+          <div><code>/permissions reset</code><span>Clear saved and session approvals.</span></div>
           <div><code>Page Up / Page Down</code><span>Scroll through a long chat transcript.</span></div>
           <div><code>Ctrl + Home / Ctrl + End</code><span>Jump to the oldest or newest part of the transcript.</span></div>
         </div>
@@ -161,7 +164,8 @@
         <h2>Create real project files</h2>
         <p>Launch SkyCode in a workspace and ask the coding agent to create, scaffold, build, edit, or modify a project. It can create directories and write, read, list, and search files directly inside that workspace.</p>
         <div class="codebox"><code>Create a portfolio website in ./portfolio using HTML, CSS, and JavaScript.</code></div>
-        <p>Autonomous file operations are restricted to the directory where SkyCode was launched. Shell commands, package installation, deletion, and paths outside the active workspace are not exposed to this project-building loop.</p>
+        <p>File operations are restricted to the directory where SkyCode was launched. The coding agent also has a permission-aware workspace terminal: read-only metadata checks can run directly, while tests/builds, dependency changes, generators, format/fix scripts, and Git staging/commit commands pause for an interactive approval.</p>
+        <p>Choose <strong>Allow once</strong>, <strong>Allow session</strong>, <strong>Always allow</strong>, or <strong>Deny</strong>. Destructive commands, package publishing, Git push/history rewrites, and system-management commands remain blocked.</p>
       </section>
 
       <section id="eval" class="plain-section">
@@ -176,6 +180,13 @@
         <p>SkyCode combines durable facts and preferences, workspace-scoped project decisions, and relevant excerpts from earlier user messages. Newer durable records replace older recognized facts so corrections do not accumulate as contradictions.</p>
         <p>Use <code>/remember &lt;fact&gt;</code> for anything important, <code>/memory</code> to inspect saved memory, <code>/forget &lt;query&gt;</code> to remove matching records, or <code>/memory clear</code> to clear durable memory.</p>
         <p>Memory stays local under <code>~/.skycode/memory.json</code>. Likely credentials such as API keys, passwords, seed phrases, and PINs are rejected from durable memory.</p>
+      </section>
+
+      <section id="responses" class="plain-section">
+        <div class="eyebrow">RESPONSES</div>
+        <h2>Readable terminal-native answers</h2>
+        <p>SkyCode renders assistant Markdown-like structure as native OpenTUI blocks: headings, lists, quotes, dividers, writing cards, and themed code blocks.</p>
+        <p>Fenced code includes a language label, line numbers, syntax colors, and a Copy control. <code>writing</code> fences become dedicated copyable writing cards. The same renderer is used while responses stream.</p>
       </section>
 
       <section id="history" class="plain-section">
