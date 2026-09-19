@@ -8,10 +8,18 @@ const source = readFileSync(
 );
 
 describe('interactive model picker wiring', () => {
-  it('loads the live model catalog and filters while typing /model', () => {
+  it('opens the model picker only after /model is explicitly selected or submitted', () => {
+    expect(source).toContain('const [modelPickerOpen, setModelPickerOpen] = useState(false)');
+    expect(source).toContain("if (command.command === '/model')");
+    expect(source).toContain("if (command === '/model')");
+    expect(source).toContain('setModelPickerOpen(true)');
+  });
+
+  it('loads the live model catalog once the picker is open without a loading-state dependency loop', () => {
     expect(source).toContain('loadModelCatalog');
-    expect(source).toContain("inputValue.trim() === '/model'");
     expect(source).toContain('filterModelPickerItems(modelPickerItems, modelQuery, 8)');
+    expect(source).toContain('[showModelPicker, modelCatalogLoaded, loadModelCatalog]');
+    expect(source).not.toContain('[showModelPicker, modelCatalogLoaded, modelCatalogLoading, loadModelCatalog]');
   });
 
   it('supports keyboard and mouse model switching', () => {
