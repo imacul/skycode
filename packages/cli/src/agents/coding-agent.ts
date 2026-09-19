@@ -1,6 +1,7 @@
 // Coding Agent - Specialized for code-related tasks
 import type {
   BaseAgent,
+  AgentActivity,
   AgentConfig,
   AgentContext,
   AgentRequest,
