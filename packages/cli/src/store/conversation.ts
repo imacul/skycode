@@ -22,6 +22,7 @@ export interface Message {
   metadata?: {
     model?: string;
     finishReason?: string;
+    visibility?: 'chat' | 'internal';
     usage?: {
       promptTokens: number;
       completionTokens: number;
@@ -141,6 +142,22 @@ function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+export function isInternalSystemMessage(message: Message): boolean {
+  if (message.metadata?.visibility === 'internal') return true;
+  if (message.role !== 'system') return false;
+
+  // Migration guard for old chats created before internal prompts were
+  // explicitly marked. These prompts are implementation context, not chat.
+  return (
+    message.content.includes('Identity and provenance rules:') &&
+    message.content.includes('You are an AI assistant running inside SkyCode.')
+  );
+}
+
+export function getVisibleConversationMessages(messages: Message[]): Message[] {
+  return messages.filter((message) => !isInternalSystemMessage(message));
+}
+
 export function formatRelativeTime(value: Date | string, now = new Date()): string {
   const date = toDate(value);
   const diffMs = Math.max(0, now.getTime() - date.getTime());
@@ -166,7 +183,8 @@ export function formatConversationHistory(conversations: Conversation[]): string
   const lines = conversations.map((conversation, index) => {
     const created = toDate(conversation.createdAt);
     const updated = toDate(conversation.updatedAt);
-    return `${index + 1}. ${conversation.title}\n   ID: ${conversation.id}\n   Started: ${created.toLocaleString()}\n   Last chat: ${formatRelativeTime(updated)}\n   Messages: ${conversation.messages.length}`;
+    const visibleMessages = getVisibleConversationMessages(conversation.messages);
+    return `${index + 1}. ${conversation.title}\n   ID: ${conversation.id}\n   Started: ${created.toLocaleString()}\n   Last chat: ${formatRelativeTime(updated)}\n   Messages: ${visibleMessages.length}`;
   });
 
   return `Saved chats:\n\n${lines.join('\n\n')}\n\nUse /resume <number-or-id> to open one.`;
@@ -420,10 +438,12 @@ export const useConversationStore = create<ConversationStore>()(
               ...conversation,
               createdAt: toDate(conversation.createdAt),
               updatedAt: toDate(conversation.updatedAt),
-              messages: conversation.messages.map((message) => ({
-                ...message,
-                timestamp: toDate(message.timestamp),
-              })),
+              messages: conversation.messages
+                .map((message) => ({
+                  ...message,
+                  timestamp: toDate(message.timestamp),
+                }))
+                .filter((message) => !isInternalSystemMessage(message)),
             },
           ])
         ) as Record<string, Conversation>;
@@ -494,11 +514,10 @@ export function getSystemMessage(
 export function createNewConversation(
   store: ConversationStore,
   title?: string,
-  provider?: string,
-  model?: string
+  _provider?: string,
+  _model?: string
 ): Conversation {
-  const conversation = store.createConversation(title);
-  const systemMessage = getSystemMessage(provider, model);
-  store.addMessage('system', systemMessage.content);
-  return conversation;
+  // Internal system prompts are generated fresh by agents at request time.
+  // Do not persist them into the user-visible conversation transcript.
+  return store.createConversation(title);
 }
