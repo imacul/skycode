@@ -30,6 +30,7 @@ const EXACT_COMMANDS = new Set([
   '/addcloud',
   '/openroute',
   '/addopenrouter',
+  '/openrouter',
   '/history',
   '/chats',
   '/copy',
