@@ -104,29 +104,23 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
     >
       {/* Header */}
       <box flexDirection="column" gap={1}>
-        <text fg="yellow" attributes={{ bold: true }}>
-          {provider === 'local' ? '🏡 Local LLM Setup' : '🔑 API Key Required'}
-        </text>
-        <text fg="white">
-          {provider === 'local' 
-            ? 'Enter your local LLM server URL'
-            : `Enter your ${info.name} API key to continue`}
-        </text>
+        <text fg="yellow" attributes={{ bold: true }}>{provider === 'local' ? '🏡 Local LLM Setup' : '🔑 API Key Required'}</text>
+        <text fg="white">{provider === 'local' ? 'Enter your local LLM server URL' : 'Enter your ' + String(info.name) + ' API key to continue'}</text>
       </box>
 
       {/* Instructions */}
       <box flexDirection="column" gap={1}>
         {provider !== 'local' ? (
           <>
-            <text fg="gray">{`Get your API key from: ${info.url}`}</text>
-            <text fg="gray">{`Or set environment variable: ${info.envVar}`}</text>
+            <text fg="gray">{'Get your API key from: ' + String(info.url)}</text>
+            <text fg="gray">{'Or set environment variable: ' + String(info.envVar)}</text>
           </>
         ) : (
           <>
-            <text fg="gray">For Ollama: http://localhost:11434</text>
-            <text fg="gray">For LM Studio: http://localhost:1234/v1</text>
-            <text fg="gray">For llama.cpp: http://127.0.0.1:8080</text>
-            <text fg="gray">Or set environment variable: LOCAL_LLM_BASE_URL</text>
+            <text fg="gray">{'For Ollama: http://localhost:11434'}</text>
+            <text fg="gray">{'For LM Studio: http://localhost:1234/v1'}</text>
+            <text fg="gray">{'For llama.cpp: http://127.0.0.1:8080'}</text>
+            <text fg="gray">{'Or set environment variable: LOCAL_LLM_BASE_URL'}</text>
           </>
         )}
       </box>
@@ -146,26 +140,18 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
       </box>
 
       {/* Error */}
-      {error && (
-        <text fg="red">{error}</text>
-      )}
+      {error ? <text fg="red">{String(error)}</text> : null}
 
       {/* Actions */}
       <box flexDirection="row" gap={2} justifyContent="flex-end">
-        <text fg="gray" attributes={{ dim: true }}>
-          {provider === 'local' ? 'Press Enter to submit, Esc to go back' : 'Press Enter to submit, Esc to skip'}
-        </text>
+        <text fg="gray" attributes={{ dim: true }}>{provider === 'local' ? 'Press Enter to submit, Esc to go back' : 'Press Enter to submit, Esc to skip'}</text>
       </box>
 
       {/* Buttons */}
       <box flexDirection="row" gap={2} justifyContent="flex-end">
-        <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onBack}>
-          Back
-        </text>
+        <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onBack}>{'Back'}</text>
         {provider !== 'local' && (
-          <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onSkip}>
-            Try Without API Key
-          </text>
+          <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onSkip}>{'Try Without API Key'}</text>
         )}
         <text
           fg={canSubmit ? 'green' : 'gray'}
@@ -173,9 +159,7 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
           onMouseDown={() => {
             if (canSubmit) handleSubmit();
           }}
-        >
-          {isLoading ? 'Validating...' : canSubmit ? 'Submit' : 'Enter a value to submit'}
-        </text>
+        >{isLoading ? 'Validating...' : canSubmit ? 'Submit' : 'Enter a value to submit'}</text>
       </box>
     </box>
   );
