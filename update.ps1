@@ -47,23 +47,62 @@ function Get-RemoteVersion {
     return "unknown"
 }
 
-function Set-AutoUpdate([bool]$enabled) {
+function Get-UpdateSettings {
+    try {
+        if (-not (Test-Path $UpdateSettingsFile)) {
+            return [ordered]@{ autoUpdate = $false }
+        }
+
+        $parsed = Get-Content $UpdateSettingsFile -Raw | ConvertFrom-Json
+        $settings = [ordered]@{ autoUpdate = ($parsed.autoUpdate -eq $true) }
+
+        foreach ($name in @("lastCheckAt", "lastCheckResult", "lastUpdateAt", "lastVersion", "lastUpdateMode")) {
+            if ($null -ne $parsed.$name) {
+                $settings[$name] = [string]$parsed.$name
+            }
+        }
+
+        return $settings
+    }
+    catch {
+        return [ordered]@{ autoUpdate = $false }
+    }
+}
+
+function Save-UpdateSettings($settings) {
     $parent = Split-Path $UpdateSettingsFile -Parent
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
-    @{ autoUpdate = $enabled } |
+    $settings |
         ConvertTo-Json |
         Set-Content -Path $UpdateSettingsFile -Encoding UTF8
 }
 
+function Set-AutoUpdate([bool]$enabled) {
+    $settings = Get-UpdateSettings
+    $settings.autoUpdate = $enabled
+    Save-UpdateSettings $settings
+}
+
 function Get-AutoUpdate {
-    try {
-        if (-not (Test-Path $UpdateSettingsFile)) { return $false }
-        $settings = Get-Content $UpdateSettingsFile -Raw | ConvertFrom-Json
-        return $settings.autoUpdate -eq $true
-    }
-    catch {
-        return $false
-    }
+    $settings = Get-UpdateSettings
+    return $settings.autoUpdate -eq $true
+}
+
+function Record-UpdateCheck([string]$result) {
+    $settings = Get-UpdateSettings
+    $settings.lastCheckAt = [DateTimeOffset]::UtcNow.ToString("o")
+    $settings.lastCheckResult = $result
+    Save-UpdateSettings $settings
+}
+
+function Record-UpdateSuccess([string]$version, [string]$mode) {
+    $settings = Get-UpdateSettings
+    $settings.lastUpdateAt = [DateTimeOffset]::UtcNow.ToString("o")
+    $settings.lastVersion = $version
+    $settings.lastUpdateMode = $mode
+    $settings.lastCheckAt = [DateTimeOffset]::UtcNow.ToString("o")
+    $settings.lastCheckResult = "updated"
+    Save-UpdateSettings $settings
 }
 
 
@@ -149,6 +188,21 @@ if ($flags.ContainsKey("--auto")) {
     Write-Host "Automatic SkyCode updates enabled."
 }
 
+if ($flags.ContainsKey("--status")) {
+    $settings = Get-UpdateSettings
+    $state = if ($settings.autoUpdate -eq $true) { "enabled" } else { "disabled" }
+
+    Write-Host "Automatic updates: $state"
+    Write-Host "Installed version: v$(Get-LocalVersion)"
+    Write-Host "Last check: $($settings.lastCheckAt ?? "never")"
+    Write-Host "Last check result: $($settings.lastCheckResult ?? "unknown")"
+    Write-Host "Last successful update: $($settings.lastUpdateAt ?? "never")"
+    Write-Host "Last updated version: $($settings.lastVersion ?? "unknown")"
+    Write-Host "Last update mode: $($settings.lastUpdateMode ?? "unknown")"
+    exit 0
+}
+
+
 Require-Command "git" "Install Git for Windows, then retry."
 
 if ($flags.ContainsKey("--startup")) {
@@ -169,8 +223,11 @@ if ($flags.ContainsKey("--startup")) {
 
         $remoteSha = ($remoteLine -split "\s+")[0]
         if ($currentSha -eq $remoteSha) {
+            Record-UpdateCheck "up-to-date"
             exit 0
         }
+
+        Record-UpdateCheck "update-available"
 
         $remoteVersion = Get-RemoteVersion
         $label = if ($remoteVersion -ne "unknown") { "v$remoteVersion" } else { $remoteSha.Substring(0, 7) }
@@ -205,9 +262,12 @@ if ($flags.ContainsKey("--check")) {
         $remoteVersion = Get-RemoteVersion
 
         if ($currentSha -eq $remoteSha) {
+            Record-UpdateCheck "up-to-date"
             Write-Host "SkyCode v$localVersion is up to date."
             exit 0
         }
+
+        Record-UpdateCheck "update-available"
 
         $label = if ($remoteVersion -ne "unknown") { "v$remoteVersion" } else { $remoteSha.Substring(0, 7) }
         Write-Host "SkyCode update available: $label"
@@ -263,6 +323,8 @@ try {
     Write-BootstrapShim
 
     $version = Get-LocalVersion
+    $mode = if ($flags.ContainsKey("--startup")) { "automatic" } else { "manual" }
+    Record-UpdateSuccess $version $mode
     Write-Host "SkyCode updated successfully." -ForegroundColor Green
     Write-Host "Current version: v$version"
     exit 0
