@@ -40,6 +40,10 @@ case "${1:-}" in
     ;;
 esac
 
+if [ -f "$HOME/.skycode/app/update.sh" ]; then
+  bash "$HOME/.skycode/app/update.sh" --startup || true
+fi
+
 exec bun "$HOME/.skycode/app/packages/cli/src/index.tsx" "$@"
 EOF
   chmod +x "$SHIM"
@@ -61,9 +65,35 @@ if [[ "$flags" == *" --auto "* ]]; then
   echo "Automatic SkyCode updates enabled."
 fi
 
+if [[ "$flags" == *" --startup "* ]]; then
+  auto_enabled="false"
+  if [ -f "$UPDATE_SETTINGS" ] && grep -Eq '"autoUpdate"[[:space:]]*:[[:space:]]*true' "$UPDATE_SETTINGS"; then
+    auto_enabled="true"
+  fi
+
+  if [ "$auto_enabled" != "true" ]; then
+    exit 0
+  fi
+fi
+
 if ! command -v git >/dev/null 2>&1; then
   echo "SkyCode update failed: Git is required." >&2
   exit 1
+fi
+
+if [[ "$flags" == *" --startup "* ]]; then
+  if [ ! -d "$INSTALL_ROOT/.git" ]; then
+    exit 0
+  fi
+
+  current_sha="$(git -C "$INSTALL_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  remote_sha="$(git ls-remote "$REPO_URL" refs/heads/main 2>/dev/null | awk '{print $1}')"
+
+  if [ -z "$current_sha" ] || [ -z "$remote_sha" ] || [ "$current_sha" = "$remote_sha" ]; then
+    exit 0
+  fi
+
+  step "Automatic update found: ${remote_sha:0:7}"
 fi
 
 if [[ "$flags" == *" --check "* ]]; then

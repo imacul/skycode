@@ -68,6 +68,10 @@ case "${1:-}" in
     ;;
 esac
 
+if [ -f "$HOME/.skycode/app/update.sh" ]; then
+  bash "$HOME/.skycode/app/update.sh" --startup || true
+fi
+
 exec bun "$HOME/.skycode/app/packages/cli/src/index.tsx" "$@"
 EOF
 chmod +x "$SHIM"

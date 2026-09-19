@@ -16,6 +16,17 @@ describe('bootstrap-safe updater', () => {
     expect(updateRoute).toBeLessThan(bunLaunch);
   });
 
+  it('runs opted-in automatic updates before the Bun application loads', () => {
+    const startupUpdate = installPs1.indexOf('update.ps1" --startup');
+    const bunLaunch = installPs1.indexOf('bun "%USERPROFILE%\\.skycode\\app\\packages\\cli\\src\\index.tsx" %*');
+
+    expect(startupUpdate).toBeGreaterThan(-1);
+    expect(bunLaunch).toBeGreaterThan(-1);
+    expect(startupUpdate).toBeLessThan(bunLaunch);
+    expect(updatePs1).toContain('if ($flags.ContainsKey("--startup"))');
+    expect(updatePs1).toContain('if (-not (Get-AutoUpdate))');
+  });
+
   it('routes version commands without parsing the application', () => {
     expect(installPs1).toContain('if /I "%~1"=="-v" goto :version');
     expect(installPs1).toContain('ConvertFrom-Json).version');
