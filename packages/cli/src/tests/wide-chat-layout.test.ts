@@ -13,5 +13,11 @@ describe('wide chat layout', () => {
   it('keeps the transcript and input bar aligned to the same wide layout', () => {
     expect(source).toContain('<scrollbox\n        ref={messagesScrollRef}\n        width="96%"');
     expect(source).toContain('{/* Input bar */}\n      <box width="96%"');
+    expect(source).toContain('key={msg.id}\n              width="100%"');
+    expect(source).toContain('isProcessing && currentResponse && (\n          <box width="100%"');
+  });
+
+  it('has no remaining fixed 78-column caps in the main app layout', () => {
+    expect(source.match(/maxWidth=\{78\}/g) || []).toHaveLength(0);
   });
 });
