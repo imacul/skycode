@@ -8,6 +8,7 @@ import {
   parseProjectClarification,
   parseProjectPlan,
   parseProjectToolCalls,
+  projectToolResultMessage,
   shouldUseProjectTools,
 } from '../agents/project-tools';
 import { CodingAgent } from '../agents/coding-agent';
@@ -57,6 +58,22 @@ describe('project tool protocol', () => {
     expect(isProjectCapabilityQuestion('Can you create software?')).toBe(true);
     expect(isProjectCapabilityQuestion('Are you able to build desktop apps?')).toBe(true);
     expect(shouldUseProjectTools('Can you create software?')).toBe(false);
+  });
+
+  it('emits project tool results as user turns for strict provider compatibility', () => {
+    const message = projectToolResultMessage([
+      {
+        call: {
+          name: 'create_directory',
+          args: { path: 'demo' },
+        },
+        success: true,
+        content: 'created',
+      },
+    ]);
+
+    expect(message.role).toBe('user');
+    expect(message.content).toContain('PROJECT TOOL RESULTS');
   });
 
   it('parses blocking clarification requests', () => {

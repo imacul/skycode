@@ -49,6 +49,7 @@ SkyCode is under active development.
 - Rich assistant responses with headings, lists, quotes, dedicated writing cards, themed code blocks, line numbers, syntax colors, and per-block copy controls
 - Realtime stream-follow: chat automatically follows the active assistant response and commits the full provider stream at EOF
 - OpenRouter fast-visible mode: reasoning models default to low/excluded reasoning so user-facing text starts sooner; blank generations retry once with reasoning disabled and empty assistant bubbles are never committed
+- Strict-provider tool-loop compatibility: project tool feedback uses provider-safe user turns and OpenRouter normalizes message sequences for upstreams that reject mid-conversation system messages
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`

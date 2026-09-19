@@ -243,10 +243,34 @@ export class OpenRouterProvider implements BaseProvider {
    * Convert internal message format to OpenRouter format
    */
   private convertMessages(messages: Message[]): OpenRouterRequest['messages'] {
-    return messages.map((msg) => ({
-      role: msg.role as 'user' | 'assistant' | 'system',
-      content: msg.content,
-    }));
+    const normalized: OpenRouterRequest['messages'] = [];
+    let systemSeen = false;
+
+    for (const msg of messages) {
+      const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+      if (!content) continue;
+
+      let role = msg.role as 'user' | 'assistant' | 'system';
+
+      // Keep exactly one leading system message. A number of OpenRouter
+      // upstream providers reject later system turns as an invalid message.
+      if (role === 'system') {
+        if (!systemSeen && normalized.length === 0) {
+          systemSeen = true;
+        } else {
+          role = 'user';
+        }
+      }
+
+      const previous = normalized[normalized.length - 1];
+      if (previous && previous.role === role) {
+        previous.content += '\n\n' + content;
+      } else {
+        normalized.push({ role, content });
+      }
+    }
+
+    return normalized;
   }
 
   /**

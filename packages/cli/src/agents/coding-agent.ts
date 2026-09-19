@@ -282,7 +282,9 @@ export class CodingAgent implements BaseAgent {
           });
           messages.push({
             id: 'tool_retry_' + Date.now() + '_' + iteration,
-            role: 'system',
+            // Keep retry/correction turns provider-compatible. Some
+            // OpenRouter upstreams reject mid-conversation system messages.
+            role: 'user',
             content:
               (falseCapabilityRefusal
                 ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
