@@ -214,6 +214,8 @@ export class BusinessAgent implements BaseAgent {
     const messages = this.buildProviderMessages(request);
     const startTime = Date.now();
     let fullContent = '';
+    let lastFinishReason = 'stop';
+    let lastTokensUsed = 0;
 
     if (!this.context.provider) {
       throw new Error('Provider not initialized');
@@ -232,31 +234,31 @@ export class BusinessAgent implements BaseAgent {
         },
         (chunk) => {
           fullContent += chunk.content;
+          if (chunk.finishReason) lastFinishReason = chunk.finishReason;
+          if (chunk.usage?.totalTokens) lastTokensUsed = chunk.usage.totalTokens;
           
           if (request.onStream) {
             request.onStream(chunk.content);
           }
-
-          if (chunk.finishReason) {
-            const executionTime = Date.now() - startTime;
-            
-            if (request.onComplete) {
-              request.onComplete({
-                content: fullContent,
-                type: this.detectResponseType(fullContent),
-                metadata: {
-                  model: this.context.model,
-                  provider: this.context.provider?.name || 'openrouter',
-                  finishReason: chunk.finishReason,
-                  tokensUsed: chunk.usage?.totalTokens || 0,
-                  executionTime,
-                },
-                suggestions: this.generateSuggestions(fullContent, request),
-              });
-            }
-          }
         }
       );
+
+      // Finalize at provider EOF, not on the first finish_reason chunk.
+      // Some OpenAI-compatible backends emit trailing content/usage chunks
+      // after finish_reason, while others omit finish_reason entirely.
+      // Waiting for EOF guarantees SkyCode commits the complete streamed text.
+      request.onComplete?.({
+        content: fullContent,
+        type: this.detectResponseType(fullContent),
+        metadata: {
+          model: this.context.model,
+          provider: this.context.provider?.name || 'openrouter',
+          finishReason: lastFinishReason,
+          tokensUsed: lastTokensUsed,
+          executionTime: Date.now() - startTime,
+        },
+        suggestions: this.generateSuggestions(fullContent, request),
+      });
     } catch (error) {
       if (request.onError) {
         request.onError(error instanceof Error ? error : new Error(String(error)));

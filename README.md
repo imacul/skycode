@@ -47,6 +47,7 @@ SkyCode is under active development.
 - Durable cross-chat memory with correction-aware facts, preferences, project memory, and relevant past-chat recall
 - Clean chat transcripts: internal system/identity prompts stay hidden from the visible conversation
 - Rich assistant responses with headings, lists, quotes, dedicated writing cards, themed code blocks, line numbers, syntax colors, and per-block copy controls
+- Realtime stream-follow: chat automatically follows the active assistant response and commits the full provider stream at EOF
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
