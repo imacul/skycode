@@ -269,7 +269,8 @@ export class CodingAgent implements BaseAgent {
         name: 'list_files',
         args: { path: '.', recursive: false },
       },
-      this.context
+      this.context,
+      request.onApproval
     );
     allExecutions.push(initialInspection);
     if (initialInspection.success) hasExecutedTools = true;
@@ -530,7 +531,11 @@ export class CodingAgent implements BaseAgent {
               : path,
         });
 
-        const execution = await executeProjectToolCall(call, this.context);
+        const execution = await executeProjectToolCall(
+          call,
+          this.context,
+          request.onApproval
+        );
         executions.push(execution);
         allExecutions.push(execution);
         onToolExecution?.(execution);
