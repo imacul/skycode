@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
 import { ResponseContent } from './components/response-content';
+import { WorkActivityView } from './components/work-activity-view';
 import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
 import {
   useConversationStore,
@@ -29,7 +30,7 @@ import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
 import type { BaseProvider } from './providers/base';
-import type { AgentRequest, AgentResponse } from './agents/types';
+import type { AgentActivity, AgentRequest, AgentResponse } from './agents/types';
 import {
   formatCatalogLine,
   isFreeOpenRouterModel,
@@ -122,6 +123,7 @@ function App() {
   const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   const [activeAgent, setActiveAgent] = useState<string>('chat-agent');
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
+  const [workActivities, setWorkActivities] = useState<AgentActivity[]>([]);
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
   const messagesScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -364,6 +366,7 @@ function App() {
     setIsProcessing(true);
     setError(null);
     setCurrentResponse('');
+    setWorkActivities([]);
 
     try {
       // Capture the existing history before adding this turn. Agents append
@@ -413,6 +416,17 @@ function App() {
         // coding, planning, and business requests intelligently.
         onStream: (chunk) => {
           setCurrentResponse((prev) => prev + chunk);
+          scrollChatToBottom();
+        },
+        onActivity: (activity) => {
+          setWorkActivities((current) => {
+            const index = current.findIndex((item) => item.id === activity.id);
+            if (index === -1) return [...current, activity];
+
+            const next = [...current];
+            next[index] = { ...next[index], ...activity };
+            return next;
+          });
           scrollChatToBottom();
         },
         onComplete: (response: AgentResponse) => {
@@ -1158,7 +1172,13 @@ Current provider: ${provider?.name || 'none'}
           </box>
         )}
 
-        {isProcessing && !currentResponse && (
+        {isProcessing && workActivities.length > 0 && (
+          <box flexDirection="column" gap={0.5} paddingY={0.5}>
+            <WorkActivityView activities={workActivities} />
+          </box>
+        )}
+
+        {isProcessing && !currentResponse && workActivities.length === 0 && (
           <box flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <text attributes={{ blink: true }}>Thinking...</text>
