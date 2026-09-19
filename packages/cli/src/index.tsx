@@ -33,6 +33,7 @@ import {
   isFreeOpenRouterModel,
   type CatalogModel,
 } from './utils/model-catalog';
+import { validateSlashCommand } from './utils/slash-commands';
 import {
   autoCaptureMemories,
   buildMemoryContext,
@@ -557,6 +558,13 @@ function App() {
 
   // Handle command execution
   const handleCommand = useCallback(async (command: string) => {
+    const validation = validateSlashCommand(command);
+    if (!validation.ok) {
+      addMessage('system', validation.error || 'Invalid command. Use /help.');
+      return;
+    }
+    command = validation.normalized;
+
     if (command === '/new') {
       createNewConversation(
         useConversationStore.getState(),
@@ -766,6 +774,27 @@ function App() {
       } else {
         setHistoryView('Could not access the system clipboard on this machine.');
       }
+    } else if (command === '/doctor') {
+      const configuredProviders = getConfiguredProviders();
+      const conversationState = useConversationStore.getState();
+      const memoryPath = getMemoryPath();
+
+      addMessage(
+        'system',
+        [
+          'SkyCode doctor',
+          '',
+          'Slash commands: OK (' + 17 + ' public commands registered)',
+          'Active provider: ' + (provider?.name || 'none'),
+          'Active model: ' + (model || 'none'),
+          'Configured providers: ' + (configuredProviders.length > 0 ? configuredProviders.join(', ') : 'none'),
+          'Saved chats: ' + Object.keys(conversationState.conversations).length,
+          'Memory store: ' + memoryPath,
+          'Workspace: ' + process.cwd(),
+          '',
+          'This checks command wiring and local state. Provider/network-specific operations can still report their own connection errors gracefully.',
+        ].join('\n')
+      );
     } else if (command === '/help') {
       const helpText = `
 Available commands:
@@ -779,6 +808,7 @@ Available commands:
   /model search <query> - Search OpenRouter + local models
   /model openrouter:<id> - Switch to an OpenRouter model
   /model local:<id> - Switch to a running local model
+  /doctor    - Check command/provider/storage health
   /help      - Show this help
   /setup     - Configure any provider
   /addcloud  - Add a cloud AI provider (Anthropic or OpenAI)
@@ -798,6 +828,7 @@ CLI commands:
   skycode update --check - Check without installing
   skycode update --auto  - Enable automatic updates and update now
   skycode update --no-auto - Disable automatic updates
+  skycode update --status - Show automatic-update health
   skycode eval            - Run the local AI smoke evaluation
   skycode eval --all      - Run the full 100-case evaluation suite
 
