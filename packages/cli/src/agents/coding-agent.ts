@@ -258,24 +258,63 @@ export class CodingAgent implements BaseAgent {
     });
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-      const response = await this.context.provider.chat({
-        messages,
-        model: this.context.model,
-        temperature: 0.2,
-        maxTokens,
-        signal: request.context?.signal,
-        ...(this.context.provider?.name === 'openrouter'
-          ? {
-              // Tool-planning turns need visible protocol output, not hidden
-              // chain-of-thought. Disable reasoning for maximum compatibility
-              // with small/free coding models.
-              reasoning: {
-                effort: 'none',
-                exclude: true,
-              },
-            }
-          : {}),
-      });
+      let response;
+      try {
+        response = await this.context.provider.chat({
+          messages,
+          model: this.context.model,
+          temperature: 0.2,
+          maxTokens,
+          signal: request.context?.signal,
+          ...(this.context.provider?.name === 'openrouter'
+            ? {
+                // Tool-planning turns need visible protocol output, not hidden
+                // chain-of-thought. Disable reasoning for maximum compatibility
+                // with small/free coding models.
+                reasoning: {
+                  effort: 'none',
+                  exclude: true,
+                },
+              }
+            : {}),
+        });
+      } catch (error) {
+        if (hasExecutedTools) {
+          const written = allExecutions.filter(
+            (item) => item.success && item.call.name === 'write_file'
+          );
+          const created = allExecutions.filter(
+            (item) => item.success && item.call.name === 'create_directory'
+          );
+          const providerMessage = error instanceof Error ? error.message : String(error);
+          const summary = [
+            'The selected model stopped before it produced a final summary, but SkyCode kept the workspace changes that already succeeded.',
+            written.length > 0
+              ? 'Updated ' + written.length + ' file' + (written.length === 1 ? '' : 's') + '.'
+              : '',
+            created.length > 0
+              ? 'Created ' + created.length + ' director' + (created.length === 1 ? 'y' : 'ies') + '.'
+              : '',
+            'Provider note: ' + providerMessage,
+          ].filter(Boolean).join(' ');
+
+          onActivity?.({
+            id: 'provider_stop_' + Date.now(),
+            type: 'error',
+            status: 'error',
+            title: 'Model stopped after workspace changes',
+            detail: providerMessage,
+          });
+
+          return {
+            content: summary,
+            finishReason: 'provider_stopped_after_tools',
+            tokensUsed,
+          };
+        }
+
+        throw error;
+      }
 
       tokensUsed += response.usage?.totalTokens || 0;
       finishReason = response.finishReason || finishReason;
