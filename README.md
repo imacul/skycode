@@ -47,6 +47,7 @@ SkyCode is under active development.
 - Durable cross-chat memory with correction-aware facts, preferences, project memory, and relevant past-chat recall
 - Clean chat transcripts: internal system/identity prompts stay hidden from the visible conversation
 - Rich assistant responses with headings, lists, quotes, dedicated writing cards, themed code blocks, line numbers, syntax colors, and per-block copy controls
+- Wide chat layout: transcript, errors, history panel, and composer use about 96% of the terminal width instead of a narrow fixed column
 - Realtime stream-follow: chat automatically follows the active assistant response and commits the full provider stream at EOF
 - OpenRouter fast-visible mode: reasoning models default to low/excluded reasoning so user-facing text starts sooner; blank generations retry once with reasoning disabled and empty assistant bubbles are never committed
 - Strict-provider tool-loop compatibility: project tool feedback uses provider-safe user turns and OpenRouter normalizes message sequences for upstreams that reject mid-conversation system messages
