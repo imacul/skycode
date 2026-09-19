@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { StatusBar } from './satus-bar';
+import { SLASH_COMMANDS } from '../utils/slash-commands';
+import type { SlashCommand } from '../utils/slash-commands';
 
 type Props = {
   onSubmit: (text: string) => void;
@@ -8,32 +10,7 @@ type Props = {
   onCommand?: (command: string) => void;
 };
 
-type SlashCommand = {
-  command: string;
-  description: string;
-  takesArgs?: boolean;
-};
-
 const COMMAND_PREFIX = '/';
-
-const SLASH_COMMANDS: SlashCommand[] = [
-  { command: '/new', description: 'Start a new conversation' },
-  { command: '/model', description: 'Show models or switch model', takesArgs: true },
-  { command: '/memory', description: 'Show durable cross-chat memory' },
-  { command: '/remember', description: 'Save a durable memory', takesArgs: true },
-  { command: '/forget', description: 'Forget matching durable memory', takesArgs: true },
-  { command: '/addlocal', description: 'Add or update a local AI server' },
-  { command: '/addcloud', description: 'Add a cloud AI provider' },
-  { command: '/openroute', description: 'Add or update OpenRouter' },
-  { command: '/history', description: 'Show saved conversations' },
-  { command: '/resume', description: 'Resume a saved conversation', takesArgs: true },
-  { command: '/copy', description: 'Copy the latest assistant reply' },
-  { command: '/cancel', description: 'Cancel the active generation' },
-  { command: '/clear', description: 'Clear the current conversation' },
-  { command: '/setup', description: 'Configure providers' },
-  { command: '/help', description: 'Show available commands' },
-  { command: '/exit', description: 'Exit SkyCode' },
-];
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
   { name: 'return', action: 'submit' },
