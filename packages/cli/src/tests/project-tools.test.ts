@@ -216,6 +216,19 @@ describe('project tool protocol', () => {
     ]);
   });
 
+  it('parses mixed SkyCode opener with DSML closer emitted by DeepSeek', () => {
+    const content =
+      '<tool_call>{"name":"create_directory","args":{"path":"add-numbers/src"}}</|DSML|tool_call>';
+
+    expect(parseProjectToolCalls(content)).toEqual([
+      {
+        name: 'create_directory',
+        args: { path: 'add-numbers/src' },
+      },
+    ]);
+    expect(stripProjectToolCalls(content)).toBe('');
+  });
+
   it('parses DSML JSON invocation with mismatched outer closer', () => {
     const content =
       '<|DSML|tool_call><|DSML|tool_call_invoke>' +
