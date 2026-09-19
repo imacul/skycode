@@ -736,6 +736,36 @@ function App() {
     } else if (command === '/memory clear') {
       const count = clearMemories();
       addMessage('system', 'Cleared ' + count + ' durable memory record(s). Past chat history is unchanged.');
+    } else if (command === '/permissions') {
+      const persistent =
+        useSettingsStore.getState().permissions?.alwaysAllow || [];
+      const session = [...sessionPermissionKeysRef.current];
+
+      addMessage(
+        'system',
+        [
+          'SkyCode permissions',
+          '',
+          'Persistent always-allow:',
+          ...(persistent.length > 0
+            ? persistent.map((key) => '  - ' + key)
+            : ['  (none)']),
+          '',
+          'This-session allow:',
+          ...(session.length > 0
+            ? session.map((key) => '  - ' + key)
+            : ['  (none)']),
+          '',
+          'Use /permissions reset to clear both lists.',
+        ].join('\n')
+      );
+    } else if (command === '/permissions reset') {
+      sessionPermissionKeysRef.current.clear();
+      updatePermissionSettings({ alwaysAllow: [] });
+      addMessage(
+        'system',
+        'Cleared persistent and session tool approvals. Future workspace-changing commands will ask again.'
+      );
     } else if (command.startsWith('/remember ')) {
       const fact = command.slice('/remember '.length).trim();
       const saved = remember(fact, {
@@ -961,6 +991,8 @@ Available commands:
   /model openrouter:<id> - Switch to an OpenRouter model
   /model local:<id> - Switch to a running local model
   /doctor    - Check command/provider/storage health
+  /permissions - Show persistent/session tool approvals
+  /permissions reset - Clear saved and session approvals
   /help      - Show this help
   /setup     - Configure any provider
   /addcloud  - Add a cloud AI provider (Anthropic or OpenAI)
