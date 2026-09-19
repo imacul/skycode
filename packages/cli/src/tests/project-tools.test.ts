@@ -92,13 +92,19 @@ describe('project tool protocol', () => {
     });
     expect(classifyProjectCommand('npm test')).toEqual({
       allowed: true,
-      requiresApproval: false,
+      requiresApproval: true,
       risk: 'verify',
+      permissionKey: 'terminal:verify',
+      description:
+        'This command executes project tooling or code to test/build/check the workspace.',
     });
     expect(classifyProjectCommand('npm run build')).toEqual({
       allowed: true,
-      requiresApproval: false,
+      requiresApproval: true,
       risk: 'verify',
+      permissionKey: 'terminal:verify',
+      description:
+        'This command executes project tooling or code to test/build/check the workspace.',
     });
 
     const install = classifyProjectCommand('npm install react');
@@ -114,6 +120,27 @@ describe('project tool protocol', () => {
     expect(classifyProjectCommand('git push').allowed).toBe(false);
     expect(classifyProjectCommand('rm -rf .').allowed).toBe(false);
     expect(classifyProjectCommand('npm test && git status').allowed).toBe(false);
+  });
+
+  it('asks for approval before project verification commands execute', async () => {
+    const root = await workspace();
+    let approvalRequest: any;
+
+    const result = await executeProjectToolCall(
+      {
+        name: 'run_command',
+        args: { command: 'bun test' },
+      },
+      context(root),
+      async (request) => {
+        approvalRequest = request;
+        return 'deny';
+      }
+    );
+
+    expect(approvalRequest.permissionKey).toBe('terminal:verify');
+    expect(approvalRequest.risk).toBe('verify');
+    expect(result.success).toBe(false);
   });
 
   it('asks for approval before a workspace-mutating terminal command and honors denial', async () => {
