@@ -48,5 +48,6 @@ describe('slash command validation', () => {
   it('accepts supported hidden aliases', () => {
     expect(validateSlashCommand('/chats').ok).toBe(true);
     expect(validateSlashCommand('/addopenrouter').ok).toBe(true);
+    expect(validateSlashCommand('/openrouter').ok).toBe(true);
   });
 });
