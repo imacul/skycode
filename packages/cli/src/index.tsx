@@ -5,6 +5,7 @@ import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
 import { ResponseContent } from './components/response-content';
 import { WorkActivityView } from './components/work-activity-view';
+import { ApprovalPrompt } from './components/approval-prompt';
 import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
 import {
   useConversationStore,
@@ -31,7 +32,13 @@ import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
 import { shouldContinueProjectTools } from './agents/project-tools';
 import type { BaseProvider } from './providers/base';
-import type { AgentActivity, AgentRequest, AgentResponse } from './agents/types';
+import type {
+  AgentActivity,
+  AgentApprovalDecision,
+  AgentApprovalRequest,
+  AgentRequest,
+  AgentResponse,
+} from './agents/types';
 import {
   formatCatalogLine,
   isFreeOpenRouterModel,
@@ -49,6 +56,9 @@ import {
 } from './store/memory';
 
 let activeChatScroll: ScrollBoxRenderable | null = null;
+let activeApprovalHandler:
+  | ((decision: AgentApprovalDecision) => void)
+  | null = null;
 
 const CLI_ARGS = process.argv.slice(2);
 const STARTUP_COMMAND = CLI_ARGS[0]?.toLowerCase();
@@ -125,11 +135,17 @@ function App() {
   const [activeAgent, setActiveAgent] = useState<string>('chat-agent');
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
   const [workActivities, setWorkActivities] = useState<AgentActivity[]>([]);
+  const [pendingApproval, setPendingApproval] =
+    useState<AgentApprovalRequest | null>(null);
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
   const messagesScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const orchestratorRef = useRef<ReturnType<typeof createAgentOrchestrator> | null>(null);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
+  const approvalResolverRef = useRef<
+    ((decision: AgentApprovalDecision) => void) | null
+  >(null);
+  const sessionPermissionKeysRef = useRef<Set<string>>(new Set());
   
   const {
     currentMessages,
@@ -144,6 +160,7 @@ function App() {
   const { 
     model: modelSettings,
     updateModelSettings,
+    updatePermissionSettings,
   } = useSettingsStore();
 
   const visibleMessages = getVisibleConversationMessages(currentMessages);
@@ -185,6 +202,63 @@ function App() {
   useEffect(() => {
     scrollChatToBottom();
   }, [visibleMessages.length, scrollChatToBottom]);
+
+  const requestAgentApproval = useCallback(
+    async (request: AgentApprovalRequest): Promise<AgentApprovalDecision> => {
+      const persistent = useSettingsStore.getState().permissions?.alwaysAllow || [];
+
+      if (persistent.includes(request.permissionKey)) {
+        return 'always';
+      }
+
+      if (sessionPermissionKeysRef.current.has(request.permissionKey)) {
+        return 'session';
+      }
+
+      return await new Promise<AgentApprovalDecision>((resolve) => {
+        approvalResolverRef.current = resolve;
+        setPendingApproval(request);
+        scrollChatToBottom();
+      });
+    },
+    [scrollChatToBottom]
+  );
+
+  const resolveApproval = useCallback(
+    (decision: AgentApprovalDecision) => {
+      const request = pendingApproval;
+      const resolver = approvalResolverRef.current;
+      if (!request || !resolver) return;
+
+      if (decision === 'session' || decision === 'always') {
+        sessionPermissionKeysRef.current.add(request.permissionKey);
+      }
+
+      if (decision === 'always') {
+        const current = useSettingsStore.getState().permissions?.alwaysAllow || [];
+        if (!current.includes(request.permissionKey)) {
+          updatePermissionSettings({
+            alwaysAllow: [...current, request.permissionKey],
+          });
+        }
+      }
+
+      approvalResolverRef.current = null;
+      setPendingApproval(null);
+      resolver(decision);
+      scrollChatToBottom();
+    },
+    [pendingApproval, scrollChatToBottom, updatePermissionSettings]
+  );
+
+  useEffect(() => {
+    activeApprovalHandler = pendingApproval ? resolveApproval : null;
+    return () => {
+      if (activeApprovalHandler === resolveApproval) {
+        activeApprovalHandler = null;
+      }
+    };
+  }, [pendingApproval, resolveApproval]);
 
   // Initialize on mount
   useEffect(() => {
@@ -436,6 +510,7 @@ function App() {
           });
           scrollChatToBottom();
         },
+        onApproval: requestAgentApproval,
         onComplete: (response: AgentResponse) => {
           const finalContent = response.content.trim();
 
@@ -511,6 +586,11 @@ function App() {
   }, [isProcessing, queuedMessages, isInitialized, provider, handleSubmit]);
 
   const cancelGeneration = useCallback(() => {
+    const approvalResolver = approvalResolverRef.current;
+    approvalResolverRef.current = null;
+    setPendingApproval(null);
+    approvalResolver?.('deny');
+
     activeAbortControllerRef.current?.abort();
     setQueuedMessages([]);
   }, []);
@@ -1184,7 +1264,16 @@ Current provider: ${provider?.name || 'none'}
           </box>
         )}
 
-        {isProcessing && !currentResponse && workActivities.length === 0 && (
+        {pendingApproval && (
+          <box width="100%" flexDirection="column" paddingY={0.5}>
+            <ApprovalPrompt
+              request={pendingApproval}
+              onDecision={resolveApproval}
+            />
+          </box>
+        )}
+
+        {isProcessing && !currentResponse && workActivities.length === 0 && !pendingApproval && (
           <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <text attributes={{ blink: true }}>Thinking...</text>
@@ -1246,6 +1335,22 @@ Current provider: ${provider?.name || 'none'}
 const renderer = await createCliRenderer({ exitOnCtrlC: false });
 
 renderer.keyInput.on('keypress', (key) => {
+  if (activeApprovalHandler && !key.ctrl && !key.meta) {
+    const approvalKeys: Record<string, AgentApprovalDecision> = {
+      '1': 'once',
+      '2': 'session',
+      '3': 'always',
+      '4': 'deny',
+    };
+    const decision = approvalKeys[key.name || ''];
+    if (decision) {
+      activeApprovalHandler(decision);
+      key.preventDefault();
+      key.stopPropagation();
+      return;
+    }
+  }
+
   if (key.name === 'pageup' && activeChatScroll) {
     activeChatScroll.scrollBy(-10);
     key.preventDefault();
