@@ -245,7 +245,9 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
     add('coding-agent', 3, [
       /\b(debug|bug|fix|refactor|test|implement|function|class|typescript|javascript|react|node(?:\.js)?|python|sql)\b/,
       /\b(api|endpoint|database|promise|async|await|component|hook|compiler|runtime)\b/,
-      /\b(code|coding|program|algorithm)\b/,
+      /\b(code|coding|program|algorithm|software|website|web app|desktop app|mobile app|application|cli|backend|frontend|full-stack|full stack)\b/,
+      /\b(create|build|develop|scaffold|architect|structure|make)\b.*\b(software|app|application|website|project|repo|backend|frontend|api|cli|desktop|mobile)\b/,
+      /\b(can|could|would)\s+you\s+(create|build|develop|make|code)\b.*\b(software|app|application|website|project|program)\b/,
     ]);
     add('coding-agent', 2, [
       /\b(explain|review|inspect)\b.*\b(code|function|react|api|typescript|javascript|node)\b/,

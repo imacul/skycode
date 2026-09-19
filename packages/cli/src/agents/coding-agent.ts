@@ -38,14 +38,27 @@ export const DEFAULT_CODING_AGENT_CONFIG: CodingAgentConfig = {
     'testing',
   ],
   defaultMode: 'code',
-  systemPrompt: `You are an expert AI coding assistant. Your role is to help with:
+  systemPrompt: `You are an expert AI coding assistant running inside the SkyCode developer harness.
+
+SkyCode capability facts:
+- You are not limited to pasting code snippets in chat.
+- For explicit build/edit requests, SkyCode can let you inspect the active workspace, create directories, read/search files, and write real project files.
+- You can design project architecture and create multi-file software projects for web, backend, CLI, mobile, or desktop stacks when the requested stack can be represented as source files in the workspace.
+- Do not tell the user they must manually copy your code into files when SkyCode project tools can perform the requested file work.
+- Do not claim you cannot create software merely because the underlying model by itself has no filesystem. You are operating through SkyCode, and SkyCode supplies workspace tools for build tasks.
+- Be precise about current limits: do not claim to compile, execute, install packages, deploy, or use shell commands unless those capabilities are actually available in the active tool set.
+- If the user only asks whether you can build software, answer from these SkyCode capabilities; do not start creating files until they actually ask you to build something.
+
+Your role includes:
+- Designing maintainable software architecture
+- Creating and organizing project folders and source files
 - Writing and completing code
 - Explaining how code works
 - Finding and fixing bugs
 - Refactoring code for better structure
 - Generating tests
 
-Always respond with clear, well-formatted code examples. Use appropriate syntax highlighting with markdown code blocks. Include explanations when helpful.`,
+Always respond clearly. For real build/edit requests, prefer actual SkyCode workspace actions over merely printing code blocks.`,
   codeSettings: {
     indentSize: 2,
     indentType: 'spaces',
@@ -204,6 +217,17 @@ export class CodingAgent implements BaseAgent {
     }
   }
 
+  private looksLikeRawModelCapabilityRefusal(content: string): boolean {
+    const text = content.toLowerCase();
+    return (
+      /\b(i (?:am|['’]m) not able to|i cannot|i can['’]?t|unable to)\b/.test(text) &&
+      /\b(create|build|develop|software|files?|folders?|project|app|application|execute|compile|deploy)\b/.test(text)
+    ) || (
+      /\b(i can only|limited to)\b/.test(text) &&
+      /\b(code snippets?|guidance|examples?|text|source code)\b/.test(text)
+    );
+  }
+
   private async runProjectToolLoop(
     request: AgentRequest,
     onToolExecution?: (execution: ProjectToolExecution) => void
@@ -218,7 +242,7 @@ export class CodingAgent implements BaseAgent {
 
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
-    const maxIterations = 8;
+    const maxIterations = 10;
     let tokensUsed = 0;
     let finishReason = 'stop';
     let hasExecutedTools = false;
@@ -247,7 +271,9 @@ export class CodingAgent implements BaseAgent {
       const calls = parseProjectToolCalls(response.content);
 
       if (calls.length === 0) {
-        if (!hasExecutedTools && iteration < 2) {
+        const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
+
+        if (!hasExecutedTools && iteration < 3) {
           messages.push({
             id: 'assistant_invalid_tool_plan_' + Date.now() + '_' + iteration,
             role: 'assistant',
@@ -258,12 +284,27 @@ export class CodingAgent implements BaseAgent {
             id: 'tool_retry_' + Date.now() + '_' + iteration,
             role: 'system',
             content:
-              'The user asked you to modify real project files, but no valid project tool call was produced. ' +
-              'Use the exact <tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
-              'Do not merely paste code in chat.',
+              (falseCapabilityRefusal
+                ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
+                : '') +
+              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, and write_file. ' +
+              'The user asked you to modify real project files. Use the exact ' +
+              '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
+              'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +
+              'Do not tell the user to copy code manually and do not merely paste code in chat.',
             timestamp: new Date(),
           });
           continue;
+        }
+
+        if (!hasExecutedTools && falseCapabilityRefusal) {
+          return {
+            content:
+              'SkyCode can create and structure this software in the active workspace, but the selected model did not follow the workspace tool protocol after multiple retries. ' +
+              'Try the build request again or switch to a stronger coding model; SkyCode will keep the same real file-creation capabilities.',
+            finishReason: 'tool_protocol_not_followed',
+            tokensUsed,
+          };
         }
 
         return {

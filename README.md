@@ -41,6 +41,7 @@ SkyCode is under active development.
 - Built-in AI evaluation harness with smoke tests and a 100-case regression suite
 - Autonomous coding-agent project creation with safe workspace-scoped file tools
 - Architecture-first project planning with stack-aware separation of concerns and clarification questions
+- Harness capability grounding so provider models know SkyCode can create real project folders/files instead of falling back to "I can only provide snippets"
 - Unified OpenRouter + local model catalog with FREE/PAID labels and provider-aware switching
 - Interactive searchable `/model` picker with keyboard/mouse selection and compact model metadata
 - Durable cross-chat memory with correction-aware facts, preferences, project memory, and relevant past-chat recall
@@ -145,6 +146,12 @@ skycode update --status
 Automatic updates are opt-in. With `skycode update --auto`, the global bootstrap checks for a new release **before the SkyCode application starts**. SkyCode records the last check, last successful update, version, and whether it was automatic or manual so the update path is auditable with `skycode update --status`. The status command is supported both by the bootstrap updater and by the app-level updater as a fallback. If one exists, it repairs/updates the managed install first and then launches the updated app. Without `--auto`, SkyCode only notifies you when a newer build is available.
 
 If an older pre-bootstrap-safe install is already broken, rerun the official installer once. That rewrites the global shim; future update/version commands no longer depend on the app parsing successfully.
+
+## Harness-aware software creation
+
+SkyCode separates the raw model from the capabilities of the harness around it. Coding models are explicitly told that SkyCode can inspect the active workspace and create/read/search/write project files and directories. Software-creation prompts are routed toward the coding agent, while pure capability questions such as `Can you create software?` are answered from SkyCode's real capabilities instead of the upstream model's generic chatbot disclaimer.
+
+For actual build requests, SkyCode retries models that incorrectly answer with raw-model limitations instead of using workspace tools. If a weak model repeatedly refuses or fails to emit the structured tool protocol, SkyCode reports that the selected model failed the tool protocol rather than falsely claiming that SkyCode cannot create software.
 
 ## Project creation
 
