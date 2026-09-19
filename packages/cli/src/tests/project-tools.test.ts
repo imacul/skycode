@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  classifyProjectCommand,
   executeProjectToolCall,
   isProjectCapabilityQuestion,
   parseProjectClarification,
@@ -81,6 +82,41 @@ describe('project tool protocol', () => {
     expect(shouldContinueProjectTools('please proceed', history)).toBe(true);
     expect(shouldContinueProjectTools('continue', history)).toBe(true);
     expect(shouldContinueProjectTools('tell me a joke', history)).toBe(false);
+  });
+
+  it('allows safe verification commands and blocks risky shell commands', () => {
+    expect(classifyProjectCommand('git status')).toEqual({
+      allowed: true,
+      risk: 'read',
+    });
+    expect(classifyProjectCommand('npm test')).toEqual({
+      allowed: true,
+      risk: 'verify',
+    });
+    expect(classifyProjectCommand('npm run build')).toEqual({
+      allowed: true,
+      risk: 'verify',
+    });
+
+    expect(classifyProjectCommand('npm install react').allowed).toBe(false);
+    expect(classifyProjectCommand('git push').allowed).toBe(false);
+    expect(classifyProjectCommand('rm -rf .').allowed).toBe(false);
+    expect(classifyProjectCommand('npm test && git status').allowed).toBe(false);
+  });
+
+  it('executes safe terminal commands inside the active workspace', async () => {
+    const root = await workspace();
+    const result = await executeProjectToolCall(
+      {
+        name: 'run_command',
+        args: { command: 'bun --version' },
+      },
+      context(root)
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.preview?.length).toBeGreaterThan(0);
+    expect(result.displayPath).toBe('.');
   });
 
   it('parses DeepSeek DSML invoke syntax without forcing a retry', () => {
