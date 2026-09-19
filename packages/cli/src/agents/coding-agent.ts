@@ -230,7 +230,8 @@ export class CodingAgent implements BaseAgent {
 
   private async runProjectToolLoop(
     request: AgentRequest,
-    onToolExecution?: (execution: ProjectToolExecution) => void
+    onToolExecution?: (execution: ProjectToolExecution) => void,
+    onActivity?: (activity: AgentActivity) => void
   ): Promise<{
     content: string;
     finishReason: string;
@@ -246,6 +247,15 @@ export class CodingAgent implements BaseAgent {
     let tokensUsed = 0;
     let finishReason = 'stop';
     let hasExecutedTools = false;
+    const allExecutions: ProjectToolExecution[] = [];
+
+    onActivity?.({
+      id: 'planning_' + Date.now(),
+      type: 'planning',
+      status: 'running',
+      title: 'Planning project changes',
+      detail: 'Inspecting the workspace and deciding the file structure.',
+    });
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const response = await this.context.provider.chat({
@@ -320,8 +330,61 @@ export class CodingAgent implements BaseAgent {
           };
         }
 
+        const finalText = stripProjectToolCalls(response.content) || response.content.trim();
+        if (finalText) {
+          onActivity?.({
+            id: 'complete_' + Date.now(),
+            type: 'complete',
+            status: 'success',
+            title: 'Project work complete',
+            detail:
+              allExecutions.length > 0
+                ? allExecutions.filter((item) => item.success).length +
+                  ' workspace operations completed.'
+                : undefined,
+          });
+          return {
+            content: finalText,
+            finishReason,
+            tokensUsed,
+          };
+        }
+
+        if (hasExecutedTools) {
+          const written = allExecutions.filter(
+            (item) => item.success && item.call.name === 'write_file'
+          );
+          const created = allExecutions.filter(
+            (item) => item.success && item.call.name === 'create_directory'
+          );
+          const summary = [
+            'Project work completed in the active workspace.',
+            written.length > 0
+              ? 'Updated ' + written.length + ' file' + (written.length === 1 ? '' : 's') + '.'
+              : '',
+            created.length > 0
+              ? 'Created ' + created.length + ' director' + (created.length === 1 ? 'y' : 'ies') + '.'
+              : '',
+            'Review the live work log above for the exact paths and changes.',
+          ].filter(Boolean).join(' ');
+
+          onActivity?.({
+            id: 'complete_' + Date.now(),
+            type: 'complete',
+            status: 'success',
+            title: 'Project work complete',
+            detail: summary,
+          });
+
+          return {
+            content: summary,
+            finishReason,
+            tokensUsed,
+          };
+        }
+
         return {
-          content: stripProjectToolCalls(response.content) || response.content.trim(),
+          content: finalText,
           finishReason,
           tokensUsed,
         };
@@ -337,9 +400,71 @@ export class CodingAgent implements BaseAgent {
       const executions: ProjectToolExecution[] = [];
       hasExecutedTools = true;
       for (const call of calls.slice(0, 8)) {
+        const activityId =
+          'tool_' + Date.now() + '_' + iteration + '_' + executions.length;
+        const path =
+          typeof call.args.path === 'string' ? String(call.args.path) : undefined;
+        const activityType: AgentActivity['type'] =
+          call.name === 'write_file'
+            ? 'write'
+            : call.name === 'create_directory'
+              ? 'create'
+              : call.name === 'search_files'
+                ? 'search'
+                : 'inspect';
+
+        onActivity?.({
+          id: activityId,
+          type: activityType,
+          status: 'running',
+          title:
+            call.name === 'write_file'
+              ? 'Writing file'
+              : call.name === 'create_directory'
+                ? 'Creating directory'
+                : call.name === 'search_files'
+                  ? 'Searching workspace'
+                  : call.name === 'read_file'
+                    ? 'Reading file'
+                    : 'Inspecting workspace',
+          path,
+        });
+
         const execution = await executeProjectToolCall(call, this.context);
         executions.push(execution);
+        allExecutions.push(execution);
         onToolExecution?.(execution);
+
+        onActivity?.({
+          id: activityId,
+          type: activityType,
+          status: execution.success ? 'success' : 'error',
+          title:
+            call.name === 'write_file'
+              ? execution.success
+                ? 'Updated file'
+                : 'File update failed'
+              : call.name === 'create_directory'
+                ? execution.success
+                  ? 'Created directory'
+                  : 'Directory creation failed'
+                : call.name === 'search_files'
+                  ? execution.success
+                    ? 'Search complete'
+                    : 'Search failed'
+                  : call.name === 'read_file'
+                    ? execution.success
+                      ? 'Read file'
+                      : 'Read failed'
+                    : execution.success
+                      ? 'Workspace inspected'
+                      : 'Inspection failed',
+          path: execution.displayPath || path,
+          detail: execution.success ? undefined : execution.content,
+          additions: execution.additions,
+          deletions: execution.deletions,
+          preview: execution.preview,
+        });
       }
 
       messages.push(projectToolResultMessage(executions));
@@ -447,7 +572,7 @@ export class CodingAgent implements BaseAgent {
             '\n';
           toolLines.push(line);
           request.onStream?.(line);
-        });
+        }, request.onActivity);
 
         if (toolResult.content) {
           const spacer = toolLines.length > 0 ? '\n' : '';
