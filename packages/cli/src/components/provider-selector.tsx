@@ -78,12 +78,8 @@ export function ProviderSelector({ onSelect, onBack, allowedProviders }: Provide
     >
       {/* Header */}
       <box flexDirection="column" gap={1}>
-        <text fg="cyan" attributes={{ bold: true }}>
-          🎯 Select AI Provider
-        </text>
-        <text fg="gray">
-          Choose how you want to use Sky Code
-        </text>
+        <text fg="cyan" attributes={{ bold: true }}>{'🎯 Select AI Provider'}</text>
+        <text fg="gray">{'Choose how you want to use Sky Code'}</text>
       </box>
 
       {/* Provider List */}
@@ -103,51 +99,35 @@ export function ProviderSelector({ onSelect, onBack, allowedProviders }: Provide
               onSelect(provider.id);
             }}
           >
-            <text fg={selectedIndex === index ? 'cyan' : 'white'}>
-              {provider.icon}
-            </text>
-            <text fg={selectedIndex === index ? 'white' : 'gray'} attributes={{ bold: selectedIndex === index }}>
-              {provider.name}
-            </text>
-            <text fg="gray" attributes={{ dim: true }}>
-              - {provider.description}
-            </text>
+            <text fg={selectedIndex === index ? 'cyan' : 'white'}>{String(provider.icon)}</text>
+            <text fg={selectedIndex === index ? 'white' : 'gray'} attributes={{ bold: selectedIndex === index }}>{String(provider.name)}</text>
+            <text fg="gray" attributes={{ dim: true }}>{'- ' + String(provider.description)}</text>
           </box>
         ))}
       </box>
 
       {/* Info */}
       <box flexDirection="column" gap={1} paddingTop={1} border={['top']} borderColor="gray">
-        <text fg="yellow">
-          {visibleProviders[selectedIndex].icon} {visibleProviders[selectedIndex].name}
-        </text>
-        <text fg="gray">
-          {visibleProviders[selectedIndex].description}
-        </text>
+        <text fg="yellow">{String(visibleProviders[selectedIndex].icon) + ' ' + String(visibleProviders[selectedIndex].name)}</text>
+        <text fg="gray">{String(visibleProviders[selectedIndex].description)}</text>
         {visibleProviders[selectedIndex].requiresApiKey ? (
           <box flexDirection="row" gap={1}>
-            <text fg="gray">Requires:</text>
-            <text fg="cyan">{visibleProviders[selectedIndex].envVar}</text>
+            <text fg="gray">{'Requires:'}</text>
+            <text fg="cyan">{String(visibleProviders[selectedIndex].envVar)}</text>
           </box>
         ) : (
-          <text fg="green">
-            No API key required - Just run your local server!
-          </text>
+          <text fg="green">{'No API key required - Just run your local server!'}</text>
         )}
       </box>
 
       {/* Actions */}
       <box flexDirection="row" gap={2} justifyContent="flex-end">
-        <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onBack}>
-          Back
-        </text>
+        <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onBack}>{'Back'}</text>
         <text 
           fg="green" 
           attributes={{ bold: true, underline: true }} 
           onMouseDown={handleSelect}
-        >
-          Select {visibleProviders[selectedIndex].name}
-        </text>
+        >{'Select ' + String(visibleProviders[selectedIndex].name)}</text>
       </box>
     </box>
   );
