@@ -250,6 +250,14 @@ export const useSettingsStore = create<SettingsStore>()(
           },
         })),
 
+      updatePermissionSettings: (settings) =>
+        set((state) => ({
+          permissions: {
+            ...(state.permissions || DEFAULT_SETTINGS.permissions),
+            ...settings,
+          },
+        })),
+
       resetSettings: () => set({ ...DEFAULT_SETTINGS }),
 
       getSettings: () => get(),
