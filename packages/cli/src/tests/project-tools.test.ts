@@ -116,6 +116,89 @@ describe('project tool protocol', () => {
     expect(result.content).toContain('escapes the active SkyCode workspace');
   });
 
+  it('grounds capability-only questions in SkyCode rather than raw-model limitations', async () => {
+    const root = await workspace();
+    let systemContent = '';
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat(request: any) {
+        systemContent = request.messages[0]?.content || '';
+        return {
+          content: 'Yes. Inside SkyCode I can architect and create real project files in the active workspace.',
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    const response = await agent.process({ input: 'Can you create software?' });
+
+    expect(response.content).toContain('Inside SkyCode');
+    expect(systemContent).toContain('You are not limited to pasting code snippets in chat.');
+    expect(systemContent).toContain('create directories');
+  });
+
+  it('does not surface a false raw-model refusal as the final answer for a real build request', async () => {
+    const root = await workspace();
+    let calls = 0;
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+        return {
+          content: "I'm not able to create software or files. I can only provide code snippets.",
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    const response = await agent.process({
+      input: 'Build a desktop app in this workspace with a clean multi-file architecture.',
+    });
+
+    expect(calls).toBe(4);
+    expect(response.content).toContain('SkyCode can create and structure this software');
+    expect(response.content).not.toContain('I can only provide code snippets');
+    expect(response.metadata?.finishReason).toBe('tool_protocol_not_followed');
+  });
+
   it('lets the coding agent create a real multi-file project from model tool calls', async () => {
     const root = await workspace();
     let call = 0;
