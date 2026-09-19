@@ -273,7 +273,10 @@ export class CodingAgent implements BaseAgent {
       request.onApproval
     );
     allExecutions.push(initialInspection);
-    if (initialInspection.success) hasExecutedTools = true;
+    // Harness-owned preflight inspection is context gathering, not a model
+    // tool action. Do not mark the model as having executed tools here:
+    // otherwise a malformed first model tool call is mistaken for a final
+    // answer and leaks raw protocol text into the chat instead of retrying.
 
     onActivity?.({
       id: initialActivityId,
