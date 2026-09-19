@@ -1079,7 +1079,9 @@ Current provider: ${provider?.name || 'none'}
       {/* Error display */}
       {error && !showWelcome && (
         <box width="100%" maxWidth={78} paddingX={2}>
-          <text fg="red">❌ {error}</text>
+          <text fg="red" wordWrap="break-word" width="100%">
+            {'❌ ' + String(error)}
+          </text>
         </box>
       )}
 
