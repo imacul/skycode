@@ -20,7 +20,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/clear', description: 'Clear the current conversation' },
   { command: '/setup', description: 'Configure providers' },
   { command: '/doctor', description: 'Check command/provider/storage health' },
-  { command: '/permissions', description: 'Show or reset persistent tool approvals', takesArgs: true },
+  { command: '/permissions', description: 'Show current tool approvals' },
   { command: '/help', description: 'Show available commands' },
   { command: '/exit', description: 'Exit SkyCode' },
 ];
