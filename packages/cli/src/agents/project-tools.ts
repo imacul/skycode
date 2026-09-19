@@ -613,12 +613,31 @@ export async function executeProjectToolCall(
     }
 
     const result = await executeTool(call.name, args as any, context);
+
+    let resultContent = result.success
+      ? result.content || JSON.stringify(result.data ?? {})
+      : result.error || 'Tool failed without an error message.';
+
+    if (call.name === 'run_command' && !result.success && result.data) {
+      const data = result.data as {
+        stdout?: string;
+        stderr?: string;
+        exitCode?: number | null;
+      };
+      resultContent = [
+        typeof data.stdout === 'string' ? data.stdout.trim() : '',
+        typeof data.stderr === 'string' ? data.stderr.trim() : '',
+        result.error || '',
+        typeof data.exitCode === 'number' ? 'exit code: ' + data.exitCode : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
     const execution: ProjectToolExecution = {
       call,
       success: result.success,
-      content: result.success
-        ? result.content || JSON.stringify(result.data ?? {})
-        : result.error || 'Tool failed without an error message.',
+      content: resultContent,
     };
 
     if (typeof args.path === 'string') {
