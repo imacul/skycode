@@ -133,7 +133,13 @@ Disable automatic updates:
 skycode update --no-auto
 ```
 
-Automatic updates are opt-in. With `skycode update --auto`, the global bootstrap checks for a new release **before the SkyCode application starts**. If one exists, it repairs/updates the managed install first and then launches the updated app. Without `--auto`, SkyCode only notifies you when a newer build is available.
+Inspect auto-update health and the last successful update:
+
+```bash
+skycode update --status
+```
+
+Automatic updates are opt-in. With `skycode update --auto`, the global bootstrap checks for a new release **before the SkyCode application starts**. SkyCode records the last check, last successful update, version, and whether it was automatic or manual so the update path is auditable with `skycode update --status`. If one exists, it repairs/updates the managed install first and then launches the updated app. Without `--auto`, SkyCode only notifies you when a newer build is available.
 
 If an older pre-bootstrap-safe install is already broken, rerun the official installer once. That rewrites the global shim; future update/version commands no longer depend on the app parsing successfully.
 
