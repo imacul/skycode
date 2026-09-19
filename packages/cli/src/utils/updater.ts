@@ -27,6 +27,11 @@ export interface UpdateResult {
 
 interface UpdatePreferences {
   autoUpdate: boolean;
+  lastCheckAt?: string;
+  lastCheckResult?: string;
+  lastUpdateAt?: string;
+  lastVersion?: string;
+  lastUpdateMode?: string;
 }
 
 function run(command: string, args: string[], cwd = SKYCODE_ROOT, timeout = 8000): Promise<string> {
@@ -98,15 +103,42 @@ export function getUpdatePreferences(): UpdatePreferences {
   try {
     if (!existsSync(UPDATE_SETTINGS_FILE)) return { autoUpdate: false };
     const parsed = JSON.parse(readFileSync(UPDATE_SETTINGS_FILE, 'utf8')) as Partial<UpdatePreferences>;
-    return { autoUpdate: parsed.autoUpdate === true };
+    return {
+      autoUpdate: parsed.autoUpdate === true,
+      lastCheckAt: parsed.lastCheckAt,
+      lastCheckResult: parsed.lastCheckResult,
+      lastUpdateAt: parsed.lastUpdateAt,
+      lastVersion: parsed.lastVersion,
+      lastUpdateMode: parsed.lastUpdateMode,
+    };
   } catch {
     return { autoUpdate: false };
   }
 }
 
-export function setAutoUpdate(enabled: boolean): void {
+function writeUpdatePreferences(preferences: UpdatePreferences): void {
   mkdirSync(dirname(UPDATE_SETTINGS_FILE), { recursive: true });
-  writeFileSync(UPDATE_SETTINGS_FILE, JSON.stringify({ autoUpdate: enabled }, null, 2), 'utf8');
+  writeFileSync(UPDATE_SETTINGS_FILE, JSON.stringify(preferences, null, 2), 'utf8');
+}
+
+export function setAutoUpdate(enabled: boolean): void {
+  writeUpdatePreferences({
+    ...getUpdatePreferences(),
+    autoUpdate: enabled,
+  });
+}
+
+export function formatUpdateStatus(): string {
+  const preferences = getUpdatePreferences();
+  return [
+    `Automatic updates: ${preferences.autoUpdate ? 'enabled' : 'disabled'}`,
+    `Installed version: v${getCurrentVersion()}`,
+    `Last check: ${preferences.lastCheckAt || 'never'}`,
+    `Last check result: ${preferences.lastCheckResult || 'unknown'}`,
+    `Last successful update: ${preferences.lastUpdateAt || 'never'}`,
+    `Last updated version: ${preferences.lastVersion || 'unknown'}`,
+    `Last update mode: ${preferences.lastUpdateMode || 'unknown'}`,
+  ].join('\n');
 }
 
 export async function checkForUpdates(): Promise<UpdateCheck> {
@@ -185,6 +217,11 @@ export async function runUpdateCommand(args: string[]): Promise<number> {
   if (flags.has('--auto')) {
     setAutoUpdate(true);
     console.log('Automatic SkyCode updates enabled.');
+  }
+
+  if (flags.has('--status')) {
+    console.log(formatUpdateStatus());
+    return 0;
   }
 
   if (flags.has('--check')) {
