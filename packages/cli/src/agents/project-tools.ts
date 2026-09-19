@@ -589,14 +589,14 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
     '- Package installation/removal, generators, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
     '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
-    '- If a needed command is blocked, continue with file work where possible and tell the user exactly which command remains unavailable.'
+    '- If a needed command is blocked, continue with file work where possible and tell the user exactly which command remains unavailable.',
     '',
     'Rules:',
     '- All paths must stay inside the workspace root.',
     '- Prefer relative paths.',
     '- Never claim a file was created or changed unless the tool result says success.',
     '- Inspect existing files before overwriting when the request targets an existing project.',
-    '- Do not delete files, publish code, rewrite git history, or access paths outside the workspace. Package/dependency changes and approved git workspace changes are allowed only through the interactive permission flow.'
+    '- Do not delete files, publish code, rewrite git history, or access paths outside the workspace. Package/dependency changes and approved git workspace changes are allowed only through the interactive permission flow.',
     '- For a small plain HTML/CSS/JavaScript project, normally keep markup in index.html, shared presentation in one or more CSS files, and behavior in JavaScript modules instead of embedding everything in index.html.',
     '- For larger projects, create a folder structure appropriate to the stack before writing implementation files.',
     '- Batch independent tool calls in the same response whenever possible. Do not spend one model round trip per file; SkyCode can execute multiple create_directory/write_file calls from one response.',
