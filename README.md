@@ -50,6 +50,7 @@ SkyCode is under active development.
 - Realtime stream-follow: chat automatically follows the active assistant response and commits the full provider stream at EOF
 - OpenRouter fast-visible mode: reasoning models default to low/excluded reasoning so user-facing text starts sooner; blank generations retry once with reasoning disabled and empty assistant bubbles are never committed
 - Strict-provider tool-loop compatibility: project tool feedback uses provider-safe user turns and OpenRouter normalizes message sequences for upstreams that reject mid-conversation system messages
+- Project-build empty-response recovery: non-streaming OpenRouter tool-planning calls retry with reasoning disabled, then without reasoning metadata, so weak/free coding models get multiple chances to emit visible tool calls
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`

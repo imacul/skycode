@@ -254,6 +254,17 @@ export class CodingAgent implements BaseAgent {
         temperature: 0.2,
         maxTokens,
         signal: request.context?.signal,
+        ...(this.context.provider?.name === 'openrouter'
+          ? {
+              // Tool-planning turns need visible protocol output, not hidden
+              // chain-of-thought. Disable reasoning for maximum compatibility
+              // with small/free coding models.
+              reasoning: {
+                effort: 'none',
+                exclude: true,
+              },
+            }
+          : {}),
       });
 
       tokensUsed += response.usage?.totalTokens || 0;
