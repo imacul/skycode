@@ -10,6 +10,7 @@ export const PROJECT_TOOL_NAMES = [
   'search_files',
   'create_directory',
   'write_file',
+  'run_command',
 ] as const;
 
 export type ProjectToolName = typeof PROJECT_TOOL_NAMES[number];
@@ -229,6 +230,142 @@ export function stripProjectToolCalls(content: string): string {
     .trim();
 }
 
+
+export interface ProjectCommandPolicy {
+  allowed: boolean;
+  risk: 'read' | 'verify' | 'workspace' | 'blocked';
+  reason?: string;
+}
+
+export function classifyProjectCommand(command: string): ProjectCommandPolicy {
+  const clean = command.trim();
+
+  if (!clean) {
+    return { allowed: false, risk: 'blocked', reason: 'Command is empty.' };
+  }
+
+  if (/[\r\n;&|><\x60]/.test(clean) || /\$\(/.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'blocked',
+      reason:
+        'Shell chaining, redirects, pipes, command substitution, and multiline commands are not allowed autonomously.',
+    };
+  }
+
+  if (/(?:^|\s)(?:\.\.[\\/]|[A-Za-z]:[\\/]|\/(?!\/))/.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'blocked',
+      reason:
+        'Terminal commands must use paths inside the active workspace and may not reference parent or absolute paths.',
+    };
+  }
+
+  const destructive =
+    /\b(rm|rmdir|del|erase|format|mkfs|shutdown|reboot|halt|poweroff)\b|\bgit\s+(reset|clean|checkout\s+--|restore\s+--staged|push|commit|rebase)\b|\b(remove-item|clear-content|set-acl)\b/i;
+
+  if (destructive.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'blocked',
+      reason:
+        'Destructive, publishing, or history-rewriting commands require a future approval flow.',
+    };
+  }
+
+  const packageMutation =
+    /^(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|uninstall|update|upgrade|link|publish|init|create)\b|^npx\s+(?!tsc\b)/i;
+
+  if (packageMutation.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'workspace',
+      reason:
+        'Package installation/generation is workspace-changing and requires a future approval flow.',
+    };
+  }
+
+  const readOnlyPatterns = [
+    /^git\s+(?:status|diff|log|show|branch(?:\s+--show-current)?|rev-parse|ls-files)\b/i,
+    /^(?:node|npm|pnpm|yarn|bun|python|python3|pip|pip3|cargo|rustc|go|java|javac|dotnet)\s+(?:--version|-v|version)\b/i,
+    /^where\s+\S+/i,
+    /^which\s+\S+/i,
+  ];
+
+  if (readOnlyPatterns.some((pattern) => pattern.test(clean))) {
+    return { allowed: true, risk: 'read' };
+  }
+
+  const verifyPatterns = [
+    /^(?:npm|pnpm|yarn)\s+(?:test|run\s+(?:test|build|lint|typecheck|check)(?::[\w-]+)?)\b/i,
+    /^bun\s+(?:test|run\s+(?:test|build|lint|typecheck|check)(?::[\w-]+)?)\b/i,
+    /^npx\s+tsc\b/i,
+    /^tsc\b/i,
+    /^(?:pytest|python\s+-m\s+pytest|python3\s+-m\s+pytest)\b/i,
+    /^cargo\s+(?:test|check|build|clippy|fmt\s+--\s+--check)\b/i,
+    /^go\s+(?:test|vet|build)\b/i,
+    /^dotnet\s+(?:test|build)\b/i,
+    /^mvn\s+(?:test|verify)\b/i,
+    /^gradle\s+(?:test|build)\b/i,
+    /^\.\/gradlew\s+(?:test|build)\b/i,
+  ];
+
+  if (verifyPatterns.some((pattern) => pattern.test(clean))) {
+    return { allowed: true, risk: 'verify' };
+  }
+
+  return {
+    allowed: false,
+    risk: 'blocked',
+    reason: 'Command is outside SkyCode’s autonomous safe-terminal allowlist.',
+  };
+}
+
+function safeTerminalEnv(
+  source: Record<string, string | undefined>
+): Record<string, string> {
+  const allowedKeys = [
+    'PATH',
+    'Path',
+    'PATHEXT',
+    'SystemRoot',
+    'SYSTEMROOT',
+    'WINDIR',
+    'ComSpec',
+    'COMSPEC',
+    'TEMP',
+    'TMP',
+    'HOME',
+    'USERPROFILE',
+    'LOCALAPPDATA',
+    'APPDATA',
+    'PROGRAMDATA',
+  ];
+
+  const env: Record<string, string> = {};
+  for (const key of allowedKeys) {
+    const value = source[key] ?? process.env[key];
+    if (typeof value === 'string' && value.length > 0) {
+      env[key] = value;
+    }
+  }
+
+  // Keep child process behavior predictable while intentionally excluding
+  // provider API keys, tokens, and arbitrary user secrets.
+  env.NO_COLOR = '1';
+  return env;
+}
+
+function terminalPreview(content: string): string[] {
+  const lines = content
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .filter(Boolean);
+  const tail = lines.slice(-12);
+  return tail.length > 0 ? tail : ['(no output)'];
+}
+
 function lineDiffSummary(before: string, after: string): {
   additions: number;
   deletions: number;
@@ -386,13 +523,22 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- search_files: {"path":".","query":"text","searchContent":true}',
     '- create_directory: {"path":"relative/path"}',
     '- write_file: {"path":"relative/path","content":"full file contents","overwrite":true}',
+    '- run_command: {"command":"npm test","timeout":120000} — safe verification/read commands only; SkyCode runs it inside the active workspace.',
+    '',
+    'Terminal rules:',
+    '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks.',
+    '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
+    '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
+    '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
+    '- Package installation, package generators, git publishing/history rewrites, destructive filesystem commands, and system-management commands are blocked until SkyCode has an explicit approval UI.',
+    '- If a needed command is blocked, continue with file work where possible and tell the user exactly which manual/approval-requiring command remains.',
     '',
     'Rules:',
     '- All paths must stay inside the workspace root.',
     '- Prefer relative paths.',
     '- Never claim a file was created or changed unless the tool result says success.',
     '- Inspect existing files before overwriting when the request targets an existing project.',
-    '- Do not delete files, run shell commands, install packages, or access paths outside the workspace through this tool set.',
+    '- Do not delete files, install packages, publish code, rewrite git history, or access paths outside the workspace. Shell access is limited to the safe run_command policy above.',
     '- For a small plain HTML/CSS/JavaScript project, normally keep markup in index.html, shared presentation in one or more CSS files, and behavior in JavaScript modules instead of embedding everything in index.html.',
     '- For larger projects, create a folder structure appropriate to the stack before writing implementation files.',
     '- Batch independent tool calls in the same response whenever possible. Do not spend one model round trip per file; SkyCode can execute multiple create_directory/write_file calls from one response.',
@@ -444,19 +590,65 @@ export async function executeProjectToolCall(
         args.cwd = workspace;
         break;
       }
+      case 'run_command': {
+        if (typeof args.command !== 'string' || !args.command.trim()) {
+          throw new Error('command must be a non-empty string.');
+        }
+
+        const policy = classifyProjectCommand(args.command);
+        if (!policy.allowed) {
+          throw new Error(
+            'Terminal command blocked: ' +
+              (policy.reason || 'This command is not allowed autonomously.')
+          );
+        }
+
+        args.cwd = workspace;
+        args.timeout = Math.min(
+          Math.max(Number(args.timeout || 120000), 1000),
+          120000
+        );
+        args.captureOutput = true;
+        args.env = safeTerminalEnv(context.env || {});
+        break;
+      }
     }
 
     const result = await executeTool(call.name, args as any, context);
+
+    let resultContent = result.success
+      ? result.content || JSON.stringify(result.data ?? {})
+      : result.error || 'Tool failed without an error message.';
+
+    if (call.name === 'run_command' && !result.success && result.data) {
+      const data = result.data as {
+        stdout?: string;
+        stderr?: string;
+        exitCode?: number | null;
+      };
+      resultContent = [
+        typeof data.stdout === 'string' ? data.stdout.trim() : '',
+        typeof data.stderr === 'string' ? data.stderr.trim() : '',
+        result.error || '',
+        typeof data.exitCode === 'number' ? 'exit code: ' + data.exitCode : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
     const execution: ProjectToolExecution = {
       call,
       success: result.success,
-      content: result.success
-        ? result.content || JSON.stringify(result.data ?? {})
-        : result.error || 'Tool failed without an error message.',
+      content: resultContent,
     };
 
     if (typeof args.path === 'string') {
       execution.displayPath = workspaceDisplayPath(workspace, args.path);
+    }
+
+    if (call.name === 'run_command') {
+      execution.displayPath = '.';
+      execution.preview = terminalPreview(execution.content);
     }
 
     if (
@@ -498,6 +690,10 @@ export function projectToolResultMessage(
         '[content omitted from tool-result echo: ' +
         safeArgs.content.length +
         ' chars]';
+    }
+
+    if (execution.call.name === 'run_command') {
+      delete safeArgs.cwd;
     }
 
     return JSON.stringify({

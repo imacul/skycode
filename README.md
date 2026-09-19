@@ -49,6 +49,7 @@ SkyCode is under active development.
 - Rich assistant responses with headings, lists, quotes, dedicated writing cards, themed code blocks, line numbers, syntax colors, and per-block copy controls
 - Wide chat layout: transcript, messages, streaming responses, errors, history panel, and composer use about 96% of the terminal width instead of a narrow fixed column
 - Project continuation routing: short follow-ups like "please proceed" and "continue" stay on the coding agent and keep workspace tools active when the recent chat is a project build
+- Restricted internal agent terminal: coding agents can run safe workspace verification commands such as tests, builds, lint, type checks, git status/diff, and runtime version checks, then use the real output to repair code
 - Realtime stream-follow: chat automatically follows the active assistant response and commits the full provider stream at EOF
 - OpenRouter fast-visible mode: reasoning models default to low/excluded reasoning so user-facing text starts sooner; blank generations retry once with reasoning disabled and empty assistant bubbles are never committed
 - Strict-provider tool-loop compatibility: project tool feedback uses provider-safe user turns and OpenRouter normalizes message sequences for upstreams that reject mid-conversation system messages
@@ -162,6 +163,14 @@ If an older pre-bootstrap-safe install is already broken, rerun the official ins
 SkyCode separates the raw model from the capabilities of the harness around it. Coding models are explicitly told that SkyCode can inspect the active workspace and create/read/search/write project files and directories. Software-creation prompts are routed toward the coding agent, while pure capability questions such as `Can you create software?` are answered from SkyCode's real capabilities instead of the upstream model's generic chatbot disclaimer.
 
 For actual build requests, SkyCode retries models that incorrectly answer with raw-model limitations instead of using workspace tools. If a weak model repeatedly refuses or fails to emit the structured tool protocol, SkyCode reports that the selected model failed the tool protocol rather than falsely claiming that SkyCode cannot create software.
+
+## Internal agent terminal
+
+SkyCode coding agents can use a restricted terminal inside the active workspace during project work. The autonomous allowlist includes read-only repository checks and common verification commands such as `git status`, `git diff`, `npm test`, `npm run build`, `bun test`, type checks, lint/check scripts, Pytest, Cargo test/check/build, Go test/vet/build, and similar verification commands.
+
+Terminal execution is deliberately narrower than a raw shell: commands are single-command only, parent/absolute paths and shell chaining/redirects/pipes/subshells are blocked, and the child environment excludes provider API keys and arbitrary secrets. Package installation/generation, destructive filesystem commands, git publishing/history rewrites, and system-management commands remain blocked until SkyCode has an explicit per-command approval flow.
+
+Command runs appear in the live work panel so the agent can follow the loop: edit → run test/build → inspect failure → fix → rerun.
 
 ## Live workspace activity
 
