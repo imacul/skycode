@@ -19,7 +19,7 @@ function Ensure-Command($name, $helpText) {
     }
 }
 
-Write-Step "Installer v1.1.4"
+Write-Step "Installer v1.2.0"
 Write-Step "Checking requirements..."
 
 if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
@@ -77,7 +77,23 @@ New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
 $shim = @"
 @echo off
+setlocal
+
+if /I "%~1"=="update" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.skycode\app\update.ps1" %*
+  exit /b %ERRORLEVEL%
+)
+
+if /I "%~1"=="-v" goto :version
+if /I "%~1"=="--version" goto :version
+if /I "%~1"=="version" goto :version
+
 bun "%USERPROFILE%\.skycode\app\packages\cli\src\index.tsx" %*
+exit /b %ERRORLEVEL%
+
+:version
+powershell.exe -NoProfile -Command "$p = Join-Path $env:USERPROFILE '.skycode\app\package.json'; if (Test-Path $p) { $v = (Get-Content $p -Raw | ConvertFrom-Json).version; Write-Output ('SkyCode v' + $v) } else { Write-Output 'SkyCode version unknown' }"
+exit /b %ERRORLEVEL%
 "@
 
 Set-Content -Path $ShimPath -Value $shim -Encoding ASCII
@@ -100,4 +116,5 @@ Write-Host "  skycode" -ForegroundColor White
 Write-Host "  skycode resume" -ForegroundColor White
 Write-Host "  skycode update" -ForegroundColor White
 Write-Host ""
+Write-Host "The update/version commands are bootstrap-safe and do not load the SkyCode app, so they can repair a broken release." -ForegroundColor Gray
 Write-Host "SkyCode checks for updates automatically. Use 'skycode update --auto' to opt into automatic installation." -ForegroundColor Gray
