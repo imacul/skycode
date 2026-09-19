@@ -9,6 +9,7 @@ import {
   createNewConversation,
   formatConversationHistory,
   formatRelativeTime,
+  getVisibleConversationMessages,
 } from './store/conversation';
 import { copyToClipboard } from './utils/clipboard';
 import { runEvalCommand } from './eval/runner';
@@ -140,6 +141,8 @@ function App() {
     model: modelSettings,
     updateModelSettings,
   } = useSettingsStore();
+
+  const visibleMessages = getVisibleConversationMessages(currentMessages);
 
   useEffect(() => {
     activeChatScroll = messagesScrollRef.current;
@@ -997,7 +1000,7 @@ Current provider: ${provider?.name || 'none'}
                       {isCurrent ? '● ' : '  '}{conversation.title}
                     </text>
                     <text fg="gray" attributes={{ dim: true }}>
-                      {formatRelativeTime(conversation.updatedAt)} · {conversation.messages.length} messages
+                      {formatRelativeTime(conversation.updatedAt)} · {getVisibleConversationMessages(conversation.messages).length} messages
                     </text>
                   </box>
                 );
@@ -1048,8 +1051,8 @@ Current provider: ${provider?.name || 'none'}
         stickyScroll={true}
         stickyStart="bottom"
       >
-        {currentMessages.length > 0 ? (
-          currentMessages.map((msg, index) => (
+        {visibleMessages.length > 0 ? (
+          visibleMessages.map((msg) => (
             <box
               key={msg.id}
               flexDirection="column"
