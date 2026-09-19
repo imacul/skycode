@@ -16,6 +16,19 @@ function walk(dir: string): string[] {
 }
 
 describe('OpenTUI text safety', () => {
+  it('keeps addcloud setup text expressions scalar', () => {
+    const setupFiles = [
+      resolve(srcRoot, 'components/provider-selector.tsx'),
+      resolve(srcRoot, 'components/welcome-screen.tsx'),
+      resolve(srcRoot, 'components/api-key-prompt.tsx'),
+    ];
+
+    for (const file of setupFiles) {
+      const source = readFileSync(file, 'utf8');
+      expect(source).not.toMatch(/<text\b[^>]*>[\s\S]*?<text\b/);
+    }
+  });
+
   it('does not nest <text> renderables inside other <text> renderables', () => {
     const offenders: string[] = [];
 
