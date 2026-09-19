@@ -55,6 +55,18 @@ function Set-AutoUpdate([bool]$enabled) {
         Set-Content -Path $UpdateSettingsFile -Encoding UTF8
 }
 
+function Get-AutoUpdate {
+    try {
+        if (-not (Test-Path $UpdateSettingsFile)) { return $false }
+        $settings = Get-Content $UpdateSettingsFile -Raw | ConvertFrom-Json
+        return $settings.autoUpdate -eq $true
+    }
+    catch {
+        return $false
+    }
+}
+
+
 function Ensure-CompatibleBun {
     if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
         Write-Step "Bun not found. Installing Bun..."
@@ -134,6 +146,39 @@ if ($flags.ContainsKey("--auto")) {
 }
 
 Require-Command "git" "Install Git for Windows, then retry."
+
+if ($flags.ContainsKey("--startup")) {
+    if (-not (Get-AutoUpdate)) {
+        exit 0
+    }
+
+    try {
+        if (-not (Test-Path (Join-Path $InstallRoot ".git"))) {
+            exit 0
+        }
+
+        $currentSha = (git -C $InstallRoot rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0) { exit 0 }
+
+        $remoteLine = (git ls-remote $RepoUrl refs/heads/main).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $remoteLine) { exit 0 }
+
+        $remoteSha = ($remoteLine -split "\s+")[0]
+        if ($currentSha -eq $remoteSha) {
+            exit 0
+        }
+
+        $remoteVersion = Get-RemoteVersion
+        $label = if ($remoteVersion -ne "unknown") { "v$remoteVersion" } else { $remoteSha.Substring(0, 7) }
+        Write-Step "Automatic update found: $label"
+        # Fall through into the normal repair/update path below.
+    }
+    catch {
+        # Startup checks must never prevent SkyCode from opening while offline
+        # or when the remote cannot be reached.
+        exit 0
+    }
+}
 
 if ($flags.ContainsKey("--check")) {
     try {
