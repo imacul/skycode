@@ -57,9 +57,12 @@ export function InputBar({
   const commandToken = inputValue.trimStart().split(/\s+/)[0] || '';
   const isModelPickerMode =
     inputValue.trim() === '/model' || inputValue.startsWith('/model ');
-  const modelQuery = inputValue.startsWith('/model ')
+  const rawModelQuery = inputValue.startsWith('/model ')
     ? inputValue.slice('/model '.length).trim()
     : '';
+  const modelQuery = rawModelQuery.toLowerCase().startsWith('search ')
+    ? rawModelQuery.slice('search '.length).trim()
+    : rawModelQuery;
 
   const modelPickerItems = useMemo(
     () =>
@@ -158,13 +161,6 @@ export function InputBar({
 
   const submitSelectedModel = () => {
     if (!selectedModel) return;
-    const exact = inputValue.trim() === '/model ' + selectedModel.selector;
-
-    if (!exact) {
-      applySelectedModel();
-      return;
-    }
-
     onCommand?.('/model ' + selectedModel.selector);
     clearInput();
   };
@@ -208,11 +204,8 @@ export function InputBar({
         return;
       }
 
-      if (
-        (key.name === 'return' || key.name === 'enter' || key.name === 'kpenter') &&
-        selectedModel
-      ) {
-        submitSelectedModel();
+      if (key.name === 'return' || key.name === 'enter' || key.name === 'kpenter') {
+        if (selectedModel) submitSelectedModel();
         key.preventDefault();
         key.stopPropagation();
         return;
@@ -317,7 +310,7 @@ export function InputBar({
             </text>
           </box>
           <text fg="gray" attributes={{ dim: true }}>
-            {'Type to filter · ↑↓ navigate · Tab choose · Enter select/run · Esc close'}
+            {'Type to filter · ↑↓ navigate · Enter switch · Tab fill · click to switch · Esc close'}
           </text>
 
           {modelCatalogError ? (
@@ -337,14 +330,17 @@ export function InputBar({
                   backgroundColor={selected ? '#16303A' : '#12121A'}
                   paddingX={1}
                   paddingY={0}
-                  onMouseDown={() => replaceInput('/model ' + item.selector)}
+                  onMouseDown={() => {
+                    onCommand?.('/model ' + item.selector);
+                    clearInput();
+                  }}
                 >
                   <box width="100%" flexDirection="row" justifyContent="space-between">
                     <text fg={selected ? 'cyan' : 'white'} attributes={{ bold: selected }}>
                       {String(item.name)}
                     </text>
-                    <text fg={item.current ? 'green' : item.free ? 'green' : 'gray'}>
-                      {item.current ? 'CURRENT' : item.free ? 'FREE' : item.local ? 'LOCAL' : 'PAID'}
+                    <text fg={item.current ? 'green' : item.local || item.free ? 'green' : 'gray'}>
+                      {item.current ? 'CURRENT' : item.local ? 'LOCAL' : item.free ? 'FREE' : 'PAID'}
                     </text>
                   </box>
                   <text fg="gray" attributes={{ dim: true }}>
