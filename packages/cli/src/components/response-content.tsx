@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { copyToClipboard } from '../utils/clipboard';
+
 export type RichBlock =
   | { type: 'paragraph'; text: string }
   | { type: 'heading'; level: number; text: string }
@@ -204,6 +207,7 @@ function tokenColor(kind: TokenKind): string {
 }
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
+  const [copied, setCopied] = useState(false);
   const lines = code.split('\n');
   const gutterWidth = String(Math.max(1, lines.length)).length;
 
@@ -219,7 +223,19 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     >
       <box width="100%" flexDirection="row" justifyContent="space-between">
         <text fg="cyan" attributes={{ bold: true }}>{String(language || 'text')}</text>
-        <text fg="gray" attributes={{ dim: true }}>{String(lines.length) + ' lines'}</text>
+        <box flexDirection="row" gap={2}>
+          <text fg="gray" attributes={{ dim: true }}>{String(lines.length) + ' lines'}</text>
+          <text
+            fg={copied ? 'green' : 'gray'}
+            attributes={{ underline: true }}
+            onMouseDown={() => {
+              if (copyToClipboard(code)) {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }
+            }}
+          >{copied ? 'Copied' : 'Copy'}</text>
+        </box>
       </box>
 
       {lines.map((line, index) => (
@@ -241,6 +257,8 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 }
 
 function WritingBlock({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
   return (
     <box
       width="100%"
@@ -251,7 +269,19 @@ function WritingBlock({ text }: { text: string }) {
       paddingX={2}
       paddingY={1}
     >
-      <text fg="magenta" attributes={{ bold: true }}>{'Writing'}</text>
+      <box width="100%" flexDirection="row" justifyContent="space-between">
+        <text fg="magenta" attributes={{ bold: true }}>{'Writing'}</text>
+        <text
+          fg={copied ? 'green' : 'gray'}
+          attributes={{ underline: true }}
+          onMouseDown={() => {
+            if (copyToClipboard(text)) {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }
+          }}
+        >{copied ? 'Copied' : 'Copy'}</text>
+      </box>
       <text fg="white" wordWrap="break-word" width="100%">{text}</text>
     </box>
   );
