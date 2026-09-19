@@ -17,6 +17,7 @@ import { createBusinessAgent, DEFAULT_BUSINESS_AGENT_CONFIG } from './business-a
 import type { CodingAgentConfig, ChatAgentConfig, PlanningAgentConfig, BusinessAgentConfig } from './types';
 import type { BaseProvider } from '../providers/base';
 import type { AgentContext } from './types';
+import { shouldUseProjectTools } from './project-tools';
 
 /**
  * Built-in agents registry
@@ -203,6 +204,17 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
         agentName: explicitAgent,
         reason: 'explicit agent override',
         scores: {},
+      };
+    }
+
+    // Real workspace mutations must always use the coding agent. This is a
+    // capability boundary, not a fuzzy intent classification: chat/planning
+    // agents stream model text directly and cannot execute project tools.
+    if (shouldUseProjectTools(request.input)) {
+      return {
+        agentName: 'coding-agent',
+        reason: 'workspace mutation requires project tools',
+        scores: { 'coding-agent': 100 },
       };
     }
 
