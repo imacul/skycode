@@ -1,5 +1,3 @@
-import { Fragment } from 'react';
-
 export type RichBlock =
   | { type: 'paragraph'; text: string }
   | { type: 'heading'; level: number; text: string }
