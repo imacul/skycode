@@ -42,6 +42,7 @@ SkyCode is under active development.
 - Autonomous coding-agent project creation with safe workspace-scoped file tools
 - Architecture-first project planning with stack-aware separation of concerns and clarification questions
 - Unified OpenRouter + local model catalog with FREE/PAID labels and provider-aware switching
+- Interactive searchable `/model` picker with keyboard/mouse selection and compact model metadata
 - Durable cross-chat memory with correction-aware facts, preferences, project memory, and relevant past-chat recall
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
@@ -237,7 +238,7 @@ ANTHROPIC_API_KEY="..."
 OPENAI_API_KEY="..."
 ```
 
-Model availability changes frequently, so SkyCode discovers models at runtime. With OpenRouter configured, `/model` shows its live catalog with FREE/PAID pricing labels and also includes models from a reachable local server. Use `/model search <query>` to filter the combined catalog, then switch with `/model openrouter:<model-id>` or `/model local:<model-id>`.
+Model availability changes frequently, so SkyCode discovers models at runtime. Type `/model` to open an inline picker styled like the slash-command menu. Keep typing to filter by model name, provider, tag, `free`, `paid`, or `local`; use ↑/↓ to move, Enter or click to switch, and Tab to fill the exact selector without switching yet. The picker shows compact provider, price, context-window, and current-model metadata.
 
 ## Commands
 
