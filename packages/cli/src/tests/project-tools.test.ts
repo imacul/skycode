@@ -216,6 +216,108 @@ describe('project tool protocol', () => {
     expect(response.metadata?.finishReason).toBe('tool_protocol_not_followed');
   });
 
+  it('captures file change metadata for live work rendering', async () => {
+    const root = await workspace();
+
+    await executeProjectToolCall(
+      {
+        name: 'write_file',
+        args: {
+          path: 'src/app.ts',
+          content: 'const before = true;\n',
+        },
+      },
+      context(root)
+    );
+
+    const result = await executeProjectToolCall(
+      {
+        name: 'write_file',
+        args: {
+          path: 'src/app.ts',
+          content: 'const before = false;\nconst added = 42;\n',
+        },
+      },
+      context(root)
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.displayPath?.replace(/\\/g, '/')).toBe('src/app.ts');
+    expect(result.additions).toBeGreaterThan(0);
+    expect(result.deletions).toBeGreaterThan(0);
+    expect(result.preview?.some((line) => line.startsWith('+ '))).toBe(true);
+    expect(result.preview?.some((line) => line.startsWith('- '))).toBe(true);
+  });
+
+  it('streams structured work activity while building files', async () => {
+    const root = await workspace();
+    let calls = 0;
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+
+        if (calls === 1) {
+          return {
+            content:
+              '<tool_call>{"name":"create_directory","args":{"path":"demo"}}</tool_call>' +
+              '<tool_call>{"name":"write_file","args":{"path":"demo/index.ts","content":"export const ok = true;\\n"}}</tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+
+        return {
+          content: 'Built the project successfully.',
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    const activities: any[] = [];
+    let completed = '';
+
+    await agent.processStream({
+      input: 'Build a TypeScript app in this workspace',
+      onActivity: (activity) => activities.push(activity),
+      onComplete: (response) => {
+        completed = response.content;
+      },
+    });
+
+    expect(activities.some((item) => item.type === 'planning')).toBe(true);
+    expect(activities.some((item) => item.type === 'create' && item.status === 'success')).toBe(true);
+    expect(
+      activities.some(
+        (item) =>
+          item.type === 'write' &&
+          item.status === 'success' &&
+          item.path?.replace(/\\/g, '/') === 'demo/index.ts'
+      )
+    ).toBe(true);
+    expect(completed).toContain('Built the project successfully.');
+  });
+
   it('lets the coding agent create a real multi-file project from model tool calls', async () => {
     const root = await workspace();
     let call = 0;
