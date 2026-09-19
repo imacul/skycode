@@ -206,7 +206,6 @@ export class ChatAgent implements BaseAgent {
     const messages = this.buildProviderMessages(request);
     const startTime = Date.now();
     let fullContent = '';
-    let streamCompleted = false;
     let lastFinishReason = 'stop';
     let lastTokensUsed = 0;
 
@@ -236,42 +235,25 @@ export class ChatAgent implements BaseAgent {
           if (request.onStream) {
             request.onStream(chunk.content);
           }
-
-          if (chunk.finishReason && !streamCompleted) {
-            streamCompleted = true;
-            const executionTime = Date.now() - startTime;
-
-            request.onComplete?.({
-              content: fullContent,
-              type: this.detectResponseType(fullContent),
-              metadata: {
-                model: this.context.model,
-                provider: this.context.provider?.name || 'openrouter',
-                finishReason: chunk.finishReason,
-                tokensUsed: chunk.usage?.totalTokens || lastTokensUsed,
-                executionTime,
-              },
-              suggestions: this.generateSuggestions(fullContent, request),
-            });
-          }
         }
       );
 
-      // Some OpenAI-compatible/model streams end cleanly without a final
-      // finish_reason event. Treat EOF as completion so the last response is
-      // always committed to chat instead of remaining only in streaming state.
-      if (!streamCompleted && fullContent.length > 0) {
-        streamCompleted = true;
-        request.onComplete?.({
-          content: fullContent,
-          type: this.detectResponseType(fullContent),
-          metadata: {
-            model: this.context.model,
-            provider: this.context.provider?.name || 'openrouter',
-            finishReason: lastFinishReason,
-            tokensUsed: lastTokensUsed,
-            executionTime: Date.now() - startTime,
-          },
+      // Finalize at provider EOF, not on the first finish_reason chunk.
+      // Some OpenAI-compatible backends emit trailing content/usage chunks
+      // after finish_reason, while others omit finish_reason entirely.
+      // Waiting for EOF guarantees SkyCode commits the complete streamed text.
+      request.onComplete?.({
+        content: fullContent,
+        type: this.detectResponseType(fullContent),
+        metadata: {
+          model: this.context.model,
+          provider: this.context.provider?.name || 'openrouter',
+          finishReason: lastFinishReason,
+          tokensUsed: lastTokensUsed,
+          executionTime: Date.now() - startTime,
+        },
+        suggestions: this.generateSuggestions(fullContent, request),
+      });,
           suggestions: this.generateSuggestions(fullContent, request),
         });
       }
