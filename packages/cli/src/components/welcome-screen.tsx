@@ -104,12 +104,8 @@ export function WelcomeScreen({ onComplete, mode = 'all', forceSetup = false }: 
           gap={2}
           backgroundColor="#0D0D12"
         >
-          <text fg="cyan" attributes={{ bold: true, size: 24 }}>
-            🌌 Welcome to Sky Code
-          </text>
-          <text fg="gray" attributes={{ dim: true }}>
-            Your AI Agent Harness for the Terminal
-          </text>
+          <text fg="cyan" attributes={{ bold: true }}>{'🌌 Welcome to Sky Code'}</text>
+          <text fg="gray" attributes={{ dim: true }}>{'Your AI Agent Harness for the Terminal'}</text>
           
           <ProviderSelector
             onSelect={handleProviderSelect}
