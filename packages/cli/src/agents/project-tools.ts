@@ -368,7 +368,14 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   ];
 
   if (verifyPatterns.some((pattern) => pattern.test(clean))) {
-    return { allowed: true, requiresApproval: false, risk: 'verify' };
+    return {
+      allowed: true,
+      requiresApproval: true,
+      risk: 'verify',
+      permissionKey: 'terminal:verify',
+      description:
+        'This command executes project tooling or code to test/build/check the workspace.',
+    };
   }
 
   return {
@@ -583,7 +590,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- run_command: {"command":"npm test","timeout":120000} — safe verification/read commands only; SkyCode runs it inside the active workspace.',
     '',
     'Terminal rules:',
-    '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks.',
+    '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks. Read-only metadata commands can run automatically; project-executing verification commands require approval.'
     '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
     '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
     '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
