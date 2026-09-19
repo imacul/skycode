@@ -32,6 +32,17 @@ describe('bootstrap-safe updater', () => {
     expect(installPs1).toContain('ConvertFrom-Json).version');
   });
 
+  it('supports status in both bootstrap and app-level updater paths', () => {
+    expect(updatePs1).toContain('if ($flags.ContainsKey("--status"))');
+    expect(readFileSync(resolve(repoRoot, 'packages/cli/src/utils/updater.ts'), 'utf8'))
+      .toContain("if (flags.has('--status'))");
+  });
+
+  it('finalizes updates using the newly installed updater', () => {
+    expect(updatePs1).toContain('if ($flags.ContainsKey("--finalize"))');
+    expect(updatePs1).toContain('update.ps1") --finalize $modeFlag');
+  });
+
   it('exposes observable auto-update status and records automatic updates', () => {
     expect(updatePs1).toContain('if ($flags.ContainsKey("--status"))');
     expect(updatePs1).toContain('Record-UpdateCheck "up-to-date"');
