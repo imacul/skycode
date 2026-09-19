@@ -565,12 +565,7 @@ export class CodingAgent implements BaseAgent {
             call.name === 'run_command' && typeof call.args.command === 'string'
               ? String(call.args.command)
               : execution.displayPath || path,
-          detail:
-            call.name === 'run_command'
-              ? execution.content
-              : execution.success
-                ? undefined
-                : execution.content,
+          detail: execution.success ? undefined : execution.content,
           additions: execution.additions,
           deletions: execution.deletions,
           preview: execution.preview,
