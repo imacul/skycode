@@ -161,7 +161,7 @@ function App() {
 
     // React/OpenTUI layout settles after the state update that appended the
     // latest stream chunk. Queue the scroll so scrollHeight includes it.
-    queueMicrotask(() => {
+    setTimeout(() => {
       const current = messagesScrollRef.current;
       if (!current) return;
 
@@ -170,7 +170,7 @@ function App() {
       } catch {
         current.scrollTop = current.scrollHeight;
       }
-    });
+    }, 0);
   }, []);
 
   useEffect(() => {
