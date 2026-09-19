@@ -1,6 +1,6 @@
 {
   "name": "@sky-code/cli",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "description": "Sky Code CLI - AI-powered code assistant with multiple agent modes",
   "module": "dist/index.js",
   "type": "module",
