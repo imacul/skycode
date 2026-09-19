@@ -10,6 +10,7 @@ import {
   parseProjectToolCalls,
   projectToolResultMessage,
   shouldUseProjectTools,
+  stripProjectToolCalls,
 } from '../agents/project-tools';
 import { CodingAgent } from '../agents/coding-agent';
 import type { AgentContext } from '../agents/types';
@@ -58,6 +59,54 @@ describe('project tool protocol', () => {
     expect(isProjectCapabilityQuestion('Can you create software?')).toBe(true);
     expect(isProjectCapabilityQuestion('Are you able to build desktop apps?')).toBe(true);
     expect(shouldUseProjectTools('Can you create software?')).toBe(false);
+  });
+
+  it('parses DeepSeek DSML invoke syntax without forcing a retry', () => {
+    const content = [
+      "I'll inspect the workspace first.",
+      '<|DSML|tool_call>',
+      '<|DSML|invoke name="list_files">',
+      '<|DSML|parameter name="path" string="true">.</|DSML|parameter>',
+      '<|DSML|parameter name="recursive" string="false">true</|DSML|parameter>',
+      '</|DSML|invoke>',
+      '</|DSML|tool_call>',
+    ].join(' ');
+
+    expect(parseProjectToolCalls(content)).toEqual([
+      {
+        name: 'list_files',
+        args: {
+          path: '.',
+          recursive: true,
+        },
+      },
+    ]);
+  });
+
+  it('parses DSML JSON invocation with mismatched outer closer', () => {
+    const content =
+      '<|DSML|tool_call><|DSML|tool_call_invoke>' +
+      '{"name":"write_file","args":{"path":"demo.ts","content":"export {}"}}' +
+      '</|DSML|tool_call></|DSML|tool_call>';
+
+    expect(parseProjectToolCalls(content)).toEqual([
+      {
+        name: 'write_file',
+        args: {
+          path: 'demo.ts',
+          content: 'export {}',
+        },
+      },
+    ]);
+  });
+
+  it('strips model-native DSML markup from user-facing assistant text', () => {
+    const content =
+      'Working now. <|DSML|tool_call><|DSML|invoke name="list_files">' +
+      '<|DSML|parameter name="path" string="true">.</|DSML|parameter>' +
+      '</|DSML|invoke></|DSML|tool_call>';
+
+    expect(stripProjectToolCalls(content)).toBe('Working now.');
   });
 
   it('emits project tool results as user turns for strict provider compatibility', () => {
