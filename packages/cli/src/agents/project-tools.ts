@@ -29,13 +29,24 @@ const TOOL_CALL_RE = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
 const CLARIFICATION_RE = /<clarification>\s*([\s\S]*?)\s*<\/clarification>/i;
 const PROJECT_PLAN_RE = /<project_plan>\s*([\s\S]*?)\s*<\/project_plan>/i;
 
+export function isProjectCapabilityQuestion(input: string): boolean {
+  const text = input.toLowerCase().trim();
+  return (
+    /\b(can|could|would)\s+you\s+(create|build|make|develop|scaffold|code)\b/.test(text) ||
+    /\bare\s+you\s+able\s+to\s+(create|build|make|develop|scaffold|code)\b/.test(text) ||
+    /\bdo\s+you\s+have\s+the\s+(ability|capability)\s+to\s+(create|build|make|develop|scaffold|code)\b/.test(text)
+  );
+}
+
 export function shouldUseProjectTools(input: string): boolean {
   const text = input.toLowerCase();
 
+  if (isProjectCapabilityQuestion(text)) return false;
+
   const projectNouns =
-    /\b(project|repo|repository|website|site|app|landing page|portfolio|folder|directory|file|files|html|css|javascript|typescript|react)\b/;
+    /\b(project|repo|repository|software|website|site|web app|desktop app|desktop application|mobile app|application|app|cli|command-line tool|service|backend|frontend|full-stack|full stack|api|landing page|portfolio|folder|directory|file|files|html|css|javascript|typescript|react|next\.js|vue|svelte|node(?:\.js)?|python|rust|go|java|c#|\.net|electron|tauri)\b/;
   const mutationVerbs =
-    /\b(create|build|scaffold|generate|make|set up|setup|write|add|implement|edit|modify|update|refactor|fix)\b/;
+    /\b(create|build|develop|scaffold|generate|make|set up|setup|write|add|implement|edit|modify|update|refactor|fix|architect|structure)\b/;
   const directFileIntent =
     /\b(create|write|edit|modify|update|add)\b.{0,35}\b(file|files|folder|directory|index\.html|style\.css|script\.js)\b/;
 
