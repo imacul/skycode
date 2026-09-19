@@ -59,6 +59,22 @@ describe('project tool protocol', () => {
     expect(shouldUseProjectTools('Can you create software?')).toBe(false);
   });
 
+  it('emits project tool results as user turns for strict provider compatibility', () => {
+    const message = projectToolResultMessage([
+      {
+        call: {
+          name: 'create_directory',
+          args: { path: 'demo' },
+        },
+        success: true,
+        content: 'created',
+      },
+    ]);
+
+    expect(message.role).toBe('user');
+    expect(message.content).toContain('PROJECT TOOL RESULTS');
+  });
+
   it('parses blocking clarification requests', () => {
     expect(
       parseProjectClarification(
