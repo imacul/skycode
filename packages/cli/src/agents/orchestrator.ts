@@ -210,7 +210,8 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
     // Real workspace mutations must always use the coding agent. This is a
     // capability boundary, not a fuzzy intent classification: chat/planning
     // agents stream model text directly and cannot execute project tools.
-    if (shouldUseProjectTools(request.input)) {
+    const planningOnly = /\b(implementation plan|project plan|roadmap|launch plan|rollout plan)\b/i.test(request.input);
+    if (shouldUseProjectTools(request.input) && !planningOnly) {
       return {
         agentName: 'coding-agent',
         reason: 'workspace mutation requires project tools',
