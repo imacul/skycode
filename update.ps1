@@ -105,6 +105,10 @@ if /I "%~1"=="-v" goto :version
 if /I "%~1"=="--version" goto :version
 if /I "%~1"=="version" goto :version
 
+if exist "%USERPROFILE%\.skycode\app\update.ps1" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.skycode\app\update.ps1" --startup
+)
+
 bun "%USERPROFILE%\.skycode\app\packages\cli\src\index.tsx" %*
 exit /b %ERRORLEVEL%
 
