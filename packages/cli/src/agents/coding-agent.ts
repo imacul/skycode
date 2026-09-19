@@ -217,6 +217,17 @@ export class CodingAgent implements BaseAgent {
     }
   }
 
+  private looksLikeRawModelCapabilityRefusal(content: string): boolean {
+    const text = content.toLowerCase();
+    return (
+      /\b(i (?:am|['’]m) not able to|i cannot|i can['’]?t|unable to)\b/.test(text) &&
+      /\b(create|build|develop|software|files?|folders?|project|app|application|execute|compile|deploy)\b/.test(text)
+    ) || (
+      /\b(i can only|limited to)\b/.test(text) &&
+      /\b(code snippets?|guidance|examples?|text|source code)\b/.test(text)
+    );
+  }
+
   private async runProjectToolLoop(
     request: AgentRequest,
     onToolExecution?: (execution: ProjectToolExecution) => void
@@ -231,7 +242,7 @@ export class CodingAgent implements BaseAgent {
 
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
-    const maxIterations = 8;
+    const maxIterations = 10;
     let tokensUsed = 0;
     let finishReason = 'stop';
     let hasExecutedTools = false;
@@ -260,7 +271,9 @@ export class CodingAgent implements BaseAgent {
       const calls = parseProjectToolCalls(response.content);
 
       if (calls.length === 0) {
-        if (!hasExecutedTools && iteration < 2) {
+        const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
+
+        if (!hasExecutedTools && iteration < 3) {
           messages.push({
             id: 'assistant_invalid_tool_plan_' + Date.now() + '_' + iteration,
             role: 'assistant',
@@ -271,12 +284,27 @@ export class CodingAgent implements BaseAgent {
             id: 'tool_retry_' + Date.now() + '_' + iteration,
             role: 'system',
             content:
-              'The user asked you to modify real project files, but no valid project tool call was produced. ' +
-              'Use the exact <tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
-              'Do not merely paste code in chat.',
+              (falseCapabilityRefusal
+                ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
+                : '') +
+              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, and write_file. ' +
+              'The user asked you to modify real project files. Use the exact ' +
+              '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
+              'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +
+              'Do not tell the user to copy code manually and do not merely paste code in chat.',
             timestamp: new Date(),
           });
           continue;
+        }
+
+        if (!hasExecutedTools && falseCapabilityRefusal) {
+          return {
+            content:
+              'SkyCode can create and structure this software in the active workspace, but the selected model did not follow the workspace tool protocol after multiple retries. ' +
+              'Try the build request again or switch to a stronger coding model; SkyCode will keep the same real file-creation capabilities.',
+            finishReason: 'tool_protocol_not_followed',
+            tokensUsed,
+          };
         }
 
         return {
