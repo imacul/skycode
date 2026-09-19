@@ -177,6 +177,14 @@ foreach ($arg in $cleanArgs) {
     $flags[$arg.ToLowerInvariant()] = $true
 }
 
+if ($flags.ContainsKey("--finalize")) {
+    Write-BootstrapShim
+    $version = Get-LocalVersion
+    $mode = if ($flags.ContainsKey("--automatic")) { "automatic" } else { "manual" }
+    Record-UpdateSuccess $version $mode
+    exit 0
+}
+
 if ($flags.ContainsKey("--no-auto")) {
     Set-AutoUpdate $false
     Write-Host "Automatic SkyCode updates disabled."
@@ -323,13 +331,16 @@ try {
         Pop-Location
     }
 
-    # Keep the bootstrap command independent from application parsing. This is
-    # what lets future 'skycode update' commands repair a broken release.
-    Write-BootstrapShim
+    # Re-enter the updater from disk after the reset. The file at this path is
+    # now the NEW release's updater, so it rewrites the shim using the latest
+    # bootstrap logic instead of the updater version that started this process.
+    $modeFlag = if ($flags.ContainsKey("--startup")) { "--automatic" } else { "--manual" }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallRoot "update.ps1") --finalize $modeFlag
+    if ($LASTEXITCODE -ne 0) {
+        throw "The updated SkyCode files were installed, but bootstrap finalization failed."
+    }
 
     $version = Get-LocalVersion
-    $mode = if ($flags.ContainsKey("--startup")) { "automatic" } else { "manual" }
-    Record-UpdateSuccess $version $mode
     Write-Host "SkyCode updated successfully." -ForegroundColor Green
     Write-Host "Current version: v$version"
     exit 0

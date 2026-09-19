@@ -139,7 +139,7 @@ Inspect auto-update health and the last successful update:
 skycode update --status
 ```
 
-Automatic updates are opt-in. With `skycode update --auto`, the global bootstrap checks for a new release **before the SkyCode application starts**. SkyCode records the last check, last successful update, version, and whether it was automatic or manual so the update path is auditable with `skycode update --status`. If one exists, it repairs/updates the managed install first and then launches the updated app. Without `--auto`, SkyCode only notifies you when a newer build is available.
+Automatic updates are opt-in. With `skycode update --auto`, the global bootstrap checks for a new release **before the SkyCode application starts**. SkyCode records the last check, last successful update, version, and whether it was automatic or manual so the update path is auditable with `skycode update --status`. The status command is supported both by the bootstrap updater and by the app-level updater as a fallback. If one exists, it repairs/updates the managed install first and then launches the updated app. Without `--auto`, SkyCode only notifies you when a newer build is available.
 
 If an older pre-bootstrap-safe install is already broken, rerun the official installer once. That rewrites the global shim; future update/version commands no longer depend on the app parsing successfully.
 
