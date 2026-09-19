@@ -733,7 +733,7 @@ function App() {
       setSetupMode('local');
       setForceSetup(true);
       setShowWelcome(true);
-    } else if (command === '/openroute' || command === '/addopenrouter') {
+    } else if (command === '/openroute' || command === '/openrouter' || command === '/addopenrouter') {
       setSetupMode('openrouter');
       setForceSetup(true);
       setShowWelcome(true);
