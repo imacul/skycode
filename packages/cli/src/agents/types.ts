@@ -87,6 +87,9 @@ export interface AgentRequest {
 
   // Structured live work/activity callback for tool-using agents.
   onActivity?: (activity: AgentActivity) => void;
+
+  // Interactive approval callback for risky but permitted tool actions.
+  onApproval?: (request: AgentApprovalRequest) => Promise<AgentApprovalDecision>;
   
   // Completion callback
   onComplete?: (response: AgentResponse) => void;
@@ -98,6 +101,18 @@ export interface AgentRequest {
 /**
  * Agent response
  */
+export type AgentApprovalDecision = 'once' | 'session' | 'always' | 'deny';
+
+export interface AgentApprovalRequest {
+  id: string;
+  type: 'terminal';
+  title: string;
+  description: string;
+  command: string;
+  permissionKey: string;
+  risk: 'workspace' | 'git-write';
+}
+
 export interface AgentActivity {
   id: string;
   type: 'planning' | 'inspect' | 'create' | 'write' | 'search' | 'terminal' | 'complete' | 'error';
