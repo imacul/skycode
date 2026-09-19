@@ -119,6 +119,8 @@ Install the latest version:
 skycode update
 ```
 
+On managed installs, `skycode update`, `skycode update --check`, and version commands are handled by a small bootstrap layer before the main TypeScript application loads. This means a broken application release can still update and repair itself instead of bricking the updater.
+
 Enable automatic updates:
 
 ```bash
@@ -132,6 +134,8 @@ skycode update --no-auto
 ```
 
 Automatic updates are opt-in. Without `--auto`, SkyCode only notifies you when a newer build is available.
+
+If an older pre-bootstrap-safe install is already broken, rerun the official installer once. That rewrites the global shim; future update/version commands no longer depend on the app parsing successfully.
 
 ## Project creation
 
