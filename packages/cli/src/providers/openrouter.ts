@@ -375,7 +375,57 @@ export class OpenRouterProvider implements BaseProvider {
     }
 
     const data = (await response.json()) as OpenRouterResponse;
-    return this.convertResponse(data);
+    const converted = this.convertResponse(data);
+    if (converted.content) {
+      return converted;
+    }
+
+    // Project tool loops use non-streaming completions. Some OpenRouter
+    // models can spend that entire turn in hidden reasoning and return an
+    // empty visible message. Retry without reasoning before surfacing a
+    // provider failure.
+    const retryBodies: OpenRouterRequest[] = [
+      {
+        ...body,
+        reasoning: {
+          effort: 'none',
+          exclude: true,
+        },
+      },
+      {
+        ...body,
+        reasoning: undefined,
+      },
+    ];
+
+    for (const retryBody of retryBodies) {
+      const retryResponse = await fetch(`${this.config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(retryBody),
+        signal: this.getRequestSignal(request),
+      });
+
+      if (!retryResponse.ok) {
+        continue;
+      }
+
+      const retryData = (await retryResponse.json()) as OpenRouterResponse;
+      const retryConverted = this.convertResponse(retryData);
+      if (retryConverted.content) {
+        return retryConverted;
+      }
+    }
+
+    const reasoningSeen =
+      typeof data.choices?.[0]?.message?.reasoning === 'string' &&
+      data.choices[0].message.reasoning!.trim().length > 0;
+
+    throw new Error(
+      reasoningSeen
+        ? `OpenRouter model ${model} returned reasoning but no visible answer after two recovery attempts.`
+        : `OpenRouter model ${model} returned no visible answer after two recovery attempts.`
+    );
   }
 
   /**
