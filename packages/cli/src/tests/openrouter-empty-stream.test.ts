@@ -33,6 +33,7 @@ describe('OpenRouter empty/reasoning-only stream recovery', () => {
       const body = JSON.parse(String(init?.body || '{}'));
 
       if (body.stream === true) {
+        expect(body.reasoning).toEqual({ effort: 'low', exclude: true });
         return sseResponse([
           JSON.stringify({
             id: '1',
@@ -94,6 +95,83 @@ describe('OpenRouter empty/reasoning-only stream recovery', () => {
 
     expect(calls).toBe(2);
     expect(chunks.join('')).toBe('Here is the visible final answer.');
+  });
+
+  it('requests low excluded reasoning on the first stream so visible output starts sooner', async () => {
+    let requestBody: any;
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body || '{}'));
+      return sseResponse([
+        JSON.stringify({
+          id: 'fast-1',
+          model: 'test/reasoner',
+          choices: [
+            {
+              index: 0,
+              delta: { content: 'Visible immediately.' },
+              finish_reason: 'stop',
+            },
+          ],
+        }),
+        '[DONE]',
+      ]);
+    }) as typeof fetch;
+
+    const provider = new OpenRouterProvider();
+    await provider.initialize({ apiKey: 'test-key' });
+
+    await provider.chatStream(
+      {
+        model: 'test/reasoner',
+        messages: [],
+      },
+      () => {}
+    );
+
+    expect(requestBody.reasoning).toEqual({
+      effort: 'low',
+      exclude: true,
+    });
+  });
+
+  it('respects an explicit caller reasoning override', async () => {
+    let requestBody: any;
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body || '{}'));
+      return sseResponse([
+        JSON.stringify({
+          id: 'override-1',
+          model: 'test/reasoner',
+          choices: [
+            {
+              index: 0,
+              delta: { content: 'Answer.' },
+              finish_reason: 'stop',
+            },
+          ],
+        }),
+        '[DONE]',
+      ]);
+    }) as typeof fetch;
+
+    const provider = new OpenRouterProvider();
+    await provider.initialize({ apiKey: 'test-key' });
+
+    await provider.chatStream(
+      {
+        model: 'test/reasoner',
+        messages: [],
+        reasoning: { effort: 'medium', exclude: true },
+      },
+      () => {}
+    );
+
+    expect(requestBody.reasoning).toEqual({
+      effort: 'medium',
+      exclude: true,
+    });
   });
 
   it('does not retry when the original stream contains visible content', async () => {

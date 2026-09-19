@@ -271,6 +271,19 @@ export class OpenRouterProvider implements BaseProvider {
     };
   }
 
+  private getOpenRouterReasoning(request: ChatRequestOptions): OpenRouterRequest['reasoning'] {
+    const requested = request.reasoning as OpenRouterRequest['reasoning'] | undefined;
+    if (requested) return requested;
+
+    // Prefer a fast user-visible answer by default. OpenRouter reasoning models
+    // can otherwise spend the whole completion budget in hidden reasoning and
+    // leave SkyCode stuck on "Thinking..." with no visible content.
+    return {
+      effort: 'low',
+      exclude: true,
+    };
+  }
+
   private getRequestSignal(request: ChatRequestOptions): AbortSignal {
     const timeoutSignal = AbortSignal.timeout(
       (request.timeout as number | undefined) || this.config.timeout || 120000
@@ -304,6 +317,7 @@ export class OpenRouterProvider implements BaseProvider {
       max_tokens: request.maxTokens,
       stream: false,
       stop: request.stop,
+      reasoning: this.getOpenRouterReasoning(request),
     };
 
     // Add OpenRouter-specific headers
@@ -361,6 +375,7 @@ export class OpenRouterProvider implements BaseProvider {
       max_tokens: request.maxTokens,
       stream: true,
       stop: request.stop,
+      reasoning: this.getOpenRouterReasoning(request),
     };
 
     // Add OpenRouter-specific headers
@@ -499,15 +514,15 @@ export class OpenRouterProvider implements BaseProvider {
     }
 
     if (visibleContentLength === 0) {
-      // Some reasoning-heavy OpenRouter models can consume a streamed
-      // generation entirely in hidden reasoning and return no visible content.
-      // Retry once with low/excluded reasoning so SkyCode still receives a
-      // user-facing answer instead of leaving the transcript blank.
+      // If a provider still returns no visible content even though SkyCode
+      // already requested low/excluded reasoning, retry once with reasoning
+      // disabled entirely instead of making the user wait through another
+      // full hidden-thinking pass.
       const fallbackBody: OpenRouterRequest = {
         ...body,
         stream: false,
         reasoning: {
-          effort: 'low',
+          effort: 'none',
           exclude: true,
         },
       };
