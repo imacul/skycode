@@ -229,6 +229,22 @@ describe('project tool protocol', () => {
     expect(stripProjectToolCalls(content)).toBe('');
   });
 
+  it('recovers DeepSeek write_file calls that omit name and args wrappers', () => {
+    const content =
+      '<tool_call>{"path":"add-numbers/src/add.js","contents":"export function add(a, b) {\\n  return a + b;\\n}\\n","calls":[]}</tool_call>';
+
+    expect(parseProjectToolCalls(content)).toEqual([
+      {
+        name: 'write_file',
+        args: {
+          path: 'add-numbers/src/add.js',
+          content: 'export function add(a, b) {\\n  return a + b;\\n}\\n',
+        },
+      },
+    ]);
+    expect(stripProjectToolCalls(content)).toBe('');
+  });
+
   it('parses DSML JSON invocation with mismatched outer closer', () => {
     const content =
       '<|DSML|tool_call><|DSML|tool_call_invoke>' +
