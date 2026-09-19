@@ -52,11 +52,11 @@ export function InputBar({
   const [modelCatalogLoading, setModelCatalogLoading] = useState(false);
   const [modelCatalogError, setModelCatalogError] = useState<string | null>(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
   const isCommandMode = inputValue.startsWith(COMMAND_PREFIX);
   const commandToken = inputValue.trimStart().split(/\s+/)[0] || '';
-  const isModelPickerMode =
-    inputValue.trim() === '/model' || inputValue.startsWith('/model ');
+  const isModelPickerMode = modelPickerOpen;
   const rawModelQuery = inputValue.startsWith('/model ')
     ? inputValue.slice('/model '.length).trim()
     : '';
@@ -81,10 +81,10 @@ export function InputBar({
   const showModelPicker =
     !disabled &&
     !pickerDismissed &&
-    isModelPickerMode;
+    modelPickerOpen;
 
   useEffect(() => {
-    if (!showModelPicker || modelCatalogLoaded || modelCatalogLoading || !loadModelCatalog) {
+    if (!showModelPicker || modelCatalogLoaded || !loadModelCatalog) {
       return;
     }
 
@@ -109,9 +109,8 @@ export function InputBar({
 
     return () => {
       cancelled = true;
-      setModelCatalogLoading(false);
     };
-  }, [showModelPicker, modelCatalogLoaded, modelCatalogLoading, loadModelCatalog]);
+  }, [showModelPicker, modelCatalogLoaded, loadModelCatalog]);
 
   useEffect(() => {
     setSelectedModelIndex(0);
@@ -151,8 +150,21 @@ export function InputBar({
     textarea.cursorOffset = value.length;
   };
 
+  const openModelPicker = () => {
+    setModelPickerOpen(true);
+    setPickerDismissed(false);
+    setSelectedModelIndex(0);
+    replaceInput('/model ');
+  };
+
   const applySelectedCommand = (command = selectedCommand) => {
     if (!command) return;
+
+    if (command.command === '/model') {
+      openModelPicker();
+      return;
+    }
+
     replaceInput(command.takesArgs ? `${command.command} ` : command.command);
   };
 
@@ -172,12 +184,17 @@ export function InputBar({
     setInputValue(value);
     setSelectedCommandIndex(0);
     setPickerDismissed(false);
+
+    if (modelPickerOpen && !value.startsWith('/model')) {
+      setModelPickerOpen(false);
+    }
   };
 
   const handleKeyDown = (key: KeyEvent) => {
     if (showModelPicker) {
       if (key.name === 'escape') {
         setPickerDismissed(true);
+        setModelPickerOpen(false);
         key.preventDefault();
         key.stopPropagation();
         return;
@@ -253,12 +270,13 @@ export function InputBar({
 
     if (
       (key.name === 'return' || key.name === 'enter' || key.name === 'kpenter') &&
-      selectedCommand &&
-      inputValue.trim() !== selectedCommand.command
+      selectedCommand
     ) {
-      applySelectedCommand();
-      key.preventDefault();
-      key.stopPropagation();
+      if (inputValue.trim() !== selectedCommand.command || selectedCommand.command === '/model') {
+        applySelectedCommand();
+        key.preventDefault();
+        key.stopPropagation();
+      }
     }
   };
 
@@ -267,6 +285,7 @@ export function InputBar({
     setSelectedCommandIndex(0);
     setPickerDismissed(false);
     setSelectedModelIndex(0);
+    setModelPickerOpen(false);
     if (textareaRef.current) {
       textareaRef.current.editBuffer.setText('');
       textareaRef.current.cursorOffset = 0;
@@ -280,6 +299,12 @@ export function InputBar({
 
     if (text.startsWith(COMMAND_PREFIX)) {
       const command = text.trim();
+
+      if (command === '/model') {
+        openModelPicker();
+        return;
+      }
+
       onCommand?.(command);
       clearInput();
       return;
