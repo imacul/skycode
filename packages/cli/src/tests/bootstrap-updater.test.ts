@@ -32,6 +32,13 @@ describe('bootstrap-safe updater', () => {
     expect(installPs1).toContain('ConvertFrom-Json).version');
   });
 
+  it('exposes observable auto-update status and records automatic updates', () => {
+    expect(updatePs1).toContain('if ($flags.ContainsKey("--status"))');
+    expect(updatePs1).toContain('Record-UpdateCheck "up-to-date"');
+    expect(updatePs1).toContain('Record-UpdateSuccess $version $mode');
+    expect(updatePs1).toContain('"automatic"');
+  });
+
   it('has a standalone updater that repairs the managed checkout', () => {
     expect(updatePs1).toContain('git -C $InstallRoot reset --hard origin/main');
     expect(updatePs1).toContain('function Write-BootstrapShim');
