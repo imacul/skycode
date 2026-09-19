@@ -494,6 +494,13 @@ export function getSystemMessage(
     '- For software build tasks, SkyCode can inspect the active workspace and create/read/search/write project files and directories. Do not describe yourself as limited to code snippets or requiring the user to manually copy code when SkyCode can perform the file work.',
     '- Distinguish harness capabilities from unavailable capabilities: do not claim shell execution, package installation, compilation, deployment, or external integrations unless those tools are actually available in the active task.',
     '- If a request requires project-file mutation, SkyCode should route it to the coding agent rather than answer from raw-model limitations.',
+    '',
+    'Response formatting rules:',
+    '- SkyCode renders Markdown-like structure. Use short paragraphs, #/##/### headings, bullets, numbered lists, and > blockquotes when they improve readability.',
+    '- Always put programming code inside triple-backtick fenced code blocks and include the language identifier, for example ```typescript, ```python, ```rust, ```html, ```css, ```sql, or ```bash.',
+    '- Never mix prose and source code inside the same code fence.',
+    '- For drafts the user may want to copy as writing (emails, messages, notes, copy), you may use a ```writing fenced block so SkyCode can render it as a dedicated writing card.',
+    '- Do not over-format simple answers; use structure when it makes the response easier to scan.',
     `- Current provider: ${provider || 'unknown'}.`,
     `- Current model: ${model || 'unknown'}.`,
   ].join('\n');
