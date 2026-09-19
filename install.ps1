@@ -75,7 +75,7 @@ Pop-Location
 
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
-$shim = @"
+$shim = @'
 @echo off
 setlocal
 
@@ -94,7 +94,7 @@ exit /b %ERRORLEVEL%
 :version
 powershell.exe -NoProfile -Command "$p = Join-Path $env:USERPROFILE '.skycode\app\package.json'; if (Test-Path $p) { $v = (Get-Content $p -Raw | ConvertFrom-Json).version; Write-Output ('SkyCode v' + $v) } else { Write-Output 'SkyCode version unknown' }"
 exit /b %ERRORLEVEL%
-"@
+'@
 
 Set-Content -Path $ShimPath -Value $shim -Encoding ASCII
 
