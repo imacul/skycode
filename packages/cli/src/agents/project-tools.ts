@@ -253,6 +253,15 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
     };
   }
 
+  if (/(?:^|\s)(?:\.\.[\\/]|[A-Za-z]:[\\/]|\/(?!\/))/.test(clean)) {
+    return {
+      allowed: false,
+      risk: 'blocked',
+      reason:
+        'Terminal commands must use paths inside the active workspace and may not reference parent or absolute paths.',
+    };
+  }
+
   const destructive =
     /\b(rm|rmdir|del|erase|format|mkfs|shutdown|reboot|halt|poweroff)\b|\bgit\s+(reset|clean|checkout\s+--|restore\s+--staged|push|commit|rebase)\b|\b(remove-item|clear-content|set-acl)\b/i;
 
@@ -311,6 +320,41 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
     risk: 'blocked',
     reason: 'Command is outside SkyCode’s autonomous safe-terminal allowlist.',
   };
+}
+
+function safeTerminalEnv(
+  source: Record<string, string | undefined>
+): Record<string, string> {
+  const allowedKeys = [
+    'PATH',
+    'Path',
+    'PATHEXT',
+    'SystemRoot',
+    'SYSTEMROOT',
+    'WINDIR',
+    'ComSpec',
+    'COMSPEC',
+    'TEMP',
+    'TMP',
+    'HOME',
+    'USERPROFILE',
+    'LOCALAPPDATA',
+    'APPDATA',
+    'PROGRAMDATA',
+  ];
+
+  const env: Record<string, string> = {};
+  for (const key of allowedKeys) {
+    const value = source[key] ?? process.env[key];
+    if (typeof value === 'string' && value.length > 0) {
+      env[key] = value;
+    }
+  }
+
+  // Keep child process behavior predictable while intentionally excluding
+  // provider API keys, tokens, and arbitrary user secrets.
+  env.NO_COLOR = '1';
+  return env;
 }
 
 function terminalPreview(content: string): string[] {
@@ -563,6 +607,7 @@ export async function executeProjectToolCall(
           120000
         );
         args.captureOutput = true;
+        args.env = safeTerminalEnv(context.env || {});
         break;
       }
     }
