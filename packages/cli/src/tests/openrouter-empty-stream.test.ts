@@ -50,7 +50,7 @@ describe('OpenRouter empty/reasoning-only stream recovery', () => {
         ]);
       }
 
-      expect(body.reasoning).toEqual({ effort: 'low', exclude: true });
+      expect(body.reasoning).toEqual({ effort: 'none', exclude: true });
       return new Response(
         JSON.stringify({
           id: '2',
@@ -172,6 +172,128 @@ describe('OpenRouter empty/reasoning-only stream recovery', () => {
       effort: 'medium',
       exclude: true,
     });
+  });
+
+  it('recovers an empty non-streaming completion used by project tool loops', async () => {
+    let calls = 0;
+    const reasoningModes: unknown[] = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      const body = JSON.parse(String(init?.body || '{}'));
+      reasoningModes.push(body.reasoning);
+
+      if (calls === 1) {
+        return new Response(
+          JSON.stringify({
+            id: 'empty-1',
+            model: 'test/coder',
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: '',
+                  reasoning: 'hidden plan',
+                },
+                finish_reason: 'stop',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: 'visible-2',
+          model: 'test/coder',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content:
+                  '<tool_call>{"name":"create_directory","args":{"path":"notes-app"}}</tool_call>',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const provider = new OpenRouterProvider();
+    await provider.initialize({ apiKey: 'test-key' });
+
+    const response = await provider.chat({
+      model: 'test/coder',
+      messages: [],
+      reasoning: { effort: 'none', exclude: true },
+    });
+
+    expect(calls).toBe(2);
+    expect(reasoningModes[0]).toEqual({ effort: 'none', exclude: true });
+    expect(reasoningModes[1]).toEqual({ effort: 'none', exclude: true });
+    expect(response.content).toContain('<tool_call>');
+  });
+
+  it('falls back to a request without reasoning if disabling reasoning is still empty', async () => {
+    let calls = 0;
+    const bodies: any[] = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      const body = JSON.parse(String(init?.body || '{}'));
+      bodies.push(body);
+
+      if (calls < 3) {
+        return new Response(
+          JSON.stringify({
+            id: 'empty-' + calls,
+            model: 'test/coder',
+            choices: [
+              {
+                index: 0,
+                message: { role: 'assistant', content: '' },
+                finish_reason: 'stop',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: 'visible-3',
+          model: 'test/coder',
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content: 'visible fallback' },
+              finish_reason: 'stop',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const provider = new OpenRouterProvider();
+    await provider.initialize({ apiKey: 'test-key' });
+
+    const response = await provider.chat({
+      model: 'test/coder',
+      messages: [],
+    });
+
+    expect(calls).toBe(3);
+    expect(bodies[0].reasoning).toEqual({ effort: 'low', exclude: true });
+    expect(bodies[1].reasoning).toEqual({ effort: 'none', exclude: true });
+    expect('reasoning' in bodies[2]).toBe(false);
+    expect(response.content).toBe('visible fallback');
   });
 
   it('does not retry when the original stream contains visible content', async () => {
