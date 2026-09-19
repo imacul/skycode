@@ -100,7 +100,7 @@ export interface AgentRequest {
  */
 export interface AgentActivity {
   id: string;
-  type: 'planning' | 'inspect' | 'create' | 'write' | 'search' | 'complete' | 'error';
+  type: 'planning' | 'inspect' | 'create' | 'write' | 'search' | 'terminal' | 'complete' | 'error';
   status: 'running' | 'success' | 'error';
   title: string;
   path?: string;
