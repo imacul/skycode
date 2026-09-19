@@ -964,7 +964,7 @@ Current provider: ${provider?.name || 'none'}
       <box flexShrink={0} width="100%" alignItems="center">
         <Header />
       </box>
-            <box flexShrink={0} width="100%" maxWidth={78} paddingX={2} flexDirection="row" gap={2}>
+            <box flexShrink={0} width="96%" paddingX={2} flexDirection="row" gap={2}>
         <text
           fg="cyan"
           attributes={{ underline: true }}
@@ -1074,7 +1074,7 @@ Current provider: ${provider?.name || 'none'}
       
       {/* Setup instructions if no API key */}
       {needsSetup && (
-        <box width="100%" maxWidth={78} paddingX={2}>
+        <box width="96%" paddingX={2}>
           <text fg="yellow">
             ⚠️  No AI provider configured.
           </text>
@@ -1085,14 +1085,14 @@ Current provider: ${provider?.name || 'none'}
       )}
 
       {updateNotice && !showWelcome && (
-        <box width="100%" maxWidth={78} paddingX={2}>
+        <box width="96%" paddingX={2}>
           <text fg="cyan">{updateNotice}</text>
         </box>
       )}
 
       {/* Error display */}
       {error && !showWelcome && (
-        <box width="100%" maxWidth={78} paddingX={2}>
+        <box width="96%" paddingX={2}>
           <text fg="red" wordWrap="break-word" width="100%">
             {'❌ ' + String(error)}
           </text>
@@ -1200,7 +1200,7 @@ Current provider: ${provider?.name || 'none'}
       </scrollbox>
 
       {/* Input bar */}
-      <box width="100%" maxWidth={78} paddingX={2} flexShrink={0}>
+      <box width="96%" paddingX={2} flexShrink={0}>
         <InputBar 
           onSubmit={handleSubmit}
           disabled={!isInitialized || showWelcome}
