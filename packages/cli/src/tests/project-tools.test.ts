@@ -8,6 +8,7 @@ import {
   parseProjectClarification,
   parseProjectPlan,
   parseProjectToolCalls,
+  projectToolResultMessage,
   shouldUseProjectTools,
 } from '../agents/project-tools';
 import { CodingAgent } from '../agents/coding-agent';
