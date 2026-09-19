@@ -31,11 +31,25 @@ describe('interactive model picker wiring', () => {
   });
 
   it('keeps model rows compact and readable', () => {
-    expect(source).toContain("'Models'");
+    expect(source).toContain('const MODEL_PICKER_ROWS = 5');
+    expect(source).toContain('maxHeight={16}');
+    expect(source).toContain('visibleModelRows');
     expect(source).toContain("'CURRENT'");
     expect(source).toContain("'LOCAL'");
     expect(source).toContain("'FREE'");
     expect(source).toContain("'PAID'");
     expect(source).toContain('Showing ');
+  });
+
+  it('keeps the picker closable by keyboard and mouse', () => {
+    expect(source).toContain('const closeModelPicker = () =>');
+    expect(source).toContain("if (key.name === 'escape')");
+    expect(source).toContain('onMouseDown={closeModelPicker}');
+  });
+
+  it('lets arrow navigation move through the full filtered catalog, not just visible rows', () => {
+    expect(source).toContain('Math.max(1, modelPickerItems.length)');
+    expect(source).toContain('filteredModels.matches.length');
+    expect(source).toContain('modelWindowStart');
   });
 });
