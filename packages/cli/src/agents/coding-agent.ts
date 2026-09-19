@@ -500,11 +500,7 @@ export class CodingAgent implements BaseAgent {
         },
         codeBlocks: this.extractCodeBlocks(fullContent),
         suggestions: this.generateSuggestions(fullContent, request),
-      });,
-          codeBlocks: this.extractCodeBlocks(fullContent),
-          suggestions: this.generateSuggestions(fullContent, request),
-        });
-      }
+      });
     } catch (error) {
       if (request.onError) {
         request.onError(error instanceof Error ? error : new Error(String(error)));
