@@ -502,7 +502,9 @@ export class CodingAgent implements BaseAgent {
               ? 'create'
               : call.name === 'search_files'
                 ? 'search'
-                : 'inspect';
+                : call.name === 'run_command'
+                  ? 'terminal'
+                  : 'inspect';
 
         onActivity?.({
           id: activityId,
@@ -515,10 +517,15 @@ export class CodingAgent implements BaseAgent {
                 ? 'Creating directory'
                 : call.name === 'search_files'
                   ? 'Searching workspace'
-                  : call.name === 'read_file'
-                    ? 'Reading file'
-                    : 'Inspecting workspace',
-          path,
+                  : call.name === 'run_command'
+                    ? 'Running command'
+                    : call.name === 'read_file'
+                      ? 'Reading file'
+                      : 'Inspecting workspace',
+          path:
+            call.name === 'run_command' && typeof call.args.command === 'string'
+              ? String(call.args.command)
+              : path,
         });
 
         const execution = await executeProjectToolCall(call, this.context);
@@ -543,15 +550,27 @@ export class CodingAgent implements BaseAgent {
                   ? execution.success
                     ? 'Search complete'
                     : 'Search failed'
-                  : call.name === 'read_file'
+                  : call.name === 'run_command'
                     ? execution.success
-                      ? 'Read file'
-                      : 'Read failed'
-                    : execution.success
-                      ? 'Workspace inspected'
-                      : 'Inspection failed',
-          path: execution.displayPath || path,
-          detail: execution.success ? undefined : execution.content,
+                      ? 'Command completed'
+                      : 'Command failed'
+                    : call.name === 'read_file'
+                      ? execution.success
+                        ? 'Read file'
+                        : 'Read failed'
+                      : execution.success
+                        ? 'Workspace inspected'
+                        : 'Inspection failed',
+          path:
+            call.name === 'run_command' && typeof call.args.command === 'string'
+              ? String(call.args.command)
+              : execution.displayPath || path,
+          detail:
+            call.name === 'run_command'
+              ? execution.content
+              : execution.success
+                ? undefined
+                : execution.content,
           additions: execution.additions,
           deletions: execution.deletions,
           preview: execution.preview,
