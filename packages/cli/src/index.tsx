@@ -1146,7 +1146,13 @@ Current provider: ${provider?.name || 'none'}
               return;
             }
 
-            void handleCommand(command);
+            void handleCommand(command).catch((commandError) => {
+              addMessage(
+                'system',
+                'Command failed safely: ' +
+                  (commandError instanceof Error ? commandError.message : String(commandError))
+              );
+            });
           }}
         />
       </box>
