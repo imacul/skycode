@@ -51,6 +51,23 @@ step "Installing dependencies..."
 mkdir -p "$BIN_DIR"
 cat > "$SHIM" <<'EOF'
 #!/usr/bin/env bash
+set -e
+
+case "${1:-}" in
+  update)
+    exec bash "$HOME/.skycode/app/update.sh" "$@"
+    ;;
+  -v|--version|version)
+    if [ -f "$HOME/.skycode/app/package.json" ]; then
+      v="$(grep -m1 '"version"' "$HOME/.skycode/app/package.json" | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+      printf 'SkyCode v%s\n' "$v"
+    else
+      printf 'SkyCode version unknown\n'
+    fi
+    exit 0
+    ;;
+esac
+
 exec bun "$HOME/.skycode/app/packages/cli/src/index.tsx" "$@"
 EOF
 chmod +x "$SHIM"
@@ -72,4 +89,5 @@ printf 'Run:\n'
 printf '  skycode\n'
 printf '  skycode resume\n'
 printf '  skycode update\n\n'
+printf 'The update/version commands are bootstrap-safe and do not load the SkyCode app, so they can repair a broken release.\n'
 printf 'SkyCode checks for updates automatically. Use "skycode update --auto" to opt into automatic installation.\n'
