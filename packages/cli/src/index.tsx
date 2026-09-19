@@ -3,6 +3,7 @@ import { createRoot } from '@opentui/react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
+import { ResponseContent } from './components/response-content';
 import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
 import {
   useConversationStore,
@@ -1064,9 +1065,11 @@ Current provider: ${provider?.name || 'none'}
               >
                 {msg.role === 'user' ? '👤 User' : msg.role === 'assistant' ? '🤖 Assistant' : '⚙️ System'}:
               </text>
-              <text wordWrap="break-word" width="100%">
-                {msg.content}
-              </text>
+              {msg.role === 'assistant' ? (
+                <ResponseContent content={msg.content} />
+              ) : (
+                <text wordWrap="break-word" width="100%">{msg.content}</text>
+              )}
               {msg.role === 'assistant' && (
                 <text
                   fg={copiedMessageId === msg.id ? 'green' : 'gray'}
@@ -1102,9 +1105,7 @@ Current provider: ${provider?.name || 'none'}
         {isProcessing && currentResponse && (
           <box flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
-            <text wordWrap="break-word" width="100%">
-              {`${currentResponse}${isProcessing && !currentResponse.endsWith('|') ? '|' : ''}`}
-            </text>
+            <ResponseContent content={currentResponse} streaming={true} />
           </box>
         )}
 
