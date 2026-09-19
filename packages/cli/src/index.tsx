@@ -155,6 +155,34 @@ function App() {
     };
   }, []);
 
+  const scrollChatToBottom = useCallback(() => {
+    const scrollbox = messagesScrollRef.current;
+    if (!scrollbox) return;
+
+    // React/OpenTUI layout settles after the state update that appended the
+    // latest stream chunk. Queue the scroll so scrollHeight includes it.
+    queueMicrotask(() => {
+      const current = messagesScrollRef.current;
+      if (!current) return;
+
+      try {
+        current.scrollTo({ x: 0, y: current.scrollHeight });
+      } catch {
+        current.scrollTop = current.scrollHeight;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isProcessing) {
+      scrollChatToBottom();
+    }
+  }, [currentResponse, isProcessing, scrollChatToBottom]);
+
+  useEffect(() => {
+    scrollChatToBottom();
+  }, [visibleMessages.length, scrollChatToBottom]);
+
   // Initialize on mount
   useEffect(() => {
     const init = async () => {
@@ -385,6 +413,7 @@ function App() {
         // coding, planning, and business requests intelligently.
         onStream: (chunk) => {
           setCurrentResponse((prev) => prev + chunk);
+          scrollChatToBottom();
         },
         onComplete: (response: AgentResponse) => {
           // Add assistant response to conversation
@@ -394,6 +423,8 @@ function App() {
           });
           activeAbortControllerRef.current = null;
           setIsProcessing(false);
+          setCurrentResponse('');
+          scrollChatToBottom();
         },
         onError: (err) => {
           const wasCancelled = abortController.signal.aborted;
