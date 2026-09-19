@@ -191,14 +191,19 @@ if ($flags.ContainsKey("--auto")) {
 if ($flags.ContainsKey("--status")) {
     $settings = Get-UpdateSettings
     $state = if ($settings.autoUpdate -eq $true) { "enabled" } else { "disabled" }
+    $lastCheckAt = if ($settings.Contains("lastCheckAt")) { $settings.lastCheckAt } else { "never" }
+    $lastCheckResult = if ($settings.Contains("lastCheckResult")) { $settings.lastCheckResult } else { "unknown" }
+    $lastUpdateAt = if ($settings.Contains("lastUpdateAt")) { $settings.lastUpdateAt } else { "never" }
+    $lastVersion = if ($settings.Contains("lastVersion")) { $settings.lastVersion } else { "unknown" }
+    $lastUpdateMode = if ($settings.Contains("lastUpdateMode")) { $settings.lastUpdateMode } else { "unknown" }
 
     Write-Host "Automatic updates: $state"
     Write-Host "Installed version: v$(Get-LocalVersion)"
-    Write-Host "Last check: $($settings.lastCheckAt ?? "never")"
-    Write-Host "Last check result: $($settings.lastCheckResult ?? "unknown")"
-    Write-Host "Last successful update: $($settings.lastUpdateAt ?? "never")"
-    Write-Host "Last updated version: $($settings.lastVersion ?? "unknown")"
-    Write-Host "Last update mode: $($settings.lastUpdateMode ?? "unknown")"
+    Write-Host "Last check: $lastCheckAt"
+    Write-Host "Last check result: $lastCheckResult"
+    Write-Host "Last successful update: $lastUpdateAt"
+    Write-Host "Last updated version: $lastVersion"
+    Write-Host "Last update mode: $lastUpdateMode"
     exit 0
 }
 
