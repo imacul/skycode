@@ -122,8 +122,12 @@ function lineDiffSummary(before: string, after: string): {
   deletions: number;
   preview: string[];
 } {
-  const beforeLines = before.replace(/\r\n?/g, '\n').split('\n');
-  const afterLines = after.replace(/\r\n?/g, '\n').split('\n');
+  const beforeLines = before.length === 0
+    ? []
+    : before.replace(/\r\n?/g, '\n').split('\n');
+  const afterLines = after.length === 0
+    ? []
+    : after.replace(/\r\n?/g, '\n').split('\n');
 
   let prefix = 0;
   while (
