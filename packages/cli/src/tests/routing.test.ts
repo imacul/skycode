@@ -21,6 +21,14 @@ describe('agent routing', () => {
     expect(route('Create an implementation plan for a React API.')).toBe('planning-agent');
   });
 
+  it('hard-routes concrete workspace build requests to coding tools', () => {
+    expect(
+      route(
+        'Create a tiny Node.js function that adds two numbers, add a test for it, and run the test to verify it works.'
+      )
+    ).toBe('coding-agent');
+  });
+
   it('routes casual conversation to chat', () => {
     expect(route('Tell me a short joke about rain.')).toBe('chat-agent');
   });
