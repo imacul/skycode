@@ -292,6 +292,15 @@ export class CodingAgent implements BaseAgent {
     });
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      const modelActivityId = 'model_round_' + Date.now() + '_' + iteration;
+      onActivity?.({
+        id: modelActivityId,
+        type: 'planning',
+        status: 'running',
+        title: iteration === 0 ? 'Planning file changes' : 'Continuing project work',
+        detail: 'Model round ' + (iteration + 1) + ' of ' + maxIterations,
+      });
+
       let response;
       try {
         response = await this.context.provider.chat({
@@ -349,6 +358,14 @@ export class CodingAgent implements BaseAgent {
 
         throw error;
       }
+
+      onActivity?.({
+        id: modelActivityId,
+        type: 'planning',
+        status: 'success',
+        title: 'Model response received',
+        detail: 'Parsing project actions from round ' + (iteration + 1) + '.',
+      });
 
       tokensUsed += response.usage?.totalTokens || 0;
       finishReason = response.finishReason || finishReason;
