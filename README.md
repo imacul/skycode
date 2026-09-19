@@ -46,6 +46,7 @@ SkyCode is under active development.
 - Interactive searchable `/model` picker with keyboard/mouse selection and compact model metadata
 - Durable cross-chat memory with correction-aware facts, preferences, project memory, and relevant past-chat recall
 - Clean chat transcripts: internal system/identity prompts stay hidden from the visible conversation
+- Rich assistant responses with headings, lists, quotes, dedicated writing cards, themed code blocks, line numbers, syntax colors, and per-block copy controls
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`
@@ -319,6 +320,18 @@ Useful commands:
 SkyCode also automatically captures some explicit durable statements such as `remember that ...`, `my ... is ...`, corrections to those profile facts, preferences, and project-specific rules. For anything important that you definitely want preserved, `/remember <fact>` is the explicit path.
 
 Memory is grounded with two rules: newer durable records are authoritative for the same recognized subject, and past-chat recalls are treated as excerpts from user messages rather than as independently verified facts.
+
+## Rich response rendering
+
+SkyCode renders assistant Markdown-like output as terminal-native UI instead of dumping every response as one plain text blob.
+
+- Headings, paragraphs, bullets, numbered lists, quotes, and dividers get distinct visual treatment.
+- Triple-backtick code fences become dark code cards with a language label, line numbers, syntax-themed colors, and a clickable Copy action.
+- Syntax coloring is language-aware for common programming constructs and still provides a consistent theme for unknown languages.
+- ```writing fences render as dedicated writing cards for drafts, emails, messages, notes, and other copyable prose.
+- Streaming responses use the same renderer, so formatting appears as the model generates it.
+
+Models are prompted to include a language identifier on code fences (for example ```typescript, ```python, ```rust, ```html, ```css, ```sql, or ```bash) so SkyCode can theme code consistently.
 
 ## Conversation history
 
