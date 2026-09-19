@@ -309,7 +309,11 @@ export function projectToolResultMessage(
 
   return {
     id: 'tool_' + Date.now(),
-    role: 'system',
+    // Use a user-role protocol message for maximum OpenAI/OpenRouter model
+    // compatibility. Some upstream providers reject system messages that
+    // appear after an assistant turn, even though the top-level system prompt
+    // is valid.
+    role: 'user',
     content:
       'PROJECT TOOL RESULTS\n' +
       lines.join('\n') +
