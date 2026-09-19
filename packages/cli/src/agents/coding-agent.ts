@@ -470,10 +470,20 @@ export class CodingAgent implements BaseAgent {
       messages.push(projectToolResultMessage(executions));
     }
 
+    const limitMessage =
+      'I stopped after the maximum number of project-tool steps to avoid an uncontrolled loop. ' +
+      'The workspace changes already completed were kept. Review the work log and continue from there.';
+
+    onActivity?.({
+      id: 'limit_' + Date.now(),
+      type: 'error',
+      status: 'error',
+      title: 'Tool-step limit reached',
+      detail: limitMessage,
+    });
+
     return {
-      content:
-        'I stopped after the maximum number of project-tool steps to avoid an uncontrolled loop. ' +
-        'Review the files that were created or changed before continuing.',
+      content: limitMessage,
       finishReason: 'tool_iteration_limit',
       tokensUsed,
     };
@@ -559,31 +569,18 @@ export class CodingAgent implements BaseAgent {
 
     try {
       if (shouldUseProjectTools(request.input)) {
-        const toolLines: string[] = [];
-        const toolResult = await this.runProjectToolLoop(request, (execution) => {
-          const path =
-            typeof execution.call.args.path === 'string'
-              ? ' ' + execution.call.args.path
-              : '';
-          const line =
-            (execution.success ? '✓ ' : '✗ ') +
-            execution.call.name +
-            path +
-            '\n';
-          toolLines.push(line);
-          request.onStream?.(line);
-        }, request.onActivity);
+        const toolResult = await this.runProjectToolLoop(
+          request,
+          undefined,
+          request.onActivity
+        );
 
         if (toolResult.content) {
-          const spacer = toolLines.length > 0 ? '\n' : '';
-          request.onStream?.(spacer + toolResult.content);
+          request.onStream?.(toolResult.content);
         }
 
         request.onComplete?.({
-          content:
-            toolLines.join('') +
-            (toolLines.length > 0 && toolResult.content ? '\n' : '') +
-            toolResult.content,
+          content: toolResult.content,
           type: this.detectResponseType(toolResult.content),
           metadata: {
             model: this.context.model,
