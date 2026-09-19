@@ -52,6 +52,8 @@ SkyCode is under active development.
 - Strict-provider tool-loop compatibility: project tool feedback uses provider-safe user turns and OpenRouter normalizes message sequences for upstreams that reject mid-conversation system messages
 - Project-build empty-response recovery: non-streaming OpenRouter tool-planning calls retry with reasoning disabled, then without reasoning metadata, so weak/free coding models get multiple chances to emit visible tool calls
 - Live project work UI: Codex-style workspace activity shows planning, files being read/created/updated, +/− line counts, and compact diff previews while the model works
+- Multi-protocol project tools: SkyCode accepts its native tool envelope plus DeepSeek/OpenRouter DSML tool calls instead of wasting retries or printing raw tool markup
+- Faster project startup: SkyCode pre-inspects the workspace before the first model round trip so build agents can start architecture/file work immediately
 - `/history`, `/resume`, and `skycode resume`
 - Copy controls and `/copy`
 - Provider setup commands: `/addlocal`, `/addcloud`, `/openroute`

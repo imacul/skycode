@@ -57,37 +57,116 @@ export function shouldUseProjectTools(input: string): boolean {
   return directFileIntent.test(text) || (projectNouns.test(text) && mutationVerbs.test(text));
 }
 
+function coerceDsmlScalar(value: string, declaredString?: string): unknown {
+  const clean = value.trim();
+
+  if (declaredString === 'true') return clean;
+  if (declaredString === 'false') {
+    if (clean === 'true') return true;
+    if (clean === 'false') return false;
+    if (/^-?\d+(?:\.\d+)?$/.test(clean)) return Number(clean);
+
+    try {
+      return JSON.parse(clean);
+    } catch {
+      return clean;
+    }
+  }
+
+  if (clean === 'true') return true;
+  if (clean === 'false') return false;
+  if (/^-?\d+(?:\.\d+)?$/.test(clean)) return Number(clean);
+  return clean;
+}
+
+function normalizeDsmlMarkup(content: string): string {
+  return content
+    .replace(/<\s*∩╜£\s*DSML\s*∩╜£/gi, '<|DSML|')
+    .replace(/<\s*\/\s*∩╜£\s*DSML\s*∩╜£/gi, '</|DSML|')
+    .replace(/<\s*｜\s*DSML\s*｜/gi, '<|DSML|')
+    .replace(/<\s*\/\s*｜\s*DSML\s*｜/gi, '</|DSML|');
+}
+
+function pushProjectToolCall(
+  calls: ProjectToolCall[],
+  name: unknown,
+  args: unknown
+): void {
+  if (
+    typeof name === 'string' &&
+    PROJECT_TOOL_NAMES.includes(name as ProjectToolName) &&
+    args &&
+    typeof args === 'object' &&
+    !Array.isArray(args)
+  ) {
+    calls.push({
+      name: name as ProjectToolName,
+      args: args as Record<string, unknown>,
+    });
+  }
+}
+
 export function parseProjectToolCalls(content: string): ProjectToolCall[] {
   const calls: ProjectToolCall[] = [];
-  TOOL_CALL_RE.lastIndex = 0;
+  const normalized = normalizeDsmlMarkup(content);
 
+  TOOL_CALL_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = TOOL_CALL_RE.exec(content)) !== null) {
+  while ((match = TOOL_CALL_RE.exec(normalized)) !== null) {
     try {
       const parsed = JSON.parse(match[1]) as {
         name?: string;
         args?: Record<string, unknown>;
       };
-
-      if (
-        parsed.name &&
-        PROJECT_TOOL_NAMES.includes(parsed.name as ProjectToolName) &&
-        parsed.args &&
-        typeof parsed.args === 'object' &&
-        !Array.isArray(parsed.args)
-      ) {
-        calls.push({
-          name: parsed.name as ProjectToolName,
-          args: parsed.args,
-        });
-      }
+      pushProjectToolCall(calls, parsed.name, parsed.args);
     } catch {
-      // Ignore malformed tool calls. The coding-agent loop can ask the model
-      // for a corrected structured call before giving up.
+      // Other model-native tool syntaxes are handled below.
     }
   }
 
-  return calls;
+  // DeepSeek and several OpenRouter-hosted models may emit DSML-style tool
+  // calls even when asked for SkyCode's XML+JSON envelope. Accept that native
+  // form rather than making the model retry repeatedly.
+  const dsmlJsonRe =
+    /<\|DSML\|(?:tool_call_invoke|invoke_json)>\s*([\s\S]*?)\s*(?=<\/\|DSML\|(?:tool_call_invoke|invoke_json|tool_call)>)/gi;
+  while ((match = dsmlJsonRe.exec(normalized)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]) as {
+        name?: string;
+        args?: Record<string, unknown>;
+      };
+      pushProjectToolCall(calls, parsed.name, parsed.args);
+    } catch {
+      // Ignore malformed JSON and continue to the tag parser.
+    }
+  }
+
+  const dsmlInvokeRe =
+    /<\|DSML\|invoke\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/\|DSML\|invoke>/gi;
+  while ((match = dsmlInvokeRe.exec(normalized)) !== null) {
+    const name = match[1];
+    const body = match[2];
+    const args: Record<string, unknown> = {};
+    const paramRe =
+      /<\|DSML\|parameter\s+name=["']([^"']+)["'](?:\s+string=["']([^"']+)["'])?\s*>([\s\S]*?)<\/\|DSML\|parameter>/gi;
+
+    let paramMatch: RegExpExecArray | null;
+    while ((paramMatch = paramRe.exec(body)) !== null) {
+      args[paramMatch[1]] = coerceDsmlScalar(paramMatch[3], paramMatch[2]);
+    }
+
+    pushProjectToolCall(calls, name, args);
+  }
+
+  // De-duplicate calls because some models wrap the same DSML invocation in
+  // more than one marker.
+  const seen = new Set<string>();
+  return calls.filter((call) => {
+    const key = call.name + ':' + JSON.stringify(call.args);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function parseProjectClarification(content: string): string | null {
@@ -110,8 +189,22 @@ export function parseProjectPlan(content: string): Record<string, unknown> | nul
 }
 
 export function stripProjectToolCalls(content: string): string {
-  return content
+  const normalized = normalizeDsmlMarkup(content);
+
+  return normalized
     .replace(TOOL_CALL_RE, '')
+    .replace(
+      /<\|DSML\|tool_call>\s*[\s\S]*?<\/\|DSML\|tool_call>/gi,
+      ''
+    )
+    .replace(
+      /<\|DSML\|(?:tool_call_invoke|invoke_json)>\s*[\s\S]*?<\/\|DSML\|(?:tool_call_invoke|invoke_json)>/gi,
+      ''
+    )
+    .replace(
+      /<\|DSML\|invoke\s+name=["'][^"']+["']\s*>[\s\S]*?<\/\|DSML\|invoke>/gi,
+      ''
+    )
     .replace(PROJECT_PLAN_RE, '')
     .replace(CLARIFICATION_RE, '$1')
     .trim();
@@ -283,6 +376,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- Do not delete files, run shell commands, install packages, or access paths outside the workspace through this tool set.',
     '- For a small plain HTML/CSS/JavaScript project, normally keep markup in index.html, shared presentation in one or more CSS files, and behavior in JavaScript modules instead of embedding everything in index.html.',
     '- For larger projects, create a folder structure appropriate to the stack before writing implementation files.',
+    '- Batch independent tool calls in the same response whenever possible. Do not spend one model round trip per file; SkyCode can execute multiple create_directory/write_file calls from one response.',
     '- After tools finish, give a concise summary of the architecture and what was actually created or changed.',
   ].join('\n');
 }

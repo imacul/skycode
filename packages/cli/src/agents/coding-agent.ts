@@ -243,21 +243,64 @@ export class CodingAgent implements BaseAgent {
 
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
-    const maxIterations = 10;
+    const maxIterations = 8;
     let tokensUsed = 0;
     let finishReason = 'stop';
     let hasExecutedTools = false;
     const allExecutions: ProjectToolExecution[] = [];
 
+    const initialActivityId = 'planning_' + Date.now();
     onActivity?.({
-      id: 'planning_' + Date.now(),
+      id: initialActivityId,
       type: 'planning',
       status: 'running',
-      title: 'Planning project changes',
-      detail: 'Inspecting the workspace and deciding the file structure.',
+      title: 'Inspecting workspace',
+      detail: 'SkyCode is reading the workspace before asking the model to plan changes.',
+    });
+
+    // Always inspect the workspace once in the harness before the first model
+    // round trip. This removes a slow "please list files" turn from project
+    // builds and gives weak/free models immediate repository context.
+    const initialInspection = await executeProjectToolCall(
+      {
+        name: 'list_files',
+        args: { path: '.', recursive: false },
+      },
+      this.context
+    );
+    allExecutions.push(initialInspection);
+    if (initialInspection.success) hasExecutedTools = true;
+
+    onActivity?.({
+      id: initialActivityId,
+      type: 'inspect',
+      status: initialInspection.success ? 'success' : 'error',
+      title: initialInspection.success ? 'Workspace inspected' : 'Workspace inspection failed',
+      path: initialInspection.displayPath || '.',
+      detail: initialInspection.success ? undefined : initialInspection.content,
+    });
+
+    messages.push(projectToolResultMessage([initialInspection]));
+    messages.push({
+      id: 'workspace_hint_' + Date.now(),
+      role: 'user',
+      content:
+        'SkyCode already inspected the workspace root and provided the result above. ' +
+        'Do not spend a turn listing the root again unless you genuinely need deeper inspection. ' +
+        'Proceed with the architecture and file operations now.',
+      timestamp: new Date(),
     });
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      const modelActivityId = 'model_round_' + Date.now() + '_' + iteration;
+      onActivity?.({
+        id: modelActivityId,
+        type: 'planning',
+        status: 'running',
+        title: iteration === 0 ? 'Planning file changes' : 'Continuing project work',
+        detail: 'Model round ' + (iteration + 1) + ' of ' + maxIterations,
+      });
+
       let response;
       try {
         response = await this.context.provider.chat({
@@ -315,6 +358,14 @@ export class CodingAgent implements BaseAgent {
 
         throw error;
       }
+
+      onActivity?.({
+        id: modelActivityId,
+        type: 'planning',
+        status: 'success',
+        title: 'Model response received',
+        detail: 'Parsing project actions from round ' + (iteration + 1) + '.',
+      });
 
       tokensUsed += response.usage?.totalTokens || 0;
       finishReason = response.finishReason || finishReason;
