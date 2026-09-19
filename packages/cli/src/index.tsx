@@ -260,6 +260,12 @@ function App() {
     };
   }, [pendingApproval, resolveApproval]);
 
+  useEffect(() => {
+    if (pendingApproval) {
+      scrollChatToBottom();
+    }
+  }, [pendingApproval, scrollChatToBottom]);
+
   // Initialize on mount
   useEffect(() => {
     const init = async () => {
