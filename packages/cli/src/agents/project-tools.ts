@@ -1,5 +1,5 @@
 import { resolve, relative, isAbsolute, dirname } from 'node:path';
-import { lstat, realpath } from 'node:fs/promises';
+import { lstat, realpath, readFile } from 'node:fs/promises';
 import { executeTool } from '../tools';
 import type { AgentContext } from './types';
 import type { Message } from '../store/conversation';
@@ -23,6 +23,10 @@ export interface ProjectToolExecution {
   call: ProjectToolCall;
   success: boolean;
   content: string;
+  displayPath?: string;
+  additions?: number;
+  deletions?: number;
+  preview?: string[];
 }
 
 const TOOL_CALL_RE = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
@@ -111,6 +115,61 @@ export function stripProjectToolCalls(content: string): string {
     .replace(PROJECT_PLAN_RE, '')
     .replace(CLARIFICATION_RE, '$1')
     .trim();
+}
+
+function lineDiffSummary(before: string, after: string): {
+  additions: number;
+  deletions: number;
+  preview: string[];
+} {
+  const beforeLines = before.length === 0
+    ? []
+    : before.replace(/\r\n?/g, '\n').split('\n');
+  const afterLines = after.length === 0
+    ? []
+    : after.replace(/\r\n?/g, '\n').split('\n');
+
+  let prefix = 0;
+  while (
+    prefix < beforeLines.length &&
+    prefix < afterLines.length &&
+    beforeLines[prefix] === afterLines[prefix]
+  ) {
+    prefix += 1;
+  }
+
+  let beforeSuffix = beforeLines.length - 1;
+  let afterSuffix = afterLines.length - 1;
+  while (
+    beforeSuffix >= prefix &&
+    afterSuffix >= prefix &&
+    beforeLines[beforeSuffix] === afterLines[afterSuffix]
+  ) {
+    beforeSuffix -= 1;
+    afterSuffix -= 1;
+  }
+
+  const removed = beforeLines.slice(prefix, beforeSuffix + 1);
+  const added = afterLines.slice(prefix, afterSuffix + 1);
+  const preview: string[] = [];
+
+  for (const line of removed.slice(0, 4)) preview.push('- ' + line);
+  for (const line of added.slice(0, 6)) preview.push('+ ' + line);
+
+  if (removed.length + added.length > preview.length) {
+    preview.push('…');
+  }
+
+  return {
+    additions: added.length,
+    deletions: removed.length,
+    preview,
+  };
+}
+
+function workspaceDisplayPath(workspace: string, absolutePath: string): string {
+  const rel = relative(resolve(workspace), absolutePath);
+  return rel || '.';
 }
 
 function isPathInsideWorkspace(workspace: string, candidate: string): boolean {
@@ -234,6 +293,8 @@ export async function executeProjectToolCall(
 ): Promise<ProjectToolExecution> {
   const workspace = resolve(context.workingDirectory || process.cwd());
   const args: Record<string, unknown> = { ...call.args };
+  let beforeWrite = '';
+  let writeTarget: string | undefined;
 
   try {
     switch (call.name) {
@@ -243,6 +304,11 @@ export async function executeProjectToolCall(
         args.path = normalizeWorkspacePath(workspace, args.path, 'path');
         await assertNoSymlinkEscape(workspace, args.path as string);
         args.cwd = workspace;
+
+        if (call.name === 'write_file') {
+          writeTarget = args.path as string;
+          beforeWrite = await readFile(writeTarget, 'utf8').catch(() => '');
+        }
         break;
       }
       case 'list_files': {
@@ -268,18 +334,40 @@ export async function executeProjectToolCall(
     }
 
     const result = await executeTool(call.name, args as any, context);
-    return {
+    const execution: ProjectToolExecution = {
       call,
       success: result.success,
       content: result.success
         ? result.content || JSON.stringify(result.data ?? {})
         : result.error || 'Tool failed without an error message.',
     };
+
+    if (typeof args.path === 'string') {
+      execution.displayPath = workspaceDisplayPath(workspace, args.path);
+    }
+
+    if (
+      result.success &&
+      call.name === 'write_file' &&
+      writeTarget &&
+      typeof call.args.content === 'string'
+    ) {
+      const diff = lineDiffSummary(beforeWrite, call.args.content);
+      execution.additions = diff.additions;
+      execution.deletions = diff.deletions;
+      execution.preview = diff.preview;
+    }
+
+    return execution;
   } catch (error) {
     return {
       call,
       success: false,
       content: error instanceof Error ? error.message : String(error),
+      displayPath:
+        typeof args.path === 'string'
+          ? workspaceDisplayPath(workspace, args.path)
+          : undefined,
     };
   }
 }

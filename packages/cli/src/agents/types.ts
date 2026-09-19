@@ -84,6 +84,9 @@ export interface AgentRequest {
   
   // Streaming callback
   onStream?: (chunk: string) => void;
+
+  // Structured live work/activity callback for tool-using agents.
+  onActivity?: (activity: AgentActivity) => void;
   
   // Completion callback
   onComplete?: (response: AgentResponse) => void;
@@ -95,6 +98,18 @@ export interface AgentRequest {
 /**
  * Agent response
  */
+export interface AgentActivity {
+  id: string;
+  type: 'planning' | 'inspect' | 'create' | 'write' | 'search' | 'complete' | 'error';
+  status: 'running' | 'success' | 'error';
+  title: string;
+  path?: string;
+  detail?: string;
+  additions?: number;
+  deletions?: number;
+  preview?: string[];
+}
+
 export interface AgentResponse {
   // Generated content
   content: string;
