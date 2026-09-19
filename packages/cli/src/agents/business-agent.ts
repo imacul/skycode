@@ -258,10 +258,7 @@ export class BusinessAgent implements BaseAgent {
           executionTime: Date.now() - startTime,
         },
         suggestions: this.generateSuggestions(fullContent, request),
-      });,
-          suggestions: this.generateSuggestions(fullContent, request),
-        });
-      }
+      });
     } catch (error) {
       if (request.onError) {
         request.onError(error instanceof Error ? error : new Error(String(error)));
