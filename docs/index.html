@@ -130,6 +130,7 @@
       <section id="commands" class="plain-section">
         <div class="eyebrow">COMMANDS</div>
         <h2>Useful commands</h2>
+        <p>Slash commands are validated before execution. Missing arguments show usage guidance, unknown commands point to <code>/help</code>, and unexpected command failures are contained instead of crashing the UI.</p>
         <p>Type <code>/</code> in the composer to open the interactive command picker. Continue typing to filter commands, use ↑/↓ to navigate, Tab to complete, or click a command to select it.</p>
         <div class="command-table">
           <div><code>/addlocal</code><span>Add or update a local AI server.</span></div>
@@ -143,6 +144,7 @@
           <div><code>/remember &lt;fact&gt;</code><span>Save a durable memory.</span></div>
           <div><code>/forget &lt;query&gt;</code><span>Remove matching memory.</span></div>
           <div><code>/new</code><span>Start a new conversation.</span></div>
+          <div><code>/doctor</code><span>Check slash-command, provider, storage, and workspace health before a demo.</span></div>
           <div><code>Page Up / Page Down</code><span>Scroll through a long chat transcript.</span></div>
           <div><code>Ctrl + Home / Ctrl + End</code><span>Jump to the oldest or newest part of the transcript.</span></div>
         </div>
