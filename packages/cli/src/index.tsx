@@ -33,7 +33,7 @@ import {
   isFreeOpenRouterModel,
   type CatalogModel,
 } from './utils/model-catalog';
-import { validateSlashCommand } from './utils/slash-commands';
+import { SLASH_COMMANDS, validateSlashCommand } from './utils/slash-commands';
 import {
   autoCaptureMemories,
   buildMemoryContext,
@@ -784,7 +784,7 @@ function App() {
         [
           'SkyCode doctor',
           '',
-          'Slash commands: OK (' + 17 + ' public commands registered)',
+          'Slash commands: OK (' + SLASH_COMMANDS.length + ' public commands registered)',
           'Active provider: ' + (provider?.name || 'none'),
           'Active model: ' + (model || 'none'),
           'Configured providers: ' + (configuredProviders.length > 0 ? configuredProviders.join(', ') : 'none'),
