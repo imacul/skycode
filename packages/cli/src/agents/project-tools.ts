@@ -527,6 +527,8 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '',
     'Terminal rules:',
     '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks.',
+    '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
+    '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
     '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
     '- Package installation, package generators, git publishing/history rewrites, destructive filesystem commands, and system-management commands are blocked until SkyCode has an explicit approval UI.',
     '- If a needed command is blocked, continue with file work where possible and tell the user exactly which manual/approval-requiring command remains.',
