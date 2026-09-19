@@ -1367,7 +1367,7 @@ Current provider: ${provider?.name || 'none'}
 const renderer = await createCliRenderer({ exitOnCtrlC: false });
 
 renderer.keyInput.on('keypress', (key) => {
-  if (activeApprovalHandler && !key.ctrl && !key.meta) {
+  if (activeApprovalHandler && !key.ctrl) {
     const approvalKeys: Record<string, AgentApprovalDecision> = {
       '1': 'once',
       '2': 'session',
