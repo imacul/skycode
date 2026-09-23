@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { extractYoutubeVideoIds, youtubeMusicWatchUrl } from '../agents/browser-control';
+import { detectBrowserPlayRequest, extractYoutubeVideoIds, youtubeMusicWatchUrl } from '../agents/browser-control';
+import { shouldUseProjectTools } from '../agents/project-tools';
 import { classifyOpenTarget } from '../agents/desktop-tools';
 import { parseMcpConfig, takeMcpFrames } from '../agents/mcp-client';
 import { parseProjectToolCalls } from '../agents/project-tools';
@@ -29,6 +30,13 @@ describe('web, desktop, and MCP tools', () => {
     expect(classifyOpenTarget('https://example.com/docs').kind).toBe('url');
     expect(classifyOpenTarget('figma').value).toBe('figma');
     expect(() => classifyOpenTarget('cmd')).toThrow(/cannot launch arbitrary/);
+  });
+
+  it('treats a Brave YouTube Music request as something SkyCode does itself', () => {
+    const prompt = 'Go to Brave. If it is not open, open it, and play Asake\'s latest album on YouTube Music.';
+    expect(detectBrowserPlayRequest(prompt)).toBe('Asake latest album');
+    expect(shouldUseProjectTools(prompt)).toBe(true);
+    expect(detectBrowserPlayRequest('What is YouTube Music?')).toBeNull();
   });
 
   it('builds a YouTube Music autoplay link from search HTML', () => {

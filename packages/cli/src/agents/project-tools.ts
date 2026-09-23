@@ -10,7 +10,7 @@ import type {
 import type { Message } from '../store/conversation';
 import { agentDebug } from '../utils/agent-debug';
 import { openOnDesktop } from './desktop-tools';
-import { braveIsRunning, playOnYoutubeMusic } from './browser-control';
+import { braveIsRunning, detectBrowserPlayRequest, playOnYoutubeMusic } from './browser-control';
 import { callMcpTool, listMcpTools } from './mcp-client';
 import { fetchWebPage, searchWeb } from './web-tools';
 
@@ -73,6 +73,7 @@ export function shouldUseProjectTools(input: string): boolean {
   const text = input.toLowerCase();
 
   if (isProjectCapabilityQuestion(text)) return false;
+  if (detectBrowserPlayRequest(input)) return true;
 
   const projectNouns =
     /\b(project|repo|repository|software|website|site|web app|desktop app|desktop application|mobile app|application|app|cli|command-line tool|service|backend|frontend|full-stack|full stack|api|landing page|portfolio|folder|directory|file|files|html|css|javascript|typescript|react|next\.js|vue|svelte|node(?:\.js)?|python|rust|go|java|c#|\.net|electron|tauri)\b/;

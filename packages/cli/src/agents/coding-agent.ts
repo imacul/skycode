@@ -24,6 +24,7 @@ import {
   fetchOpenRouterKeyStatus,
   type RoutableModel,
 } from '../utils/openrouter-route';
+import { detectBrowserPlayRequest } from './browser-control';
 import {
   expandShellCommand,
   executeProjectToolCall,
@@ -272,6 +273,36 @@ export class CodingAgent implements BaseAgent {
   }> {
     if (!this.context.provider) {
       throw new Error('Provider not initialized');
+    }
+
+    const playQuery = detectBrowserPlayRequest(request.input);
+    if (playQuery) {
+      const execution = await executeProjectToolCall(
+        {
+          name: 'browser',
+          args: {
+            action: 'play',
+            query: playQuery,
+            app: 'brave',
+            reason: 'The user asked SkyCode to play this on YouTube Music in Brave.',
+          },
+        },
+        this.context,
+        request.onApproval
+      );
+      onActivity?.({
+        id: 'browser_play',
+        type: 'terminal',
+        status: execution.success ? 'success' : 'error',
+        title: execution.success ? 'Playing on YouTube Music' : 'Playback failed',
+        path: 'brave',
+        preview: execution.content.split('\n').slice(0, 6),
+      });
+      return {
+        content: execution.content,
+        finishReason: execution.success ? 'stop' : 'error',
+        tokensUsed: 0,
+      };
     }
 
     const maxTokens = (request.context as any)?.maxTokens || 4096;

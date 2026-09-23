@@ -6,6 +6,17 @@ import { assertPublicHttpUrl, searchWeb } from './web-tools';
 
 const DEBUG_PORT = 9222;
 
+export function detectBrowserPlayRequest(input: string): string | null {
+  const text = input.replace(/\s+/g, ' ').trim();
+  if (!/\byoutube music\b/i.test(text) || !/\bplay\b/i.test(text)) return null;
+
+  const match = text.match(/\bplay(?:\s+me)?\s+(?:the\s+)?(.+?)\s+on\s+youtube music\b/i);
+  if (!match) return null;
+
+  const query = match[1].replace(/['’]s\b/g, '').replace(/\s+/g, ' ').trim();
+  return query || null;
+}
+
 export function extractYoutubeVideoIds(html: string): string[] {
   const ids = [...html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)].map((match) => match[1]);
   return [...new Set(ids)];
