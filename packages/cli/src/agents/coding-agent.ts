@@ -521,7 +521,7 @@ export class CodingAgent implements BaseAgent {
               (falseCapabilityRefusal
                 ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
                 : '') +
-              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, run_command, start_process, read_process_logs, stop_process, web_search, web_fetch, open_url, open_app, mcp_list, and mcp_call. ' +
+              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, run_command, start_process, read_process_logs, stop_process, web_search, web_fetch, open_url, open_app, browser, mcp_list, and mcp_call. ' +
               (containsRawToolProtocol
                 ? 'Your previous response contained tool-call markup that SkyCode could not execute. Do not repeat that syntax. '
                 : '') +

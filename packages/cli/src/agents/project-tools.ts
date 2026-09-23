@@ -10,6 +10,7 @@ import type {
 import type { Message } from '../store/conversation';
 import { agentDebug } from '../utils/agent-debug';
 import { openOnDesktop } from './desktop-tools';
+import { braveIsRunning, playOnYoutubeMusic } from './browser-control';
 import { callMcpTool, listMcpTools } from './mcp-client';
 import { fetchWebPage, searchWeb } from './web-tools';
 
@@ -29,6 +30,7 @@ export const PROJECT_TOOL_NAMES = [
   'web_fetch',
   'open_url',
   'open_app',
+  'browser',
   'mcp_list',
   'mcp_call',
 ] as const;
@@ -178,6 +180,8 @@ function pushProjectToolCall(
                   ? 'web_fetch'
                   : name === 'open_browser'
                     ? 'open_url'
+                    : name === 'play' || name === 'play_music' || name === 'youtube' || name === 'youtube_music'
+                      ? 'browser'
                     : name === 'figma' || name === 'mcp'
                       ? 'mcp_call'
                       : name;
@@ -1292,6 +1296,8 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- web_fetch: {"url":"https://example.com/docs"} — reads a public page as text. Also works for http://127.0.0.1 when the app is running locally.',
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the real system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. Asks the user once.',
+    '- browser: {"action":"play","query":"Asake latest album","app":"brave","reason":"The user asked to hear this on YouTube Music"} — if Brave is closed, SkyCode starts it. If it is already open, SkyCode uses that window. It searches YouTube Music and starts playback. Also supports {"action":"open","url":"https://music.youtube.com","app":"brave","reason":"..."}.',
+    '- browser: {"action":"status","app":"brave"} — reports whether Brave is already running.',
     '- mcp_list: {} — lists tools from MCP servers configured in ~/.skycode/mcp.json or skycode.mcp.json.',
     '- mcp_call: {"server":"figma","tool":"get_figma_data","args":{"fileKey":"...","nodeId":"1:2"},"reason":"Read the Figma frame before building the screen"} — calls one MCP tool. Asks the user once. Figma needs a configured stdio server such as figma-developer-mcp.',
     '',
@@ -1455,6 +1461,51 @@ export async function executeProjectToolCall(
           content: await openOnDesktop(target),
           displayPath: target,
         };
+      }
+      case 'browser': {
+        const action = typeof args.action === 'string' && args.action.trim()
+          ? args.action.trim().toLowerCase()
+          : typeof args.query === 'string'
+            ? 'play'
+            : 'status';
+        if (action === 'status') {
+          const running = await braveIsRunning();
+          return {
+            call,
+            success: true,
+            content: running
+              ? 'Brave is already open.'
+              : 'Brave is not running.',
+            displayPath: 'brave',
+          };
+        }
+        if (action === 'play') {
+          if (typeof args.query !== 'string' || !args.query.trim()) {
+            throw new Error('query must be a non-empty string.');
+          }
+          await ensureDesktopApproval('browser', 'brave play ' + args.query, args.reason, requestApproval);
+          return {
+            call,
+            success: true,
+            content: await playOnYoutubeMusic(args.query),
+            displayPath: 'brave',
+          };
+        }
+        if (action === 'open') {
+          if (typeof args.url !== 'string' || !args.url.trim()) {
+            throw new Error('url must be a non-empty string.');
+          }
+          await ensureDesktopApproval('browser', args.url, args.reason, requestApproval);
+          const { openInBrave } = await import('./browser-control');
+          const opened = await openInBrave(args.url);
+          return {
+            call,
+            success: true,
+            content: opened.opened + '\n' + args.url,
+            displayPath: args.url,
+          };
+        }
+        throw new Error('browser action must be status, open, or play.');
       }
       case 'mcp_list':
         return {

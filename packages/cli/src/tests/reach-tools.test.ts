@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { extractYoutubeVideoIds, youtubeMusicWatchUrl } from '../agents/browser-control';
 import { classifyOpenTarget } from '../agents/desktop-tools';
 import { parseMcpConfig, takeMcpFrames } from '../agents/mcp-client';
 import { parseProjectToolCalls } from '../agents/project-tools';
@@ -28,6 +29,14 @@ describe('web, desktop, and MCP tools', () => {
     expect(classifyOpenTarget('https://example.com/docs').kind).toBe('url');
     expect(classifyOpenTarget('figma').value).toBe('figma');
     expect(() => classifyOpenTarget('cmd')).toThrow(/cannot launch arbitrary/);
+  });
+
+  it('builds a YouTube Music autoplay link from search HTML', () => {
+    const html = '{"videoId":"abcdefghijk"} {"videoId":"abcdefghijk"} {"videoId":"zzz12345678"}';
+    expect(extractYoutubeVideoIds(html)[0]).toBe('abcdefghijk');
+    expect(youtubeMusicWatchUrl('abcdefghijk')).toBe(
+      'https://music.youtube.com/watch?v=abcdefghijk&autoplay=1'
+    );
   });
 
   it('reads MCP config and content-length frames', () => {
