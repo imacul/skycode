@@ -392,10 +392,17 @@ export class CodingAgent implements BaseAgent {
 
       const calls = parseProjectToolCalls(response.content);
 
+      // A model may choose generic computer-agent vocabulary (for example
+      // <tool_call>terminal ...</tool_call>). The parser normalizes supported
+      // aliases. If any raw tool protocol remains but produced zero calls, do
+      // not ever present it as a successful final answer: feed it back into
+      // the loop as a protocol error and make the model retry.
+      const containsRawToolProtocol = /<tool_call>|<\\|DSML\\|/i.test(response.content);
+
       if (calls.length === 0) {
         const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
 
-        if (!hasExecutedTools && iteration < 3) {
+        if (containsRawToolProtocol || (!hasExecutedTools && iteration < 3)) {
           messages.push({
             id: 'assistant_invalid_tool_plan_' + Date.now() + '_' + iteration,
             role: 'assistant',
@@ -412,6 +419,9 @@ export class CodingAgent implements BaseAgent {
                 ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
                 : '') +
               'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, and run_command. ' +
+              (containsRawToolProtocol
+                ? 'Your previous response contained tool-call markup that SkyCode could not execute. Do not repeat that syntax. '
+                : '') +
               'The user asked you to modify real project files. Use the exact ' +
               '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
               'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +

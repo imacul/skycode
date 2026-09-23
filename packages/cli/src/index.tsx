@@ -30,7 +30,7 @@ import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
-import { shouldContinueProjectTools } from './agents/project-tools';
+import { isProjectContinuationInput, shouldContinueProjectTools } from './agents/project-tools';
 import type { BaseProvider } from './providers/base';
 import type {
   AgentActivity,
@@ -485,10 +485,11 @@ function App() {
       activeAbortControllerRef.current = abortController;
 
       // Create agent request
-      const continuingProjectWork = shouldContinueProjectTools(
-        text,
-        previousMessages
-      );
+      const previousRouteWasCoding =
+        orchestratorRef.current?.getLastRouteDecision()?.agentName === 'coding-agent';
+      const continuingProjectWork =
+        shouldContinueProjectTools(text, previousMessages) ||
+        (previousRouteWasCoding && isProjectContinuationInput(text));
 
       const request: AgentRequest = {
         input: text,

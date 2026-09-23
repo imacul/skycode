@@ -69,22 +69,34 @@ export function shouldUseProjectTools(input: string): boolean {
 }
 
 
+export function isProjectContinuationInput(input: string): boolean {
+  const clean = input.trim().toLowerCase();
+
+  // Continuations are deliberately recognized from the current turn alone.
+  // The UI/orchestrator can then combine this signal with recent project
+  // history. Requiring the original build prompt to survive context fitting
+  // made long-running tool sessions silently fall back to chat-agent.
+  return /^(?:please\s+)?(?:(?:continue|resume|proceed|carry on|keep going)(?:\s+(?:and\s+)?(?:finish|complete)(?:\s+it)?)?|(?:finish|complete)(?:\s+it)?|go ahead|do it|yes|yeah|yep|ok|okay)(?:\s+(?:please|with it|from there|the work|the project))?[.!?]*$/i.test(clean);
+}
+
 export function shouldContinueProjectTools(
   input: string,
   messages: Message[]
 ): boolean {
-  const clean = input.trim().toLowerCase();
-  const continuation =
-    /^(?:please\s+)?(?:proceed|continue|continue please|go ahead|keep going|carry on|finish(?: it)?|complete(?: it)?|resume|do it|yes|yeah|yep|ok|okay)(?:\s+(?:please|with it|from there|the work|the project))?[.!?]*$/i;
+  if (!isProjectContinuationInput(input)) return false;
 
-  if (!continuation.test(clean)) return false;
+  const recentMessages = [...messages].reverse().slice(0, 16);
 
-  const recentUserMessages = [...messages]
-    .reverse()
-    .filter((message) => message.role === 'user')
-    .slice(0, 6);
+  return recentMessages.some((message) => {
+    if (message.role === 'user' && shouldUseProjectTools(message.content)) return true;
 
-  return recentUserMessages.some((message) => shouldUseProjectTools(message.content));
+    // Saved assistant/tool protocol is durable evidence that this conversation
+    // is already in a workspace task, even if the original user prompt was
+    // trimmed from the model context window.
+    return /<tool_call>|PROJECT TOOL RESULTS|Project work completed|workspace operations completed|runaway-agent fuse|project-tool steps/i.test(
+      message.content
+    );
+  });
 }
 
 function coerceDsmlScalar(value: string, declaredString?: string): unknown {
@@ -673,7 +685,8 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks. Read-only metadata commands can run automatically; project-executing verification commands require approval.',
     '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
     '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
-    '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
+    '- run_command already executes with the active workspace as cwd. NEVER invent /workspace, /home, C:\\\\ paths, or cd into an absolute workspace path.',
+    '- Run one command per tool call. Do not use shell chaining (&& or ;), pipes, redirects/heredocs, subshells, or multiline commands. Use create_directory/write_file for filesystem changes and file contents instead of mkdir/cat/echo redirection.',
     '- For every command that requires approval, the reason must explain the purpose/necessity, not restate the action. Bad: "Install Jest dev dependency." Good: "The project uses Jest for its automated tests, so dependencies must be installed before I can run and verify the requested test suite." Package installs must say what capability/package is needed and why the current task cannot proceed or be verified without it.',
     '- Package installation/removal, generators, arbitrary workspace commands, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
     '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
