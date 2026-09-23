@@ -34,7 +34,11 @@ export interface ProjectToolExecution {
   preview?: string[];
 }
 
-// Some OpenRouter/DeepSeek models mix SkyCode's opening tag with a DSML\n// closing tag, e.g. <tool_call>{...}</|DSML|tool_call>. Treat both closers\n// as the same envelope so a valid action is executed instead of leaked to UI.\nconst TOOL_CALL_RE =\n  /<tool_call>\s*([\s\S]*?)\s*(?:<\/tool_call>|<\/\|DSML\|tool_call>)/gi;
+// Some OpenRouter/DeepSeek models mix SkyCode's opening tag with a DSML
+// closing tag, e.g. <tool_call>{...}</|DSML|tool_call>. Treat both closers
+// as the same envelope so a valid action is executed instead of leaked to UI.
+const TOOL_CALL_RE =
+  /<tool_call>\s*([\s\S]*?)\s*(?:<\/tool_call>|<\/\|DSML\|tool_call>)/gi;
 const CLARIFICATION_RE = /<clarification>\s*([\s\S]*?)\s*<\/clarification>/i;
 const PROJECT_PLAN_RE = /<project_plan>\s*([\s\S]*?)\s*<\/project_plan>/i;
 
