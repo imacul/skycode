@@ -246,7 +246,11 @@ export class CodingAgent implements BaseAgent {
 
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
-    const maxIterations = 8;
+    // A real coding task routinely needs more than eight model/tool turns
+    // (inspect -> create -> install -> test -> diagnose -> fix -> retest).
+    // Keep a generous emergency fuse for genuinely runaway agents, but do not
+    // treat a small arbitrary turn count as task completion.
+    const maxIterations = 40;
     let tokensUsed = 0;
     let finishReason = 'stop';
     let hasExecutedTools = false;
@@ -305,7 +309,7 @@ export class CodingAgent implements BaseAgent {
         type: 'planning',
         status: 'running',
         title: iteration === 0 ? 'Planning file changes' : 'Continuing project work',
-        detail: 'Model round ' + (iteration + 1) + ' of ' + maxIterations,
+        detail: 'Continuing until the requested work is completed and verified.',
       });
 
       let response;
@@ -586,8 +590,9 @@ export class CodingAgent implements BaseAgent {
     }
 
     const limitMessage =
-      'I stopped after the maximum number of project-tool steps to avoid an uncontrolled loop. ' +
-      'The workspace changes already completed were kept. Review the work log and continue from there.';
+      'SkyCode hit its emergency runaway-agent fuse after ' + maxIterations +
+      ' model/tool rounds before the task reached a verified completion state. ' +
+      'The workspace changes already completed were kept. This is an abnormal safety stop, not a normal handoff.';
 
     onActivity?.({
       id: 'limit_' + Date.now(),
