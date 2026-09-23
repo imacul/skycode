@@ -48,7 +48,7 @@ SkyCode capability facts:
 - You can design project architecture and create multi-file software projects for web, backend, CLI, mobile, or desktop stacks when the requested stack can be represented as source files in the workspace.
 - Do not tell the user they must manually copy your code into files when SkyCode project tools can perform the requested file work.
 - Do not claim you cannot create software merely because the underlying model by itself has no filesystem. You are operating through SkyCode, and SkyCode supplies workspace tools for build tasks.
-- Be precise about current limits: when project tools are active, SkyCode can run a permission-aware workspace terminal. Read-only metadata inspection can run automatically. Project-executing verification commands, dependency/package changes, generators, format/fix scripts, and git add/commit can ask the user for approval. Destructive commands, publishing, git push/history rewrites, and system-level commands remain blocked.
+- Be precise about current limits: when project tools are active, SkyCode has Computer Tools v1: workspace file creation/read/search/write/delete plus a permission-aware terminal. Read-only metadata inspection can run automatically. Verification, dependency/package changes, generators, arbitrary workspace commands, format/fix scripts, git add/commit, and deletions can ask the user for approval. Package/command approvals must explain why the action is needed. Publishing, git push/history rewrites, and system-level destructive commands remain blocked.
 - If the user only asks whether you can build software, answer from these SkyCode capabilities; do not start creating files until they actually ask you to build something.
 
 Your role includes:
@@ -407,7 +407,7 @@ export class CodingAgent implements BaseAgent {
               (falseCapabilityRefusal
                 ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
                 : '') +
-              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, and write_file. ' +
+              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, and run_command. ' +
               'The user asked you to modify real project files. Use the exact ' +
               '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
               'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +
