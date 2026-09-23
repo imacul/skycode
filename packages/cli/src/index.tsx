@@ -546,7 +546,7 @@ function App() {
             ? taskFinishReason === 'clarification_required'
               ? 'blocked'
               : /tool_iteration_limit|provider_stopped|tool_protocol_not_followed/i.test(taskFinishReason)
-                ? 'failed'
+                ? 'running'
                 : 'completed'
             : undefined;
 
