@@ -237,6 +237,19 @@ describe('project tool protocol', () => {
     ]);
   });
 
+  it('parses compact XML argument tool calls without stopping the agent', () => {
+    const content =
+      '<tool_call>create_directory <arg_key>path</arg_key> <arg_value>computer-tools-v1-test</arg_value> </tool_call>';
+
+    expect(parseProjectToolCalls(content)).toEqual([
+      {
+        name: 'create_directory',
+        args: { path: 'computer-tools-v1-test' },
+      },
+    ]);
+    expect(stripProjectToolCalls(content)).toBe('');
+  });
+
   it('parses mixed SkyCode opener with DSML closer emitted by DeepSeek', () => {
     const content =
       '<tool_call>{"name":"create_directory","args":{"path":"add-numbers/src"}}</|DSML|tool_call>';

@@ -187,6 +187,26 @@ export function parseProjectToolCalls(content: string): ProjectToolCall[] {
     }
   }
 
+  // Some models emit a compact XML argument form instead of JSON, e.g.
+  // <tool_call>create_directory <arg_key>path</arg_key>
+  // <arg_value>demo</arg_value> </tool_call>. Recover this form so a valid
+  // action never leaks into the UI or causes the agent loop to stop.
+  const compactXmlToolRe =
+    /<tool_call>\s*([a-z_][a-z0-9_]*)\s*([\s\S]*?)\s*(?:<\/tool_call>|<\/\|DSML\|tool_call>)/gi;
+  while ((match = compactXmlToolRe.exec(normalized)) !== null) {
+    const name = match[1];
+    const body = match[2];
+    const args: Record<string, unknown> = {};
+    const argRe =
+      /<arg_key>\s*([\s\S]*?)\s*<\/arg_key>\s*<arg_value>\s*([\s\S]*?)\s*<\/arg_value>/gi;
+    let argMatch: RegExpExecArray | null;
+    while ((argMatch = argRe.exec(body)) !== null) {
+      const key = argMatch[1].trim();
+      if (key) args[key] = coerceDsmlScalar(argMatch[2]);
+    }
+    pushProjectToolCall(calls, name, args);
+  }
+
   // DeepSeek and several OpenRouter-hosted models may emit DSML-style tool
   // calls even when asked for SkyCode's XML+JSON envelope. Accept that native
   // form rather than making the model retry repeatedly.
@@ -256,6 +276,10 @@ export function stripProjectToolCalls(content: string): string {
 
   return normalized
     .replace(TOOL_CALL_RE, '')
+    .replace(
+      /<tool_call>\s*[a-z_][a-z0-9_]*\s*[\s\S]*?(?:<\/tool_call>|<\/\|DSML\|tool_call>)/gi,
+      ''
+    )
     .replace(
       /<\|DSML\|tool_call>\s*[\s\S]*?<\/\|DSML\|tool_call>/gi,
       ''
