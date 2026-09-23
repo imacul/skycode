@@ -28,6 +28,9 @@ export interface Message {
       completionTokens: number;
       totalTokens: number;
     };
+    // Durable execution state is machine metadata, not inferred from chat text.
+    taskState?: 'running' | 'completed' | 'blocked' | 'failed';
+    taskKind?: 'workspace';
   };
 }
 
