@@ -22,7 +22,6 @@ import {
   failureIsRateLimit,
   failureNeedsLongerContext,
   fetchOpenRouterKeyStatus,
-  taskNeedsStrongerModel,
   type RoutableModel,
 } from '../utils/openrouter-route';
 import {
@@ -113,7 +112,7 @@ export class CodingAgent implements BaseAgent {
   private context: AgentContext;
   private currentMode: AgentMode;
   private modelSwitchNote = '';
-  private upgradedOnce = false;
+  private switchedModels: string[] = [];
 
   constructor(config: Partial<CodingAgentConfig> = {}) {
     this.config = {
@@ -349,13 +348,7 @@ export class CodingAgent implements BaseAgent {
 
     const workspace = this.context.workingDirectory || process.cwd();
     this.modelSwitchNote = '';
-    this.upgradedOnce = false;
-    if (
-      this.context.provider?.name === 'openrouter' &&
-      taskNeedsStrongerModel(request.input, request.taskKind)
-    ) {
-      await this.upgradeOpenRouterModel();
-    }
+    this.switchedModels = [];
     setProcessLogListener((snapshot) => {
       if (resolve(snapshot.workspace) !== resolve(workspace)) return;
       const lines = snapshot.logs
@@ -825,24 +818,16 @@ export class CodingAgent implements BaseAgent {
     if (!failureIsRateLimit(message) || this.context.provider?.name !== 'openrouter') {
       return '';
     }
-    return ' Type /credits to add an OpenRouter balance. One payment covers every paid model, and SkyCode can then switch to a stronger model for this kind of task.';
+    return ' Type /credits to add an OpenRouter balance. SkyCode will keep using a free model when one can do the job.';
   }
 
   private async upgradeOpenRouterModel(failure?: string): Promise<boolean> {
     const provider = this.context.provider;
-    if (!provider || provider.name !== 'openrouter' || this.upgradedOnce) return false;
+    if (!provider || provider.name !== 'openrouter' || this.switchedModels.length >= 2) {
+      return false;
+    }
     const apiKey = provider.getConfig().apiKey;
     if (!apiKey) return false;
-
-    let allowPaid = false;
-    try {
-      allowPaid = accountCanUsePaidModels(
-        await fetchOpenRouterKeyStatus(apiKey, provider.getConfig().baseUrl)
-      );
-    } catch {
-      allowPaid = false;
-    }
-    if (!allowPaid) return false;
 
     let models: RoutableModel[] = [];
     try {
@@ -856,18 +841,44 @@ export class CodingAgent implements BaseAgent {
       return false;
     }
 
-    const choice = chooseOpenRouterModel({
+    const excluded = [...this.switchedModels, this.context.model];
+    const minimum = failure ? failureNeedsLongerContext(failure) || 32000 : 32000;
+    const freeChoice = chooseOpenRouterModel({
       currentId: this.context.model,
       models,
-      allowPaid,
-      preferStronger: true,
-      minimumContext: failure ? failureNeedsLongerContext(failure) || 64000 : 64000,
+      allowPaid: false,
+      excludeIds: excluded,
+      minimumContext: minimum,
     });
-    if (!choice) return false;
+    if (freeChoice) {
+      this.switchedModels.push(this.context.model);
+      this.context.model = freeChoice.id;
+      this.modelSwitchNote = freeChoice.reason;
+      return true;
+    }
 
-    this.upgradedOnce = true;
-    this.context.model = choice.id;
-    this.modelSwitchNote = choice.reason + ' One OpenRouter balance pays for it.';
+    let allowPaid = false;
+    try {
+      allowPaid = accountCanUsePaidModels(
+        await fetchOpenRouterKeyStatus(apiKey, provider.getConfig().baseUrl)
+      );
+    } catch {
+      allowPaid = false;
+    }
+    if (!allowPaid) return false;
+
+    const paidChoice = chooseOpenRouterModel({
+      currentId: this.context.model,
+      models,
+      allowPaid: true,
+      excludeIds: excluded,
+      minimumContext: minimum,
+    });
+    if (!paidChoice) return false;
+
+    this.switchedModels.push(this.context.model);
+    this.context.model = paidChoice.id;
+    this.modelSwitchNote = paidChoice.reason + ' One OpenRouter balance pays for it.';
     return true;
   }
 

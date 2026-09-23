@@ -62,55 +62,59 @@ function isStrongCodingModel(id: string): boolean {
   return /code|coder|sonnet|opus|gpt-5|gpt-4|gemini|deepseek|qwen|grok|claude/i.test(id);
 }
 
+function isFreeModel(model: RoutableModel): boolean {
+  return model.id.endsWith(':free') || (model.promptPrice <= 0 && model.completionPrice <= 0);
+}
+
 export function chooseOpenRouterModel(options: {
   currentId: string;
   models: RoutableModel[];
   allowPaid: boolean;
   minimumContext?: number;
-  preferStronger?: boolean;
-}): { id: string; reason: string } | null {
-  const minimum = options.minimumContext || (options.preferStronger ? 64000 : 0);
-  const current = options.models.find((model) => model.id === options.currentId);
-  const currentFits = !current || current.contextLength >= minimum || current.contextLength === 0;
-  const knownFree =
-    options.currentId.endsWith(':free') ||
-    (!!current && current.promptPrice <= 0 && current.completionPrice <= 0);
+  excludeIds?: string[];
+}): { id: string; paid: boolean; reason: string } | null {
+  const minimum = options.minimumContext || 0;
+  const excluded = new Set(options.excludeIds || [options.currentId]);
+  const fits = (model: RoutableModel) =>
+    !excluded.has(model.id) &&
+    (model.contextLength === 0 || model.contextLength >= minimum);
 
-  // A paid model that already fits stays selected. Auto-switch is for free
-  // models and for models that cannot hold the current request.
-  if (!knownFree && currentFits) return null;
-
-  if (!options.preferStronger && currentFits) return null;
-
-  const paid = options.models.filter(
-    (model) => model.promptPrice > 0 || model.completionPrice > 0
-  );
-  const pool = (options.allowPaid ? paid : options.models.filter((model) => model.promptPrice === 0))
-    .filter((model) => model.id !== options.currentId)
-    .filter((model) => model.contextLength === 0 || model.contextLength >= minimum);
-
-  if (pool.length === 0) return null;
-
-  const ranked = [...pool].sort((a, b) => {
+  const freePool = options.models.filter((model) => fits(model) && isFreeModel(model));
+  const freeRanked = [...freePool].sort((a, b) => {
     const strongDelta = Number(isStrongCodingModel(b.id)) - Number(isStrongCodingModel(a.id));
-    if (options.preferStronger && strongDelta !== 0) return strongDelta;
-    const contextDelta = b.contextLength - a.contextLength;
-    if (!currentFits && contextDelta !== 0) return contextDelta;
+    if (strongDelta !== 0) return strongDelta;
+    return b.contextLength - a.contextLength;
+  });
+  const freeChoice = freeRanked[0];
+  if (freeChoice) {
+    return {
+      id: freeChoice.id,
+      paid: false,
+      reason:
+        'SkyCode switched to the free model ' +
+        freeChoice.id +
+        ' so this does not spend credits.',
+    };
+  }
+
+  if (!options.allowPaid) return null;
+
+  const paidPool = options.models.filter((model) => fits(model) && !isFreeModel(model));
+  const paidRanked = [...paidPool].sort((a, b) => {
+    const strongDelta = Number(isStrongCodingModel(b.id)) - Number(isStrongCodingModel(a.id));
+    if (strongDelta !== 0) return strongDelta;
     return a.promptPrice - b.promptPrice;
   });
-
-  const next = ranked[0];
-  if (!next) return null;
-
-  const why = !currentFits
-    ? 'the current model ran out of context'
-    : options.currentId.endsWith(':free')
-      ? 'this task needs a stronger paid model than the free tier'
-      : 'a better-fitting paid model is available';
+  const paidChoice = paidRanked[0];
+  if (!paidChoice) return null;
 
   return {
-    id: next.id,
-    reason: 'SkyCode switched to ' + next.id + ' because ' + why + '.',
+    id: paidChoice.id,
+    paid: true,
+    reason:
+      'SkyCode switched to ' +
+      paidChoice.id +
+      ' because no free model had enough room for this task.',
   };
 }
 
@@ -147,7 +151,7 @@ export function formatCreditsGuide(status: OpenRouterKeyStatus | null, error?: s
     'Add credits here: ' + OPENROUTER_CREDITS_URL,
     'Buy at least $10 once. That raises the free-model cap from 50 requests a day to 1,000.',
     'For a coding session that should not stop, turn on Auto Top-Up on that page: when credits are below $10, purchase $25.',
-    'After the balance is above zero, SkyCode can switch a hard task from a free model to a paid one automatically.'
+    'SkyCode tries another free model before it spends those credits. A paid model is used only when no free model can hold the task.'
   );
 
   return lines.join('\n');
