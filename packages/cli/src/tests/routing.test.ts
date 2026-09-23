@@ -29,6 +29,22 @@ describe('agent routing', () => {
     ).toBe('coding-agent');
   });
 
+  it('hard-routes project continuation with saved tool history to coding', () => {
+    const orchestrator = new SkyCodeAgentOrchestrator();
+    const decision = orchestrator.explainRoute({
+      input: 'continue and finish it',
+      messages: [
+        {
+          id: 'assistant_tool',
+          role: 'assistant',
+          content: '<tool_call>terminal <arg_key>command</arg_key> <arg_value>npm test</arg_value> </tool_call>',
+          timestamp: new Date(),
+        },
+      ],
+    } as any);
+    expect(decision.agentName).toBe('coding-agent');
+  });
+
   it('routes casual conversation to chat', () => {
     expect(route('Tell me a short joke about rain.')).toBe('chat-agent');
   });
