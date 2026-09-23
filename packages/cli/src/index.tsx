@@ -477,7 +477,6 @@ function App() {
       const fittedHistory = fitHistoryToBudget(fullHistory, budget.historyBudget);
       const previousMessages = fittedHistory.messages;
 
-      addMessage('user', text);
       setHistoryView(null);
       setShowHistoryPanel(false);
 
@@ -493,6 +492,10 @@ function App() {
         ?.metadata?.taskState === 'running';
       const startsWorkspaceTask = shouldUseProjectTools(text);
       const workspaceTaskRunning = activeWorkspaceTask || startsWorkspaceTask;
+
+      addMessage('user', text, workspaceTaskRunning
+        ? { taskKind: 'workspace', taskState: 'running' }
+        : undefined);
 
       const request: AgentRequest = {
         input: text,
