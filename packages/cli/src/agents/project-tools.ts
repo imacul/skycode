@@ -9,6 +9,9 @@ import type {
 } from './types';
 import type { Message } from '../store/conversation';
 import { agentDebug } from '../utils/agent-debug';
+import { openOnDesktop } from './desktop-tools';
+import { callMcpTool, listMcpTools } from './mcp-client';
+import { fetchWebPage, searchWeb } from './web-tools';
 
 export const PROJECT_TOOL_NAMES = [
   'list_files',
@@ -22,6 +25,12 @@ export const PROJECT_TOOL_NAMES = [
   'start_process',
   'read_process_logs',
   'stop_process',
+  'web_search',
+  'web_fetch',
+  'open_url',
+  'open_app',
+  'mcp_list',
+  'mcp_call',
 ] as const;
 
 export type ProjectToolName = typeof PROJECT_TOOL_NAMES[number];
@@ -163,7 +172,15 @@ function pushProjectToolCall(
             ? 'read_process_logs'
             : name === 'stop' || name === 'kill_process' || name === 'stop_server'
               ? 'stop_process'
-              : name;
+              : name === 'search' || name === 'websearch'
+                ? 'web_search'
+                : name === 'fetch' || name === 'browse' || name === 'open_page'
+                  ? 'web_fetch'
+                  : name === 'open_browser'
+                    ? 'open_url'
+                    : name === 'figma' || name === 'mcp'
+                      ? 'mcp_call'
+                      : name;
 
   if (
     typeof normalizedName === 'string' &&
@@ -1078,6 +1095,36 @@ async function ensureCommandPermitted(
   }
 }
 
+async function ensureDesktopApproval(
+  action: string,
+  target: string,
+  reason: unknown,
+  requestApproval?: (
+    request: AgentApprovalRequest
+  ) => Promise<AgentApprovalDecision>
+): Promise<void> {
+  const why = typeof reason === 'string' ? reason.trim() : '';
+  if (!why) {
+    throw new Error(action + ' requires a concise reason before approval can be requested.');
+  }
+  if (!requestApproval) {
+    throw new Error(action + ' requires user approval before it can run: ' + target);
+  }
+
+  const decision = await requestApproval({
+    id: 'approval_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    type: 'terminal',
+    title: action === 'mcp_call' ? 'Approve MCP tool' : 'Approve opening an app',
+    description: 'Why this is needed: ' + why,
+    command: target,
+    permissionKey: action === 'mcp_call' ? 'mcp:call' : 'desktop:open',
+    risk: 'workspace',
+  });
+  if (decision === 'deny') {
+    throw new Error('User denied ' + action + ': ' + target);
+  }
+}
+
 function lineDiffSummary(before: string, after: string): {
   additions: number;
   deletions: number;
@@ -1241,6 +1288,12 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- start_process: {"command":"npm start","reason":"Boot the app so I can read its logs and test it"} — starts a long-running app/dev server in the background and returns immediately with an id and the first logs.',
     '- read_process_logs: {"id":"proc_..."} — returns the latest logs from a background process. Omit id to read the latest process in this workspace.',
     '- stop_process: {"id":"proc_..."} — stops a background process. Use it only to restart a failed server or when the user asked you to stop it.',
+    '- web_search: {"query":"react useEffect cleanup"} — searches the public web and returns titles, URLs, and snippets. Use this for research.',
+    '- web_fetch: {"url":"https://example.com/docs"} — reads a public page as text. Also works for http://127.0.0.1 when the app is running locally.',
+    '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the real system browser. Asks the user once.',
+    '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. Asks the user once.',
+    '- mcp_list: {} — lists tools from MCP servers configured in ~/.skycode/mcp.json or skycode.mcp.json.',
+    '- mcp_call: {"server":"figma","tool":"get_figma_data","args":{"fileKey":"...","nodeId":"1:2"},"reason":"Read the Figma frame before building the screen"} — calls one MCP tool. Asks the user once. Figma needs a configured stdio server such as figma-developer-mcp.',
     '',
     'Do not stop when you reach a tool. A tool call is the work, not the end of the task.',
     'After you edit code, run the project\'s test, build, or typecheck command and read the real output. If it fails, fix the code and run it again. Only summarize after that check, or after you have confirmed the project has no such command.',
@@ -1367,6 +1420,73 @@ export async function executeProjectToolCall(
         return readProcessLogs(workspace, args.id);
       case 'stop_process':
         return await stopProcess(workspace, args.id);
+      case 'web_search': {
+        if (typeof args.query !== 'string' || !args.query.trim()) {
+          throw new Error('query must be a non-empty string.');
+        }
+        return {
+          call,
+          success: true,
+          content: await searchWeb(args.query),
+          displayPath: args.query,
+        };
+      }
+      case 'web_fetch': {
+        if (typeof args.url !== 'string' || !args.url.trim()) {
+          throw new Error('url must be a non-empty string.');
+        }
+        return {
+          call,
+          success: true,
+          content: await fetchWebPage(args.url),
+          displayPath: args.url,
+        };
+      }
+      case 'open_url':
+      case 'open_app': {
+        const target = call.name === 'open_url' ? args.url : args.name;
+        if (typeof target !== 'string' || !target.trim()) {
+          throw new Error(call.name === 'open_url' ? 'url must be a non-empty string.' : 'name must be a non-empty string.');
+        }
+        await ensureDesktopApproval(call.name, target, args.reason, requestApproval);
+        return {
+          call,
+          success: true,
+          content: await openOnDesktop(target),
+          displayPath: target,
+        };
+      }
+      case 'mcp_list':
+        return {
+          call,
+          success: true,
+          content: await listMcpTools(workspace),
+          displayPath: 'mcp',
+        };
+      case 'mcp_call': {
+        if (typeof args.server !== 'string' || !args.server.trim()) {
+          throw new Error('server must be a non-empty string.');
+        }
+        if (typeof args.tool !== 'string' || !args.tool.trim()) {
+          throw new Error('tool must be a non-empty string.');
+        }
+        const toolArgs =
+          args.args && typeof args.args === 'object' && !Array.isArray(args.args)
+            ? args.args as Record<string, unknown>
+            : {};
+        await ensureDesktopApproval(
+          'mcp_call',
+          args.server + '.' + args.tool,
+          args.reason,
+          requestApproval
+        );
+        return {
+          call,
+          success: true,
+          content: await callMcpTool(workspace, args.server, args.tool, toolArgs),
+          displayPath: args.server + '.' + args.tool,
+        };
+      }
     }
 
     agentDebug('tool.runtime.start', { tool: call.name, args });
