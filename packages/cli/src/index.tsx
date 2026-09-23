@@ -477,7 +477,7 @@ function App() {
       const fittedHistory = fitHistoryToBudget(fullHistory, budget.historyBudget);
       const previousMessages = fittedHistory.messages;
 
-      const userMessage = addMessage('user', text);
+      addMessage('user', text);
       setHistoryView(null);
       setShowHistoryPanel(false);
 
