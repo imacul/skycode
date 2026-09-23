@@ -14,6 +14,8 @@ export const PROJECT_TOOL_NAMES = [
   'search_files',
   'create_directory',
   'write_file',
+  'delete_file',
+  'delete_directory',
   'run_command',
 ] as const;
 
@@ -415,11 +417,16 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
     };
   }
 
+  // Computer Tools v1: commands that are not recognized as read-only or
+  // verification commands are still available, but they cross an execution
+  // boundary and therefore require explicit user approval. This keeps the
+  // agent capable without silently granting it authority.
   return {
-    allowed: false,
-    requiresApproval: false,
-    risk: 'blocked',
-    reason: 'Command is outside SkyCode’s terminal policy.',
+    allowed: true,
+    requiresApproval: true,
+    risk: 'workspace',
+    permissionKey: 'terminal:general',
+    description: 'This command will execute in the active workspace.',
   };
 }
 
@@ -624,14 +631,17 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- search_files: {"path":".","query":"text","searchContent":true}',
     '- create_directory: {"path":"relative/path"}',
     '- write_file: {"path":"relative/path","content":"full file contents","overwrite":true}',
-    '- run_command: {"command":"npm test","timeout":120000} — safe verification/read commands only; SkyCode runs it inside the active workspace.',
+    '- delete_file: {"path":"relative/path"} — requires approval.',
+    '- delete_directory: {"path":"relative/path","recursive":true} — requires approval.',
+    '- run_command: {"command":"npm test","reason":"Run the test suite to verify the implementation","timeout":120000} — executes inside the active workspace; non-read-only commands require approval.',
     '',
     'Terminal rules:',
     '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks. Read-only metadata commands can run automatically; project-executing verification commands require approval.',
     '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
     '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
     '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
-    '- Package installation/removal, generators, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
+    '- For every command that requires approval, include a concise reason argument explaining why the command is needed. Package installs must name what the dependency enables before SkyCode asks the user.',
+    '- Package installation/removal, generators, arbitrary workspace commands, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
     '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
     '- If a needed command is blocked, continue with file work where possible and tell the user exactly which command remains unavailable.',
     '',
@@ -664,7 +674,9 @@ export async function executeProjectToolCall(
     switch (call.name) {
       case 'write_file':
       case 'read_file':
-      case 'create_directory': {
+      case 'create_directory':
+      case 'delete_file':
+      case 'delete_directory': {
         args.path = normalizeWorkspacePath(workspace, args.path, 'path');
         await assertNoSymlinkEscape(workspace, args.path as string);
         args.cwd = workspace;
@@ -672,6 +684,24 @@ export async function executeProjectToolCall(
         if (call.name === 'write_file') {
           writeTarget = args.path as string;
           beforeWrite = await readFile(writeTarget, 'utf8').catch(() => '');
+        }
+
+        if (call.name === 'delete_file' || call.name === 'delete_directory') {
+          if (!requestApproval) {
+            throw new Error('Deleting workspace content requires user approval.');
+          }
+          const decision = await requestApproval({
+            id: 'approval_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            type: 'terminal',
+            title: call.name === 'delete_file' ? 'Approve file deletion' : 'Approve directory deletion',
+            description: 'SkyCode wants to delete ' + workspaceDisplayPath(workspace, args.path as string) + '.',
+            command: call.name + ' ' + workspaceDisplayPath(workspace, args.path as string),
+            permissionKey: 'filesystem:delete',
+            risk: 'workspace',
+          });
+          if (decision === 'deny') {
+            throw new Error('User denied workspace deletion.');
+          }
         }
         break;
       }
@@ -709,6 +739,14 @@ export async function executeProjectToolCall(
         }
 
         if (policy.requiresApproval) {
+          const commandReason = typeof args.reason === 'string' ? args.reason.trim() : '';
+          if (!commandReason) {
+            throw new Error(
+              'Terminal command requires a concise reason before approval can be requested: ' +
+                args.command
+            );
+          }
+
           if (!requestApproval || !policy.permissionKey) {
             throw new Error(
               'Terminal command requires user approval before it can run: ' +
@@ -726,8 +764,8 @@ export async function executeProjectToolCall(
                   ? 'Approve verification command'
                   : 'Approve workspace command',
             description:
-              policy.description ||
-              'This command can change the active workspace.',
+              'Why: ' + commandReason + '\n' +
+              (policy.description || 'This command can change the active workspace.'),
             command: args.command,
             permissionKey: policy.permissionKey,
             risk:
