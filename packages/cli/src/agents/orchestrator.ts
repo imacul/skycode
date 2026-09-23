@@ -18,6 +18,7 @@ import type { CodingAgentConfig, ChatAgentConfig, PlanningAgentConfig, BusinessA
 import type { BaseProvider } from '../providers/base';
 import type { AgentContext } from './types';
 import { shouldUseProjectTools } from './project-tools';
+import { agentDebug } from '../utils/agent-debug';
 
 /**
  * Built-in agents registry
@@ -178,6 +179,12 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
   async routeRequestStream(request: AgentRequest): Promise<void> {
     const decision = this.explainRoute(request);
     this.lastRouteDecision = decision;
+    agentDebug('route.decision', {
+      input: request.input,
+      taskKind: request.taskKind,
+      taskState: request.taskState,
+      decision,
+    });
     const agent = this.agents[decision.agentName] || this.getDefaultAgent();
 
     await agent.processStream({

@@ -31,6 +31,7 @@ import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
 import { shouldUseProjectTools } from './agents/project-tools';
+import { agentDebug, getAgentDebugLogPath } from './utils/agent-debug';
 import type { BaseProvider } from './providers/base';
 import type {
   AgentActivity,
@@ -497,6 +498,19 @@ function App() {
         ? { taskKind: 'workspace', taskState: 'running' }
         : undefined);
 
+      agentDebug('ui.request.dispatch', {
+        input: text,
+        provider: provider?.name,
+        model,
+        workingDirectory: process.cwd(),
+        activeWorkspaceTask,
+        startsWorkspaceTask,
+        workspaceTaskRunning,
+        previousMessageCount: previousMessages.length,
+        droppedHistoryMessages: fittedHistory.droppedCount,
+        debugLogPath: getAgentDebugLogPath(),
+      });
+
       const request: AgentRequest = {
         input: text,
         taskKind: workspaceTaskRunning ? 'workspace' : undefined,
@@ -526,6 +540,7 @@ function App() {
         },
         onApproval: requestAgentApproval,
         onComplete: (response: AgentResponse) => {
+          agentDebug('ui.request.complete', { response });
           const finalContent = response.content.trim();
 
           // Never commit an empty assistant bubble. Empty output is a provider
@@ -563,6 +578,7 @@ function App() {
           scrollChatToBottom();
         },
         onError: (err) => {
+          agentDebug('ui.request.error', { error: err });
           const wasCancelled = abortController.signal.aborted;
           activeAbortControllerRef.current = null;
           setCurrentResponse('');

@@ -7,6 +7,7 @@ import type {
   AgentContext,
 } from './types';
 import type { Message } from '../store/conversation';
+import { agentDebug } from '../utils/agent-debug';
 
 export const PROJECT_TOOL_NAMES = [
   'list_files',
@@ -684,6 +685,7 @@ export async function executeProjectToolCall(
 ): Promise<ProjectToolExecution> {
   const workspace = resolve(context.workingDirectory || process.cwd());
   const args: Record<string, unknown> = { ...call.args };
+  agentDebug('tool.boundary.enter', { call, workspace });
   let beforeWrite = '';
   let writeTarget: string | undefined;
 
@@ -707,6 +709,7 @@ export async function executeProjectToolCall(
           if (!requestApproval) {
             throw new Error('Deleting workspace content requires user approval.');
           }
+          agentDebug('tool.approval.request', { command: args.command, reason: commandReason, policy });
           const decision = await requestApproval({
             id: 'approval_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
             type: 'terminal',
@@ -716,6 +719,7 @@ export async function executeProjectToolCall(
             permissionKey: 'filesystem:delete',
             risk: 'workspace',
           });
+          agentDebug('tool.approval.decision', { command: args.command, decision });
           if (decision === 'deny') {
             throw new Error('User denied workspace deletion.');
           }
@@ -748,6 +752,7 @@ export async function executeProjectToolCall(
         }
 
         const policy = classifyProjectCommand(args.command);
+        agentDebug('tool.command.policy', { command: args.command, reason: args.reason, policy });
         if (!policy.allowed) {
           throw new Error(
             'Terminal command blocked: ' +
@@ -809,7 +814,9 @@ export async function executeProjectToolCall(
       }
     }
 
+    agentDebug('tool.runtime.start', { tool: call.name, args });
     const result = await executeTool(call.name, args as any, context);
+    agentDebug('tool.runtime.raw_result', { tool: call.name, result });
 
     let resultContent = result.success
       ? result.content || JSON.stringify(result.data ?? {})
@@ -860,6 +867,7 @@ export async function executeProjectToolCall(
 
     return execution;
   } catch (error) {
+    agentDebug('tool.boundary.error', { call, args, error });
     return {
       call,
       success: false,
