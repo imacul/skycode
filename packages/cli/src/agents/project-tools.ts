@@ -122,15 +122,25 @@ function pushProjectToolCall(
   name: unknown,
   args: unknown
 ): void {
+  // Models often use generic computer-agent vocabulary. Normalize common
+  // aliases at the harness boundary instead of leaking a perfectly usable
+  // tool request back to the user.
+  const normalizedName =
+    name === 'terminal' || name === 'shell' || name === 'bash' || name === 'powershell'
+      ? 'run_command'
+      : name === 'mkdir'
+        ? 'create_directory'
+        : name;
+
   if (
-    typeof name === 'string' &&
-    PROJECT_TOOL_NAMES.includes(name as ProjectToolName) &&
+    typeof normalizedName === 'string' &&
+    PROJECT_TOOL_NAMES.includes(normalizedName as ProjectToolName) &&
     args &&
     typeof args === 'object' &&
     !Array.isArray(args)
   ) {
     calls.push({
-      name: name as ProjectToolName,
+      name: normalizedName as ProjectToolName,
       args: args as Record<string, unknown>,
     });
   }

@@ -237,6 +237,16 @@ describe('project tool protocol', () => {
     ]);
   });
 
+  it('normalizes generic terminal XML calls to run_command', () => {
+    const content =
+      '<tool_call>terminal <arg_key>command</arg_key> <arg_value>npm test</arg_value> </tool_call>';
+
+    expect(parseProjectToolCalls(content)).toEqual([
+      { name: 'run_command', args: { command: 'npm test' } },
+    ]);
+    expect(stripProjectToolCalls(content)).toBe('');
+  });
+
   it('parses compact XML argument tool calls without stopping the agent', () => {
     const content =
       '<tool_call>create_directory <arg_key>path</arg_key> <arg_value>computer-tools-v1-test</arg_value> </tool_call>';
