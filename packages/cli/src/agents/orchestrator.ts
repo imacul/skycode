@@ -17,7 +17,7 @@ import { createBusinessAgent, DEFAULT_BUSINESS_AGENT_CONFIG } from './business-a
 import type { CodingAgentConfig, ChatAgentConfig, PlanningAgentConfig, BusinessAgentConfig } from './types';
 import type { BaseProvider } from '../providers/base';
 import type { AgentContext } from './types';
-import { shouldUseProjectTools } from './project-tools';
+import { shouldContinueProjectTools, shouldUseProjectTools } from './project-tools';
 
 /**
  * Built-in agents registry
@@ -211,10 +211,16 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
     // capability boundary, not a fuzzy intent classification: chat/planning
     // agents stream model text directly and cannot execute project tools.
     const planningOnly = /\b(implementation plan|project plan|roadmap|launch plan|rollout plan)\b/i.test(request.input);
-    if (shouldUseProjectTools(request.input) && !planningOnly) {
+    const continuesWorkspaceWork = shouldContinueProjectTools(
+      request.input,
+      request.messages || []
+    );
+    if ((shouldUseProjectTools(request.input) || continuesWorkspaceWork) && !planningOnly) {
       return {
         agentName: 'coding-agent',
-        reason: 'workspace mutation requires project tools',
+        reason: continuesWorkspaceWork
+          ? 'workspace continuation requires project tools'
+          : 'workspace mutation requires project tools',
         scores: { 'coding-agent': 100 },
       };
     }
