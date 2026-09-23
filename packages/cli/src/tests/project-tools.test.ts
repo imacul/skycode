@@ -10,9 +10,11 @@ import {
   parseProjectPlan,
   parseProjectToolCalls,
   projectToolResultMessage,
+  expandShellCommand,
   listWorkspaceProcesses,
   recoverImpliedToolCall,
   shouldContinueProjectTools,
+  shouldResumeWorkspaceTask,
   shouldUseProjectTools,
   stopAllBackgroundProcesses,
   stripProjectToolCalls,
@@ -1021,12 +1023,107 @@ describe('project tool protocol', () => {
     expect(response.content).toContain('The app is up.');
     expect(response.content).toContain('Still running in this workspace:');
     expect(response.content).toContain('bun server.js');
+    expect(shouldResumeWorkspaceTask('continue', 'completed')).toBe(true);
+    expect(shouldResumeWorkspaceTask('continue', 'running')).toBe(true);
+    expect(shouldResumeWorkspaceTask('continue', 'blocked')).toBe(false);
+    expect(shouldResumeWorkspaceTask('add a button', 'completed')).toBe(false);
+
+    const chained =
+      '<tool_call>terminal <arg_key>command</arg_key> <arg_value>ls -la /workspace/computer-tools-v1-test/ && cat /workspace/computer-tools-v1-test/package.json && cat /workspace/computer-tools-v1-test/add.js && cat /workspace/computer-tools-v1-test/add.test.js</arg_value> </tool_call>';
+    const parsed = parseProjectToolCalls(chained);
+    expect(parsed).toEqual([
+      {
+        name: 'run_command',
+        args: {
+          command:
+            'ls -la /workspace/computer-tools-v1-test/ && cat /workspace/computer-tools-v1-test/package.json && cat /workspace/computer-tools-v1-test/add.js && cat /workspace/computer-tools-v1-test/add.test.js',
+        },
+      },
+    ]);
+    expect(
+      expandShellCommand(String(parsed[0].args.command), root)?.map((call) => ({
+        name: call.name,
+        path: call.args.path,
+      }))
+    ).toEqual([
+      { name: 'list_files', path: 'computer-tools-v1-test' },
+      { name: 'read_file', path: 'computer-tools-v1-test/package.json' },
+      { name: 'read_file', path: 'computer-tools-v1-test/add.js' },
+      { name: 'read_file', path: 'computer-tools-v1-test/add.test.js' },
+    ]);
+
     expect(listWorkspaceProcesses(root).filter((proc) => proc.running)).toHaveLength(1);
     expect(
       activities.some(
         (item) =>
           item.title === 'App logs' &&
           item.preview?.some((line: string) => String(line).includes('server-up'))
+      )
+    ).toBe(true);
+  });
+
+  it('runs a chained /workspace inspection instead of showing the tool call', async () => {
+    const root = await workspace();
+    const project = join(root, 'computer-tools-v1-test');
+    await mkdir(project, { recursive: true });
+    await writeFile(join(project, 'package.json'), '{"name":"add"}\n', 'utf8');
+    await writeFile(join(project, 'add.js'), 'module.exports = (a, b) => a + b;\n', 'utf8');
+    await writeFile(join(project, 'add.test.js'), 'test("add", () => {});\n', 'utf8');
+
+    let calls = 0;
+    const activities: any[] = [];
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            content:
+              '<tool_call>terminal <arg_key>command</arg_key> <arg_value>ls -la /workspace/computer-tools-v1-test/ && cat /workspace/computer-tools-v1-test/package.json && cat /workspace/computer-tools-v1-test/add.js && cat /workspace/computer-tools-v1-test/add.test.js</arg_value> </tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        return {
+          content: 'Inspected the project files.',
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    const response = await agent.process({
+      input: 'continue',
+      taskKind: 'workspace',
+      taskState: 'running',
+      onActivity: (activity) => activities.push(activity),
+    });
+
+    expect(response.content).toContain('Inspected the project files.');
+    expect(response.content).not.toContain('<tool_call>');
+    expect(
+      activities.some(
+        (item) =>
+          item.status === 'success' &&
+          String(item.path || '').replace(/\\/g, '/') === 'computer-tools-v1-test/package.json'
       )
     ).toBe(true);
   });

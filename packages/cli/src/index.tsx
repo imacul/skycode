@@ -33,9 +33,11 @@ import { createAgentOrchestrator } from './agents';
 import {
   describeRunningProcesses,
   listWorkspaceProcesses,
+  shouldResumeWorkspaceTask,
   shouldUseProjectTools,
   stopWorkspaceProcess,
   stopWorkspaceProcesses,
+  stripProjectToolCalls,
 } from './agents/project-tools';
 import { agentDebug, getAgentDebugLogPath } from './utils/agent-debug';
 import type { BaseProvider } from './providers/base';
@@ -493,10 +495,13 @@ function App() {
       // Create agent request. Workspace execution state is persisted as
       // structured metadata; follow-up routing never depends on matching words
       // such as "continue", "resume", or "finish".
-      const activeWorkspaceTask = [...fullHistory]
+      const lastWorkspaceState = [...fullHistory]
         .reverse()
         .find((message) => message.metadata?.taskKind === 'workspace')
-        ?.metadata?.taskState === 'running';
+        ?.metadata?.taskState;
+      const activeWorkspaceTask =
+        lastWorkspaceState === 'running' ||
+        shouldResumeWorkspaceTask(text, lastWorkspaceState);
       const startsWorkspaceTask = shouldUseProjectTools(text);
       const workspaceTaskRunning = activeWorkspaceTask || startsWorkspaceTask;
 
@@ -547,15 +552,32 @@ function App() {
         onApproval: requestAgentApproval,
         onComplete: (response: AgentResponse) => {
           agentDebug('ui.request.complete', { response });
-          const finalContent = response.content.trim();
+          const leakedToolCall = /<tool_call>|<\|DSML\|/i.test(response.content);
+          const finalContent = (
+            stripProjectToolCalls(response.content) ||
+            (leakedToolCall ? '' : response.content)
+          ).trim();
 
           // Never commit an empty assistant bubble. Empty output is a provider
           // failure, not a valid chat message.
           if (!finalContent) {
+            if (workspaceTaskRunning && leakedToolCall) {
+              addMessage(
+                'assistant',
+                'SkyCode could not run that tool call. Say continue and it will try again.',
+                {
+                  finishReason: 'tool_protocol_not_followed',
+                  taskKind: 'workspace',
+                  taskState: 'running',
+                }
+              );
+            }
             activeAbortControllerRef.current = null;
             setCurrentResponse('');
             setError(
-              'The selected model returned no visible answer. SkyCode did not add an empty assistant message; try again or switch models.'
+              leakedToolCall
+                ? 'The model tried to call a tool, but SkyCode could not run that call. Say continue to retry.'
+                : 'The selected model returned no visible answer. SkyCode did not add an empty assistant message; try again or switch models.'
             );
             setIsProcessing(false);
             scrollChatToBottom();
@@ -564,14 +586,16 @@ function App() {
 
           const taskFinishReason = response.metadata?.finishReason || '';
           const taskState = workspaceTaskRunning
-            ? taskFinishReason === 'clarification_required'
+            ? leakedToolCall
+              ? 'running'
+              : taskFinishReason === 'clarification_required'
               ? 'blocked'
               : /tool_iteration_limit|provider_stopped|tool_protocol_not_followed/i.test(taskFinishReason)
                 ? 'running'
                 : 'completed'
             : undefined;
 
-          addMessage('assistant', response.content, {
+          addMessage('assistant', finalContent, {
             model: response.metadata?.model,
             finishReason: response.metadata?.finishReason,
             ...(workspaceTaskRunning

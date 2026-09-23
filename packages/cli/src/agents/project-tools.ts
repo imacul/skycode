@@ -73,6 +73,16 @@ export function shouldUseProjectTools(input: string): boolean {
   return directFileIntent.test(text) || (projectNouns.test(text) && mutationVerbs.test(text));
 }
 
+export function shouldResumeWorkspaceTask(
+  input: string,
+  lastTaskState?: string
+): boolean {
+  if (!lastTaskState || lastTaskState === 'blocked') return false;
+  return /^(?:please\s+)?(?:proceed|continue|go on|keep going|carry on)\b[.!]*$/i.test(
+    input.trim()
+  );
+}
+
 export function shouldContinueProjectTools(
   input: string,
   history: Array<{ role?: string; content?: string }>
@@ -532,6 +542,102 @@ const DEV_SERVER_PATTERNS = [
 export function isDevServerCommand(command: string): boolean {
   const clean = command.trim();
   return DEV_SERVER_PATTERNS.some((pattern) => pattern.test(clean));
+}
+
+function mapPathToken(raw: string, workspace: string): string {
+  const trimmed = raw.trim().replace(/^['"]|['"]$/g, '');
+  const slash = trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (slash === '/workspace' || slash === '.') return '.';
+  if (slash.startsWith('/workspace/')) {
+    return slash.slice('/workspace/'.length) || '.';
+  }
+
+  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(trimmed)) {
+    const root = resolve(workspace);
+    const abs = resolve(trimmed);
+    if (isPathInsideWorkspace(root, abs)) {
+      return relative(root, abs) || '.';
+    }
+  }
+
+  return trimmed.replace(/[\\/]+$/, '') || trimmed;
+}
+
+function rewriteCommandPaths(command: string, workspace: string): string {
+  return command.trim().replace(/("[^"]+"|'[^']+'|\S+)/g, (token) => {
+    const quoted = /^(['"]).*\1$/.test(token);
+    const raw = quoted ? token.slice(1, -1) : token;
+    if (!/(?:^|\/|\\)workspace(?:\/|\\|$)|^(?:[A-Za-z]:[\\/]|\/)/.test(raw)) {
+      return token;
+    }
+    const mapped = mapPathToken(raw, workspace);
+    return quoted ? '"' + mapped + '"' : mapped;
+  });
+}
+
+function toInspectionCall(command: string): ProjectToolCall | null {
+  const clean = command.trim();
+  if (/^(?:ls|dir)(?:\s+-[a-zA-Z]+)*$/i.test(clean)) {
+    return { name: 'list_files', args: { path: '.', recursive: false } };
+  }
+
+  const listed = clean.match(/^(?:ls|dir)(?:\s+-[a-zA-Z]+)*\s+(.+)$/i);
+  if (listed) {
+    const path = mapPathToken(listed[1], '.');
+    return {
+      name: 'list_files',
+      args: { path: path || '.', recursive: false },
+    };
+  }
+
+  const read = clean.match(/^(?:cat|type|Get-Content|gc)(?:\s+-\S+)*\s+(.+)$/i);
+  if (read) {
+    const path = mapPathToken(read[1], '.');
+    if (!path || path === '.') return null;
+    return { name: 'read_file', args: { path } };
+  }
+
+  return null;
+}
+
+/**
+ * Models often emit one blocked shell line for several safe inspections:
+ * `ls /workspace/app && cat /workspace/app/package.json`.
+ * Split those into list_files/read_file calls instead of stopping.
+ */
+export function expandShellCommand(
+  command: string,
+  workspace: string,
+  reason?: string
+): ProjectToolCall[] | null {
+  const pieces = command
+    .split(/\s*(?:&&|;)\s*/)
+    .map((piece) => piece.trim())
+    .filter(Boolean);
+  if (pieces.length === 0) return null;
+
+  const calls: ProjectToolCall[] = [];
+  for (const piece of pieces) {
+    const rewritten = rewriteCommandPaths(piece, workspace);
+    const inspection = toInspectionCall(rewritten);
+    if (inspection) {
+      calls.push(inspection);
+      continue;
+    }
+
+    if (classifyProjectCommand(rewritten).allowed === false) return null;
+    if (rewritten === piece && pieces.length === 1) return null;
+    calls.push({
+      name: 'run_command',
+      args: {
+        command: rewritten,
+        reason: reason || 'Split from a chained shell command.',
+      },
+    });
+  }
+
+  if (calls.length === 0) return null;
+  return calls;
 }
 
 export function recoverImpliedToolCall(content: string): ProjectToolCall | null {

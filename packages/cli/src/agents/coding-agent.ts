@@ -17,6 +17,7 @@ import { resolve } from 'node:path';
 import { getSystemMessage } from '../store/conversation';
 import { agentDebug } from '../utils/agent-debug';
 import {
+  expandShellCommand,
   executeProjectToolCall,
   getProjectToolInstructions,
   parseProjectToolCalls,
@@ -553,7 +554,10 @@ export class CodingAgent implements BaseAgent {
           };
         }
 
-        const finalText = stripProjectToolCalls(response.content) || response.content.trim();
+        const stripped = stripProjectToolCalls(response.content);
+        const finalText = containsRawToolProtocol
+          ? stripped
+          : stripped || response.content.trim();
         if (finalText) {
           onActivity?.({
             id: 'complete_' + Date.now(),
@@ -623,7 +627,23 @@ export class CodingAgent implements BaseAgent {
       const executions: ProjectToolExecution[] = [];
       hasExecutedTools = true;
       lastModelToolFailed = false;
+      const workspace = this.context.workingDirectory || process.cwd();
+      const executableCalls: ProjectToolCall[] = [];
       for (const call of calls.slice(0, 8)) {
+        if (call.name === 'run_command' && typeof call.args.command === 'string') {
+          const expanded = expandShellCommand(
+            call.args.command,
+            workspace,
+            typeof call.args.reason === 'string' ? call.args.reason : undefined
+          );
+          if (expanded && expanded.length > 0) {
+            executableCalls.push(...expanded);
+            continue;
+          }
+        }
+        executableCalls.push(call);
+      }
+      for (const call of executableCalls.slice(0, 8)) {
         const activityId =
           'tool_' + Date.now() + '_' + iteration + '_' + executions.length;
         const path =
