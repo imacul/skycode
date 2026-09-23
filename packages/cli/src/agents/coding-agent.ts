@@ -14,6 +14,7 @@ import type { CodingAgentConfig } from './types';
 import type { BaseProvider } from '../providers/base';
 import type { Message } from '../store/conversation';
 import { getSystemMessage } from '../store/conversation';
+import { agentDebug } from '../utils/agent-debug';
 import {
   executeProjectToolCall,
   getProjectToolInstructions,
@@ -245,6 +246,17 @@ export class CodingAgent implements BaseAgent {
 
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
+    const traceId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    agentDebug('tool_loop.start', {
+      traceId,
+      input: request.input,
+      provider: this.context.provider?.name,
+      model: this.context.model,
+      workingDirectory: this.context.workingDirectory,
+      taskKind: request.taskKind,
+      taskState: request.taskState,
+      messageCount: messages.length,
+    });
     // A real coding task routinely needs more than eight model/tool turns
     // (inspect -> create -> install -> test -> diagnose -> fix -> retest).
     // Keep a generous emergency fuse for genuinely runaway agents, but do not
@@ -276,6 +288,7 @@ export class CodingAgent implements BaseAgent {
       request.onApproval
     );
     allExecutions.push(initialInspection);
+    agentDebug('tool.preflight.result', { traceId, execution: initialInspection });
     // Harness-owned preflight inspection is context gathering, not a model
     // tool action. Do not mark the model as having executed tools here:
     // otherwise a malformed first model tool call is mistaken for a final
@@ -312,6 +325,14 @@ export class CodingAgent implements BaseAgent {
       });
 
       let response;
+      agentDebug('model.request', {
+        traceId,
+        iteration,
+        provider: this.context.provider?.name,
+        model: this.context.model,
+        messageCount: messages.length,
+        messages: messages.map((message) => ({ role: message.role, content: message.content })),
+      });
       try {
         response = await this.context.provider.chat({
           messages,
@@ -332,6 +353,7 @@ export class CodingAgent implements BaseAgent {
             : {}),
         });
       } catch (error) {
+        agentDebug('model.error', { traceId, iteration, error, hasExecutedTools });
         if (hasExecutedTools) {
           const written = allExecutions.filter(
             (item) => item.success && item.call.name === 'write_file'
@@ -379,6 +401,13 @@ export class CodingAgent implements BaseAgent {
 
       tokensUsed += response.usage?.totalTokens || 0;
       finishReason = response.finishReason || finishReason;
+      agentDebug('model.response.raw', {
+        traceId,
+        iteration,
+        content: response.content,
+        finishReason: response.finishReason,
+        usage: response.usage,
+      });
 
       const clarification = parseProjectClarification(response.content);
       if (clarification && !hasExecutedTools) {
@@ -390,6 +419,12 @@ export class CodingAgent implements BaseAgent {
       }
 
       const calls = parseProjectToolCalls(response.content);
+      agentDebug('tool.parse', {
+        traceId,
+        iteration,
+        rawContent: response.content,
+        parsedCalls: calls,
+      });
 
       // A model may choose generic computer-agent vocabulary (for example
       // <tool_call>terminal ...</tool_call>). The parser normalizes supported
@@ -547,6 +582,7 @@ export class CodingAgent implements BaseAgent {
               : path,
         });
 
+        agentDebug('tool.execute.start', { traceId, iteration, call });
         const execution = await executeProjectToolCall(
           call,
           this.context,
@@ -554,6 +590,7 @@ export class CodingAgent implements BaseAgent {
         );
         executions.push(execution);
         allExecutions.push(execution);
+        agentDebug('tool.execute.result', { traceId, iteration, execution });
         onToolExecution?.(execution);
 
         onActivity?.({
@@ -595,9 +632,12 @@ export class CodingAgent implements BaseAgent {
         });
       }
 
-      messages.push(projectToolResultMessage(executions));
+      const toolResult = projectToolResultMessage(executions);
+      agentDebug('tool.result.to_model', { traceId, iteration, content: toolResult.content });
+      messages.push(toolResult);
     }
 
+    agentDebug('tool_loop.limit', { traceId, maxIterations, executions: allExecutions.length });
     const limitMessage =
       'SkyCode hit its emergency runaway-agent fuse after ' + maxIterations +
       ' model/tool rounds before the task reached a verified completion state. ' +
