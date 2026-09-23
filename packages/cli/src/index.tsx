@@ -1237,6 +1237,10 @@ Current provider: ${provider?.name || 'none'}
         stickyScroll={true}
         stickyStart="bottom"
       >
+        {/* Spacer consumes unused transcript height so short conversations sit
+            next to the input instead of being stranded at the top. */}
+        <box width="100%" flexGrow={1} flexShrink={1} minHeight={0} />
+
         {visibleMessages.length > 0 ? (
           visibleMessages.map((msg) => (
             <box
