@@ -67,7 +67,7 @@ SkyCode is under active development.
 
 - Automatic routing heuristics
 - Provider/model discovery across different local runtimes
-- Command execution infrastructure (not yet exposed to autonomous project builds)
+- Workspace terminal for coding agents: tests, builds, log reads, localhost probes, and background app servers. Healthy servers stay running after the task, stream logs in the work panel, and stop with /servers stop. Installs, generators, and git writes still ask first
 
 ### Planned
 

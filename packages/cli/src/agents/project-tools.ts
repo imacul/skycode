@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve, relative, isAbsolute, dirname } from 'node:path';
 import { lstat, realpath, readFile } from 'node:fs/promises';
 import { executeTool } from '../tools';
@@ -18,6 +19,9 @@ export const PROJECT_TOOL_NAMES = [
   'delete_file',
   'delete_directory',
   'run_command',
+  'start_process',
+  'read_process_logs',
+  'stop_process',
 ] as const;
 
 export type ProjectToolName = typeof PROJECT_TOOL_NAMES[number];
@@ -69,6 +73,36 @@ export function shouldUseProjectTools(input: string): boolean {
   return directFileIntent.test(text) || (projectNouns.test(text) && mutationVerbs.test(text));
 }
 
+export function shouldContinueProjectTools(
+  input: string,
+  history: Array<{ role?: string; content?: string }>
+): boolean {
+  const text = input.trim();
+  if (!/^(?:please\s+)?(?:proceed|continue|go on|keep going|carry on)\b[.!]*$/i.test(text)) {
+    return false;
+  }
+
+  return history.some(
+    (message) =>
+      message.role === 'user' &&
+      typeof message.content === 'string' &&
+      shouldUseProjectTools(message.content)
+  );
+}
+
+export function responseLooksLikePendingWork(content: string): boolean {
+  const text = content.toLowerCase();
+  if (/<tool_call>|<\|dsml\|/i.test(content)) return true;
+  if (/```(?:bash|sh|shell|zsh|powershell|ps1|pwsh|cmd|console|terminal)\b/i.test(content)) {
+    return true;
+  }
+
+  return (
+    /\b(i(?:'|’)ll|i will|let me|next i|going to|about to)\b[\s\S]{0,100}\b(run|test|build|check|start|install|read|inspect|fix|verify|log|serve)\b/.test(text) ||
+    /\b(running|checking|starting) (the )?(tests?|build|server|app|logs?)\b/.test(text)
+  );
+}
+
 
 function coerceDsmlScalar(value: string, declaredString?: string): unknown {
   const clean = value.trim();
@@ -109,11 +143,17 @@ function pushProjectToolCall(
   // aliases at the harness boundary instead of leaking a perfectly usable
   // tool request back to the user.
   const normalizedName =
-    name === 'terminal' || name === 'shell' || name === 'bash' || name === 'powershell'
+    name === 'terminal' || name === 'shell' || name === 'bash' || name === 'powershell' || name === 'cmd'
       ? 'run_command'
       : name === 'mkdir'
         ? 'create_directory'
-        : name;
+        : name === 'start' || name === 'start_server' || name === 'dev_server' || name === 'serve'
+          ? 'start_process'
+          : name === 'logs' || name === 'read_logs' || name === 'process_logs'
+            ? 'read_process_logs'
+            : name === 'stop' || name === 'kill_process' || name === 'stop_server'
+              ? 'stop_process'
+              : name;
 
   if (
     typeof normalizedName === 'string' &&
@@ -129,6 +169,23 @@ function pushProjectToolCall(
   }
 }
 
+function objectArgs(value: unknown): Record<string, unknown> | undefined {
+  let candidate = value;
+  if (typeof candidate === 'string') {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return undefined;
+  }
+
+  return candidate as Record<string, unknown>;
+}
+
 function pushLooseProjectToolCall(
   calls: ProjectToolCall[],
   value: unknown
@@ -136,10 +193,7 @@ function pushLooseProjectToolCall(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
 
   const parsed = value as Record<string, unknown>;
-  const explicitArgs =
-    parsed.args && typeof parsed.args === 'object' && !Array.isArray(parsed.args)
-      ? parsed.args
-      : undefined;
+  const explicitArgs = objectArgs(parsed.args ?? parsed.arguments ?? parsed.parameters);
 
   if (typeof parsed.name === 'string' && explicitArgs) {
     pushProjectToolCall(calls, parsed.name, explicitArgs);
@@ -426,11 +480,33 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   if (verifyPatterns.some((pattern) => pattern.test(clean))) {
     return {
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: false,
       risk: 'verify',
-      permissionKey: 'terminal:verify',
-      description:
-        'This command executes project tooling or code to test/build/check the workspace.',
+    };
+  }
+
+  const logReadPatterns = [
+    /^(?:Get-Content|gc|type|cat)\s+(?:-\S+\s+)*[A-Za-z0-9_@.][A-Za-z0-9_@./\\-]*$/i,
+    /^tail(?:\s+(?:-n|--lines(?:=|\s))\s*\d+)?\s+[A-Za-z0-9_@.][A-Za-z0-9_@./\\-]*$/i,
+  ];
+
+  if (logReadPatterns.some((pattern) => pattern.test(clean))) {
+    return { allowed: true, requiresApproval: false, risk: 'read' };
+  }
+
+  const localhostProbe =
+    /^curl(?:\.exe)?\s+(?:(?:-s|-S|-i|-I|-v|-L|-f|--silent|--show-error|--head|--location)\s+)*https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/\S*)?$/i.test(clean) ||
+    /^Invoke-WebRequest\s+(?:-\S+\s+\S+\s+)*-Uri\s+['"]?https?:\/\/(?:127\.0\.0\.1|localhost)\b/i.test(clean);
+
+  if (localhostProbe) {
+    return { allowed: true, requiresApproval: false, risk: 'read' };
+  }
+
+  if (isDevServerCommand(clean)) {
+    return {
+      allowed: true,
+      requiresApproval: false,
+      risk: 'verify',
     };
   }
 
@@ -444,6 +520,61 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
     risk: 'workspace',
     permissionKey: 'terminal:general',
     description: 'This command will execute in the active workspace.',
+  };
+}
+
+const DEV_SERVER_PATTERNS = [
+  /^(?:npm|pnpm|yarn)\s+(?:start|run\s+(?:start|dev|serve)(?::[\w.-]+)?)\b/i,
+  /^bun\s+(?:run\s+)?(?:start|dev|serve)(?::[\w.-]+)?\b/i,
+  /^bun\s+--watch\s+\S+/i,
+];
+
+export function isDevServerCommand(command: string): boolean {
+  const clean = command.trim();
+  return DEV_SERVER_PATTERNS.some((pattern) => pattern.test(clean));
+}
+
+export function recoverImpliedToolCall(content: string): ProjectToolCall | null {
+  const fences = [
+    ...content.matchAll(
+      /```(?:bash|sh|shell|zsh|powershell|ps1|pwsh|cmd|console|terminal|json)?[^\n]*\n([\s\S]*?)```/gi
+    ),
+  ];
+  if (fences.length !== 1) return null;
+
+  const body = fences[0][1].trim();
+  const surrounding = content.replace(fences[0][0], '').trim();
+  const pending =
+    surrounding.length <= 160 || responseLooksLikePendingWork(surrounding);
+  if (!pending) return null;
+
+  if (body.startsWith('{') && body.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      const calls: ProjectToolCall[] = [];
+      pushLooseProjectToolCall(calls, parsed);
+      if (calls.length === 1) return calls[0];
+    } catch {
+      // A fenced shell command is handled below.
+    }
+  }
+
+  const lines = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length !== 1) return null;
+
+  const command = lines[0].replace(/^(?:\$|>)\s+/, '');
+  const policy = classifyProjectCommand(command);
+  if (!policy.allowed) return null;
+
+  return {
+    name: isDevServerCommand(command) ? 'start_process' : 'run_command',
+    args: {
+      command,
+      reason: 'The model wrote this command instead of a tool call, so SkyCode is running it.',
+    },
   };
 }
 
@@ -489,6 +620,356 @@ function terminalPreview(content: string): string[] {
     .filter(Boolean);
   const tail = lines.slice(-12);
   return tail.length > 0 ? tail : ['(no output)'];
+}
+
+interface BackgroundProcess {
+  id: string;
+  workspace: string;
+  command: string;
+  child: ChildProcess;
+  logs: string;
+  exited: boolean;
+  exitCode: number | null;
+}
+
+const backgroundProcesses = new Map<string, BackgroundProcess>();
+
+export interface WorkspaceProcessSnapshot {
+  id: string;
+  workspace: string;
+  command: string;
+  running: boolean;
+  exitCode: number | null;
+  logs: string;
+}
+
+type ProcessLogListener = (snapshot: WorkspaceProcessSnapshot) => void;
+let processLogListener: ProcessLogListener | null = null;
+const logNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function setProcessLogListener(listener: ProcessLogListener | null): void {
+  processLogListener = listener;
+  if (!listener) {
+    for (const timer of logNotifyTimers.values()) clearTimeout(timer);
+    logNotifyTimers.clear();
+  }
+}
+
+function processSnapshot(proc: BackgroundProcess): WorkspaceProcessSnapshot {
+  return {
+    id: proc.id,
+    workspace: proc.workspace,
+    command: proc.command,
+    running: !proc.exited,
+    exitCode: proc.exitCode,
+    logs: proc.logs,
+  };
+}
+
+function scheduleLogNotify(proc: BackgroundProcess): void {
+  if (!processLogListener || logNotifyTimers.has(proc.id)) return;
+  logNotifyTimers.set(
+    proc.id,
+    setTimeout(() => {
+      logNotifyTimers.delete(proc.id);
+      processLogListener?.(processSnapshot(proc));
+    }, 200)
+  );
+}
+
+function notifyLogNow(proc: BackgroundProcess): void {
+  const pending = logNotifyTimers.get(proc.id);
+  if (pending) clearTimeout(pending);
+  logNotifyTimers.delete(proc.id);
+  processLogListener?.(processSnapshot(proc));
+}
+
+function rememberLog(proc: BackgroundProcess, chunk: Buffer | string): void {
+  proc.logs += chunk.toString();
+  if (proc.logs.length > 64_000) {
+    proc.logs = proc.logs.slice(-64_000);
+  }
+  scheduleLogNotify(proc);
+}
+
+function killProcessTree(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
+  if (!pid) return Promise.resolve();
+
+  if (process.platform === 'win32') {
+    return new Promise((resolvePromise) => {
+      const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+      killer.on('close', () => resolvePromise());
+      killer.on('error', () => resolvePromise());
+    });
+  }
+
+  child.kill('SIGTERM');
+  return Promise.resolve();
+}
+
+async function stopOneProcess(proc: BackgroundProcess): Promise<void> {
+  if (!proc.exited) await killProcessTree(proc.child);
+  backgroundProcesses.delete(proc.id);
+}
+
+export async function stopWorkspaceProcesses(workspace: string): Promise<void> {
+  const root = resolve(workspace);
+  await Promise.all(
+    [...backgroundProcesses.values()]
+      .filter((proc) => resolve(proc.workspace) === root)
+      .map((proc) => stopOneProcess(proc))
+  );
+}
+
+export async function stopAllBackgroundProcesses(): Promise<void> {
+  await Promise.all([...backgroundProcesses.values()].map((proc) => stopOneProcess(proc)));
+}
+
+export async function stopWorkspaceProcess(
+  workspace: string,
+  id: string
+): Promise<boolean> {
+  const proc = processInWorkspace(workspace, id);
+  if (!proc) return false;
+  await stopOneProcess(proc);
+  return true;
+}
+
+export function listWorkspaceProcesses(workspace: string): WorkspaceProcessSnapshot[] {
+  const root = resolve(workspace);
+  return [...backgroundProcesses.values()]
+    .filter((proc) => resolve(proc.workspace) === root)
+    .map((proc) => processSnapshot(proc));
+}
+
+export function describeRunningProcesses(workspace: string): string {
+  const running = listWorkspaceProcesses(workspace).filter((proc) => proc.running);
+  if (running.length === 0) return '';
+
+  const lines = running.map((proc) => {
+    const urls = [
+      ...new Set(
+        proc.logs.match(/https?:\/\/(?:localhost|127\.0\.0\.1):\d+[^\s)'"]*/gi) || []
+      ),
+    ];
+    return (
+      '- ' +
+      proc.command +
+      ' (' +
+      proc.id +
+      ')' +
+      (urls.length > 0 ? ' ' + urls.join(' ') : '')
+    );
+  });
+
+  return (
+    'Still running in this workspace:\n' +
+    lines.join('\n') +
+    '\nStop it with /servers stop.'
+  );
+}
+
+function processInWorkspace(
+  workspace: string,
+  id: unknown
+): BackgroundProcess | undefined {
+  const root = resolve(workspace);
+  if (typeof id === 'string' && id.trim()) {
+    const proc = backgroundProcesses.get(id.trim());
+    if (proc && resolve(proc.workspace) === root) return proc;
+    return undefined;
+  }
+
+  const matches = [...backgroundProcesses.values()].filter(
+    (proc) => resolve(proc.workspace) === root
+  );
+  return matches[matches.length - 1];
+}
+
+async function startBackgroundProcess(
+  call: ProjectToolCall,
+  workspace: string,
+  command: string,
+  env: Record<string, string>
+): Promise<ProjectToolExecution> {
+  const id =
+    'proc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  const child = spawn(command, {
+    cwd: workspace,
+    env,
+    shell: true,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const proc: BackgroundProcess = {
+    id,
+    workspace,
+    command,
+    child,
+    logs: '',
+    exited: false,
+    exitCode: null,
+  };
+
+  child.stdout?.on('data', (chunk) => rememberLog(proc, chunk));
+  child.stderr?.on('data', (chunk) => rememberLog(proc, chunk));
+  child.on('close', (code) => {
+    proc.exited = true;
+    proc.exitCode = code;
+    notifyLogNow(proc);
+  });
+  child.on('error', (error) => {
+    rememberLog(proc, error.message);
+    proc.exited = true;
+  });
+
+  backgroundProcesses.set(id, proc);
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 1000));
+
+  const running = !proc.exited;
+  if (!running) backgroundProcesses.delete(id);
+
+  const content = [
+    running
+      ? 'Background process started. SkyCode did not wait for it to exit, so you can keep coding, read its logs, and test it.'
+      : 'Process exited before the startup window finished.',
+    'id: ' + id,
+    'command: ' + command,
+    proc.exitCode !== null ? 'exit code: ' + String(proc.exitCode) : '',
+    'logs:',
+    proc.logs.trim() || '(no output yet)',
+    running
+      ? 'Next: read the live logs, probe http://127.0.0.1:<port> if it serves HTTP, and leave the process running if it is healthy. The user can stop it later with /servers stop.'
+      : 'The process is not running. Use the logs to fix the failure, then start it again if the app still needs to be tested.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return {
+    call,
+    success: running || proc.exitCode === 0,
+    content,
+    displayPath: '.',
+    preview: terminalPreview(proc.logs || content),
+  };
+}
+
+function readProcessLogs(workspace: string, id: unknown): ProjectToolExecution {
+  const proc = processInWorkspace(workspace, id);
+  if (!proc) {
+    return {
+      call: { name: 'read_process_logs', args: { id } },
+      success: false,
+      content: 'No background process is running in this workspace.',
+      displayPath: '.',
+    };
+  }
+
+  const content = [
+    'id: ' + proc.id,
+    'command: ' + proc.command,
+    proc.exited ? 'status: exited ' + String(proc.exitCode) : 'status: running',
+    'logs:',
+    proc.logs.trim() || '(no output yet)',
+  ].join('\n');
+
+  return {
+    call: { name: 'read_process_logs', args: { id: proc.id } },
+    success: true,
+    content,
+    displayPath: '.',
+    preview: terminalPreview(proc.logs || content),
+  };
+}
+
+async function stopProcess(workspace: string, id: unknown): Promise<ProjectToolExecution> {
+  const proc = processInWorkspace(workspace, id);
+  if (!proc) {
+    return {
+      call: { name: 'stop_process', args: { id } },
+      success: false,
+      content: 'No background process is running in this workspace.',
+      displayPath: '.',
+    };
+  }
+
+  const logs = proc.logs.trim();
+  await stopOneProcess(proc);
+  return {
+    call: { name: 'stop_process', args: { id: proc.id, command: proc.command } },
+    success: true,
+    content: [
+      'Stopped background process ' + proc.id + ' (' + proc.command + ').',
+      logs ? 'logs:\n' + logs : 'logs: (no output)',
+    ].join('\n'),
+    displayPath: '.',
+    preview: terminalPreview(logs || 'stopped'),
+  };
+}
+
+async function ensureCommandPermitted(
+  command: string,
+  reason: unknown,
+  requestApproval?: (
+    request: AgentApprovalRequest
+  ) => Promise<AgentApprovalDecision>
+): Promise<void> {
+  const policy = classifyProjectCommand(command);
+  agentDebug('tool.command.policy', { command, reason, policy });
+  if (!policy.allowed) {
+    throw new Error(
+      'Terminal command blocked: ' +
+        (policy.reason || 'This command is not allowed by SkyCode.')
+    );
+  }
+
+  if (!policy.requiresApproval) return;
+
+  const commandReason = typeof reason === 'string' ? reason.trim() : '';
+  if (!commandReason) {
+    throw new Error(
+      'Terminal command requires a concise reason before approval can be requested: ' +
+        command
+    );
+  }
+
+  if (!requestApproval || !policy.permissionKey) {
+    throw new Error(
+      'Terminal command requires user approval before it can run: ' + command
+    );
+  }
+
+  const decision = await requestApproval({
+    id: 'approval_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    type: 'terminal',
+    title:
+      policy.risk === 'git-write'
+        ? 'Approve Git workspace change'
+        : policy.risk === 'verify'
+          ? 'Approve verification command'
+          : 'Approve workspace command',
+    description:
+      'Why this is needed: ' + commandReason + '\n' +
+      (policy.description || 'This command can change the active workspace.'),
+    command,
+    permissionKey: policy.permissionKey,
+    risk:
+      policy.risk === 'git-write'
+        ? 'git-write'
+        : policy.risk === 'verify'
+          ? 'verify'
+          : 'workspace',
+  });
+  agentDebug('tool.approval.decision', { command, decision });
+
+  if (decision === 'deny') {
+    throw new Error('User denied terminal command: ' + command);
+  }
 }
 
 function lineDiffSummary(before: string, after: string): {
@@ -650,18 +1131,26 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- write_file: {"path":"relative/path","content":"full file contents","overwrite":true}',
     '- delete_file: {"path":"relative/path"} — requires approval.',
     '- delete_directory: {"path":"relative/path","recursive":true} — requires approval.',
-    '- run_command: {"command":"npm test","reason":"Run the test suite to verify the implementation","timeout":120000} — executes inside the active workspace; non-read-only commands require approval.',
+    '- run_command: {"command":"npm test","reason":"Run the test suite to verify the implementation","timeout":120000} — runs inside the active workspace and returns stdout/stderr. Tests, builds, type checks, lint, log reads, and localhost probes run immediately.',
+    '- start_process: {"command":"npm start","reason":"Boot the app so I can read its logs and test it"} — starts a long-running app/dev server in the background and returns immediately with an id and the first logs.',
+    '- read_process_logs: {"id":"proc_..."} — returns the latest logs from a background process. Omit id to read the latest process in this workspace.',
+    '- stop_process: {"id":"proc_..."} — stops a background process. Use it only to restart a failed server or when the user asked you to stop it.',
+    '',
+    'Do not stop when you reach a tool. A tool call is the work, not the end of the task.',
+    'After you edit code, run the project\'s test, build, or typecheck command and read the real output. If it fails, fix the code and run it again. Only summarize after that check, or after you have confirmed the project has no such command.',
+    'To test an app that stays running, start_process, read the live logs, and probe http://127.0.0.1 or http://localhost. Leave the server running when it is healthy and include its URL in the summary. SkyCode keeps it alive after you finish. Never run a dev server in the foreground.',
     '',
     'Terminal rules:',
-    '- Use run_command to inspect or verify your work when useful: git status/diff, test suites, builds, lint, type checks, and tool/runtime version checks. Read-only metadata commands can run automatically; project-executing verification commands require approval.',
-    '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
-    '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
-    '- run_command already executes with the active workspace as cwd. NEVER invent /workspace, /home, C:\\\\ paths, or cd into an absolute workspace path.',
+    '- Use run_command for git status/diff, test suites, builds, lint, type checks, runtime versions, workspace log files (type, Get-Content, cat, tail), and localhost HTTP checks. Those run without an approval pause.',
+    '- After non-trivial code changes, run at least one relevant verification command when the project exposes one. Inspect package/config files first so you do not invent scripts.',
+    '- Use failed command output and process logs as debugging evidence: fix the files, then rerun the check.',
+    '- run_command and start_process already execute with the active workspace as cwd. NEVER invent /workspace, /home, C:\\\\ paths, or cd into an absolute workspace path.',
     '- Run one command per tool call. Do not use shell chaining (&& or ;), pipes, redirects/heredocs, subshells, or multiline commands. Use create_directory/write_file for filesystem changes and file contents instead of mkdir/cat/echo redirection.',
+    '- Do not put a command you want executed in a fenced code block. Emit a tool call. SkyCode may recover a single fenced command, but the tool call is the reliable path.',
     '- For every command that requires approval, the reason must explain the purpose/necessity, not restate the action. Bad: "Install Jest dev dependency." Good: "The project uses Jest for its automated tests, so dependencies must be installed before I can run and verify the requested test suite." Package installs must say what capability/package is needed and why the current task cannot proceed or be verified without it.',
     '- Package installation/removal, generators, arbitrary workspace commands, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
     '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
-    '- If a needed command is blocked, continue with file work where possible and tell the user exactly which command remains unavailable.',
+    '- If a needed command is blocked, keep going with file work or another allowed check and tell the user exactly which command remains unavailable. Do not end the task at the blocked command.',
     '',
     'Rules:',
     '- All paths must stay inside the workspace root.',
@@ -746,61 +1235,17 @@ export async function executeProjectToolCall(
         args.cwd = workspace;
         break;
       }
-      case 'run_command': {
+      case 'run_command':
+      case 'start_process': {
         if (typeof args.command !== 'string' || !args.command.trim()) {
           throw new Error('command must be a non-empty string.');
         }
 
-        const policy = classifyProjectCommand(args.command);
-        agentDebug('tool.command.policy', { command: args.command, reason: args.reason, policy });
-        if (!policy.allowed) {
-          throw new Error(
-            'Terminal command blocked: ' +
-              (policy.reason || 'This command is not allowed by SkyCode.')
-          );
-        }
+        await ensureCommandPermitted(args.command, args.reason, requestApproval);
+        const env = safeTerminalEnv(context.env || {});
 
-        if (policy.requiresApproval) {
-          const commandReason = typeof args.reason === 'string' ? args.reason.trim() : '';
-          if (!commandReason) {
-            throw new Error(
-              'Terminal command requires a concise reason before approval can be requested: ' +
-                args.command
-            );
-          }
-
-          if (!requestApproval || !policy.permissionKey) {
-            throw new Error(
-              'Terminal command requires user approval before it can run: ' +
-                args.command
-            );
-          }
-
-          const decision = await requestApproval({
-            id: 'approval_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-            type: 'terminal',
-            title:
-              policy.risk === 'git-write'
-                ? 'Approve Git workspace change'
-                : policy.risk === 'verify'
-                  ? 'Approve verification command'
-                  : 'Approve workspace command',
-            description:
-              'Why this is needed: ' + commandReason + '\n' +
-              (policy.description || 'This command can change the active workspace.'),
-            command: args.command,
-            permissionKey: policy.permissionKey,
-            risk:
-              policy.risk === 'git-write'
-                ? 'git-write'
-                : policy.risk === 'verify'
-                  ? 'verify'
-                  : 'workspace',
-          });
-
-          if (decision === 'deny') {
-            throw new Error('User denied terminal command: ' + args.command);
-          }
+        if (call.name === 'start_process' || isDevServerCommand(args.command)) {
+          return await startBackgroundProcess(call, workspace, args.command, env);
         }
 
         args.cwd = workspace;
@@ -809,9 +1254,13 @@ export async function executeProjectToolCall(
           120000
         );
         args.captureOutput = true;
-        args.env = safeTerminalEnv(context.env || {});
+        args.env = env;
         break;
       }
+      case 'read_process_logs':
+        return readProcessLogs(workspace, args.id);
+      case 'stop_process':
+        return await stopProcess(workspace, args.id);
     }
 
     agentDebug('tool.runtime.start', { tool: call.name, args });
@@ -917,7 +1366,7 @@ export function projectToolResultMessage(
     content:
       'PROJECT TOOL RESULTS\n' +
       lines.join('\n') +
-      '\nContinue from these real tool results. Do not repeat successful writes unless necessary.',
+      '\nContinue from these real tool results. If the task still needs a command, a log check, or an app test, emit the next tool call now. Do not stop to describe the command. Do not repeat successful writes unless necessary.',
     timestamp: new Date(),
   };
 }

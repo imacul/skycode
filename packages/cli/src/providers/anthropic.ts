@@ -7,6 +7,7 @@ import type {
   ModelInfo,
   ProviderConfig,
 } from './base';
+import { appendNativeToolCalls } from './native-tools';
 
 /**
  * Anthropic configuration
@@ -293,7 +294,10 @@ export class AnthropicProvider implements BaseProvider {
       let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
       if (data.type === 'message') {
-        content = data.content?.map((c: { type: string; text?: string }) => c.text || '').join('') || '';
+        content = appendNativeToolCalls(
+          data.content?.map((c: { type: string; text?: string }) => c.text || '').join('') || '',
+          data
+        );
         finishReason = data.stop_reason || 'end_turn';
         usage = {
           promptTokens: data.usage?.input_tokens || 0,

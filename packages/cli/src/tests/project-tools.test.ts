@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,7 +10,11 @@ import {
   parseProjectPlan,
   parseProjectToolCalls,
   projectToolResultMessage,
+  listWorkspaceProcesses,
+  recoverImpliedToolCall,
+  shouldContinueProjectTools,
   shouldUseProjectTools,
+  stopAllBackgroundProcesses,
   stripProjectToolCalls,
 } from '../agents/project-tools';
 import { CodingAgent } from '../agents/coding-agent';
@@ -25,6 +29,7 @@ async function workspace() {
 }
 
 afterEach(async () => {
+  await stopAllBackgroundProcesses();
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))
   );
@@ -91,20 +96,21 @@ describe('project tool protocol', () => {
     });
     expect(classifyProjectCommand('npm test')).toEqual({
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: false,
       risk: 'verify',
-      permissionKey: 'terminal:verify',
-      description:
-        'This command executes project tooling or code to test/build/check the workspace.',
     });
     expect(classifyProjectCommand('npm run build')).toEqual({
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: false,
       risk: 'verify',
-      permissionKey: 'terminal:verify',
-      description:
-        'This command executes project tooling or code to test/build/check the workspace.',
     });
+    expect(classifyProjectCommand('npm start').requiresApproval).toBe(false);
+    expect(classifyProjectCommand('type logs/app.log')).toEqual({
+      allowed: true,
+      requiresApproval: false,
+      risk: 'read',
+    });
+    expect(classifyProjectCommand('curl http://127.0.0.1:3000/').requiresApproval).toBe(false);
 
     const install = classifyProjectCommand('npm install react');
     expect(install.allowed).toBe(true);
@@ -126,9 +132,9 @@ describe('project tool protocol', () => {
     expect(general.permissionKey).toBe('terminal:general');
   });
 
-  it('asks for approval before project verification commands execute', async () => {
+  it('runs project verification commands without stopping for approval', async () => {
     const root = await workspace();
-    let approvalRequest: any;
+    let asked = false;
 
     const result = await executeProjectToolCall(
       {
@@ -136,15 +142,15 @@ describe('project tool protocol', () => {
         args: { command: 'bun test', reason: 'Verify the implementation with the test suite.' },
       },
       context(root),
-      async (request) => {
-        approvalRequest = request;
+      async () => {
+        asked = true;
         return 'deny';
       }
     );
 
-    expect(approvalRequest.permissionKey).toBe('terminal:verify');
-    expect(approvalRequest.risk).toBe('verify');
-    expect(result.success).toBe(false);
+    expect(asked).toBe(false);
+    expect(result.content.toLowerCase()).not.toContain('requires user approval');
+    expect(result.content.length).toBeGreaterThan(0);
   });
 
   it('asks for approval before a workspace-mutating terminal command and honors denial', async () => {
@@ -236,6 +242,78 @@ describe('project tool protocol', () => {
     ]);
   });
 
+  it('accepts OpenAI-style arguments objects as tool args', () => {
+    expect(
+      parseProjectToolCalls(
+        '<tool_call>{"name":"run_command","arguments":{"command":"bun test"}}</tool_call>'
+      )
+    ).toEqual([{ name: 'run_command', args: { command: 'bun test' } }]);
+  });
+
+  it('recovers a single fenced command instead of treating it as a finished answer', () => {
+    expect(recoverImpliedToolCall('```powershell\nbun --version\n```')).toEqual({
+      name: 'run_command',
+      args: {
+        command: 'bun --version',
+        reason: 'The model wrote this command instead of a tool call, so SkyCode is running it.',
+      },
+    });
+    expect(recoverImpliedToolCall('```bash\nnpm test && git status\n```')).toBeNull();
+  });
+
+  it('reads a workspace log without an approval pause', async () => {
+    const root = await workspace();
+    await mkdir(join(root, 'logs'));
+    await writeFile(join(root, 'logs', 'app.log'), 'server-ready\n', 'utf8');
+
+    const result = await executeProjectToolCall(
+      { name: 'run_command', args: { command: 'type logs\\app.log' } },
+      context(root)
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain('server-ready');
+  });
+
+  it('starts an app in the background, reads its logs, and stops it', async () => {
+    const root = await workspace();
+    await writeFile(
+      join(root, 'server.js'),
+      "console.log('server-up');\nsetInterval(() => {}, 1000);\n",
+      'utf8'
+    );
+
+    const started = await executeProjectToolCall(
+      {
+        name: 'start_process',
+        args: {
+          command: 'bun server.js',
+          reason: 'Boot the app so its logs can be checked.',
+        },
+      },
+      context(root),
+      async () => 'once'
+    );
+
+    expect(started.success).toBe(true);
+    expect(started.content).toContain('server-up');
+
+    const logs = await executeProjectToolCall(
+      { name: 'read_process_logs', args: {} },
+      context(root)
+    );
+    expect(logs.success).toBe(true);
+    expect(logs.content).toContain('status: running');
+    expect(logs.content).toContain('server-up');
+
+    const stopped = await executeProjectToolCall(
+      { name: 'stop_process', args: {} },
+      context(root)
+    );
+    expect(stopped.success).toBe(true);
+    expect(stopped.content).toContain('Stopped background process');
+  });
+
   it('normalizes generic terminal XML calls to run_command', () => {
     const content =
       '<tool_call>terminal <arg_key>command</arg_key> <arg_value>npm test</arg_value> </tool_call>';
@@ -281,7 +359,7 @@ describe('project tool protocol', () => {
         name: 'write_file',
         args: {
           path: 'add-numbers/src/add.js',
-          content: 'export function add(a, b) {\\n  return a + b;\\n}\\n',
+          content: 'export function add(a, b) {\n  return a + b;\n}\n',
         },
       },
     ]);
@@ -745,5 +823,211 @@ describe('project tool protocol', () => {
     expect((await stat(join(root, 'demo', 'index.html'))).isFile()).toBe(true);
     expect((await stat(join(root, 'demo', 'style.css'))).isFile()).toBe(true);
     expect((await stat(join(root, 'demo', 'script.js'))).isFile()).toBe(true);
+  });
+
+  it('keeps working when the model pauses to describe the next command', async () => {
+    const root = await workspace();
+    let calls = 0;
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            content:
+              '<tool_call>{"name":"write_file","args":{"path":"app.js","content":"console.log(1);\\n"}}</tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        if (calls === 2) {
+          return {
+            content: "I'll run the tests next.",
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        if (calls === 3) {
+          return {
+            content:
+              '<tool_call>{"name":"run_command","args":{"command":"bun --version"}}</tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        return {
+          content: 'Verified the workspace.',
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    const response = await agent.process({
+      input: 'Build a small Node app in this workspace and test it.',
+    });
+
+    expect(calls).toBe(4);
+    expect(response.content).toContain('Verified the workspace.');
+    expect((await stat(join(root, 'app.js'))).isFile()).toBe(true);
+  });
+
+  it('runs a fenced shell command instead of ending the task', async () => {
+    const root = await workspace();
+    let calls = 0;
+    const activities: any[] = [];
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            content:
+              '<tool_call>{"name":"write_file","args":{"path":"app.js","content":"console.log(1);\\n"}}</tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        if (calls === 2) {
+          return {
+            content: '```powershell\nbun --version\n```',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        return {
+          content: 'Checked the runtime.',
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    let completed = '';
+    await agent.processStream({
+      input: 'Build a small Node app in this workspace and test it.',
+      onActivity: (activity) => activities.push(activity),
+      onComplete: (response) => {
+        completed = response.content;
+      },
+    });
+
+    expect(completed).toContain('Checked the runtime.');
+    expect(
+      activities.some(
+        (item) =>
+          item.type === 'terminal' &&
+          item.status === 'success' &&
+          String(item.path).includes('bun --version')
+      )
+    ).toBe(true);
+  });
+
+  it('leaves a healthy app running and streams its logs after the task ends', async () => {
+    const root = await workspace();
+    await writeFile(
+      join(root, 'server.js'),
+      "console.log('server-up');\nsetInterval(() => {}, 1000);\n",
+      'utf8'
+    );
+    let calls = 0;
+    const activities: any[] = [];
+
+    const provider = {
+      name: 'mock',
+      async initialize() {},
+      isConfigured: () => true,
+      getConfig: () => ({}),
+      async chat() {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            content:
+              '<tool_call>{"name":"start_process","args":{"command":"bun server.js","reason":"Boot the app so it can be tested."}}</tool_call>',
+            model: 'test-model',
+            finishReason: 'stop',
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        }
+        return {
+          content: 'The app is up.',
+          model: 'test-model',
+          finishReason: 'stop',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+      async chatStream() {},
+      async listModels() { return []; },
+      async getModel() { return undefined; },
+      async validateApiKey() { return true; },
+      async close() {},
+    };
+
+    const agent = new CodingAgent();
+    await agent.initialize({
+      provider: provider as any,
+      model: 'test-model',
+      workingDirectory: root,
+      messages: [],
+    });
+
+    const response = await agent.process({
+      input: 'Build a small Node app in this workspace and test it.',
+      onApproval: async () => 'once',
+      onActivity: (activity) => activities.push(activity),
+    });
+
+    expect(response.content).toContain('The app is up.');
+    expect(response.content).toContain('Still running in this workspace:');
+    expect(response.content).toContain('bun server.js');
+    expect(listWorkspaceProcesses(root).filter((proc) => proc.running)).toHaveLength(1);
+    expect(
+      activities.some(
+        (item) =>
+          item.title === 'App logs' &&
+          item.preview?.some((line: string) => String(line).includes('server-up'))
+      )
+    ).toBe(true);
   });
 });

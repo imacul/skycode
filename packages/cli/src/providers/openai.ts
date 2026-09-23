@@ -7,6 +7,7 @@ import type {
   ModelInfo,
   ProviderConfig,
 } from './base';
+import { appendNativeToolCalls } from './native-tools';
 
 /**
  * OpenAI configuration
@@ -287,7 +288,10 @@ export class OpenAIProvider implements BaseProvider {
       const data = await response.json();
 
       return {
-        content: data.choices?.[0]?.message?.content || '',
+        content: appendNativeToolCalls(
+          data.choices?.[0]?.message?.content || '',
+          data.choices?.[0]?.message
+        ),
         model: data.model,
         finishReason: data.choices?.[0]?.finish_reason || 'stop',
         usage: data.usage,

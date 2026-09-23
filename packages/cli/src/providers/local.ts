@@ -7,6 +7,7 @@ import type {
   ModelInfo,
   ProviderConfig,
 } from './base';
+import { appendNativeToolCalls } from './native-tools';
 import { extractSseEvents, getSseData } from '../utils/sse';
 
 /**
@@ -369,7 +370,10 @@ export class LocalLLMProvider implements BaseProvider {
 
         const data = await response.json();
         return {
-          content: data.message?.content || data.response || '',
+          content: appendNativeToolCalls(
+            data.message?.content || data.response || '',
+            data.message
+          ),
           model: data.model,
           finishReason: data.done ? 'stop' : 'unknown',
           usage: {
@@ -404,7 +408,10 @@ export class LocalLLMProvider implements BaseProvider {
 
         const data = await response.json();
         return {
-          content: data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '',
+          content: appendNativeToolCalls(
+            data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '',
+            data.choices?.[0]?.message
+          ),
           model: data.model,
           finishReason: data.choices?.[0]?.finish_reason || 'unknown',
           usage: data.usage,
@@ -438,7 +445,10 @@ export class LocalLLMProvider implements BaseProvider {
 
         const data = await response.json();
         return {
-          content: data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '',
+          content: appendNativeToolCalls(
+            data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '',
+            data.choices?.[0]?.message
+          ),
           model: data.model,
           finishReason: data.choices?.[0]?.finish_reason || 'unknown',
           usage: data.usage,

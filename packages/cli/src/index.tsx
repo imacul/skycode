@@ -30,7 +30,13 @@ import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
-import { shouldUseProjectTools } from './agents/project-tools';
+import {
+  describeRunningProcesses,
+  listWorkspaceProcesses,
+  shouldUseProjectTools,
+  stopWorkspaceProcess,
+  stopWorkspaceProcesses,
+} from './agents/project-tools';
 import { agentDebug, getAgentDebugLogPath } from './utils/agent-debug';
 import type { BaseProvider } from './providers/base';
 import type {
@@ -998,6 +1004,39 @@ function App() {
       } else {
         setHistoryView('Could not access the system clipboard on this machine.');
       }
+    } else if (
+      command === '/servers' ||
+      command === '/servers stop' ||
+      command.startsWith('/servers stop ')
+    ) {
+      const workspace = process.cwd();
+      if (command === '/servers') {
+        const running = listWorkspaceProcesses(workspace).filter((proc) => proc.running);
+        addMessage(
+          'system',
+          running.length === 0
+            ? 'No background app servers are running in this workspace.'
+            : describeRunningProcesses(workspace)
+        );
+      } else if (command === '/servers stop') {
+        const running = listWorkspaceProcesses(workspace).filter((proc) => proc.running);
+        await stopWorkspaceProcesses(workspace);
+        addMessage(
+          'system',
+          running.length === 0
+            ? 'No background app servers were running.'
+            : 'Stopped ' + running.length + ' background server' + (running.length === 1 ? '' : 's') + '.'
+        );
+      } else {
+        const id = command.slice('/servers stop '.length).trim();
+        const stopped = await stopWorkspaceProcess(workspace, id);
+        addMessage(
+          'system',
+          stopped
+            ? 'Stopped ' + id + '.'
+            : 'No running server with id ' + id + ' in this workspace.'
+        );
+      }
     } else if (command === '/doctor') {
       const configuredProviders = getConfiguredProviders();
       const conversationState = useConversationStore.getState();
@@ -1035,6 +1074,9 @@ Available commands:
   /doctor    - Check command/provider/storage health
   /permissions - Show persistent/session tool approvals
   /permissions reset - Clear saved and session approvals
+  /servers  - Show background app servers left running by the agent
+  /servers stop - Stop every background server in this workspace
+  /servers stop <id> - Stop one background server
   /help      - Show this help
   /setup     - Configure any provider
   /addcloud  - Add a cloud AI provider (Anthropic or OpenAI)

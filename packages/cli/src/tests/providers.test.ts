@@ -150,6 +150,51 @@ describe('Providers', () => {
       }
     });
 
+    it('keeps native tool calls when the visible message is empty', async () => {
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            id: 'or-tools',
+            model: 'test/model',
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: '',
+                  tool_calls: [
+                    {
+                      type: 'function',
+                      function: {
+                        name: 'run_command',
+                        arguments: '{"command":"bun test"}',
+                      },
+                    },
+                  ],
+                },
+                finish_reason: 'tool_calls',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )) as typeof fetch;
+
+      try {
+        const provider = createOpenRouterProvider();
+        await provider.initialize({ apiKey: 'test-key' });
+        const response = await provider.chat({
+          model: 'test/model',
+          messages: [],
+        });
+
+        expect(response.content).toContain('<tool_call>');
+        expect(response.content).toContain('"name":"run_command"');
+        expect(response.content).toContain('"command":"bun test"');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     it('should parse OpenRouter SSE deltas and final completion', async () => {
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({

@@ -13,6 +13,7 @@ import type {
 import type { CodingAgentConfig } from './types';
 import type { BaseProvider } from '../providers/base';
 import type { Message } from '../store/conversation';
+import { resolve } from 'node:path';
 import { getSystemMessage } from '../store/conversation';
 import { agentDebug } from '../utils/agent-debug';
 import {
@@ -21,8 +22,14 @@ import {
   parseProjectToolCalls,
   parseProjectClarification,
   projectToolResultMessage,
+  describeRunningProcesses,
+  recoverImpliedToolCall,
+  responseLooksLikePendingWork,
+  setProcessLogListener,
+  shouldContinueProjectTools,
   shouldUseProjectTools,
   stripProjectToolCalls,
+  type ProjectToolCall,
   type ProjectToolExecution,
 } from './project-tools';
 
@@ -48,7 +55,8 @@ SkyCode capability facts:
 - You can design project architecture and create multi-file software projects for web, backend, CLI, mobile, or desktop stacks when the requested stack can be represented as source files in the workspace.
 - Do not tell the user they must manually copy your code into files when SkyCode project tools can perform the requested file work.
 - Do not claim you cannot create software merely because the underlying model by itself has no filesystem. You are operating through SkyCode, and SkyCode supplies workspace tools for build tasks.
-- Be precise about current limits: when project tools are active, SkyCode has Computer Tools v1: workspace file creation/read/search/write/delete plus a permission-aware terminal. Read-only metadata inspection can run automatically. Verification, dependency/package changes, generators, arbitrary workspace commands, format/fix scripts, git add/commit, and deletions can ask the user for approval. Package/command approvals must explain why the action is needed. Publishing, git push/history rewrites, and system-level destructive commands remain blocked.
+- Be precise about current limits: when project tools are active, SkyCode has workspace file tools plus a terminal. Reading files, git metadata, tests, builds, lint, type checks, log files, and localhost probes run immediately. Dev servers start in the background so you can read their logs and keep working. Dependency changes, generators, arbitrary commands, format/fix scripts, git add/commit, and deletions can ask the user for approval. Publishing, git push/history rewrites, and system-level destructive commands remain blocked.
+- Never stop the task when you reach a tool. Call the tool, read the result, and continue until the code has been checked. After edits, run the project's test or build. To test a running app, start it in the background, read the live logs, and probe localhost. Leave a healthy server running and tell the user its URL. The user stops it with /servers stop.
 - If the user only asks whether you can build software, answer from these SkyCode capabilities; do not start creating files until they actually ask you to build something.
 
 Your role includes:
@@ -220,6 +228,17 @@ export class CodingAgent implements BaseAgent {
     }
   }
 
+  private shouldRunProjectTools(request: AgentRequest): boolean {
+    if (request.taskKind === 'workspace' && request.taskState === 'running') return true;
+    if (shouldUseProjectTools(request.input)) return true;
+
+    const history = [
+      ...(this.context.conversation?.messages || []),
+      ...this.context.messages,
+    ];
+    return shouldContinueProjectTools(request.input, history);
+  }
+
   private looksLikeRawModelCapabilityRefusal(content: string): boolean {
     const text = content.toLowerCase();
     return (
@@ -234,7 +253,7 @@ export class CodingAgent implements BaseAgent {
   private async runProjectToolLoop(
     request: AgentRequest,
     onToolExecution?: (execution: ProjectToolExecution) => void,
-    onActivity?: (activity: AgentActivity) => void
+    onActivity: AgentRequest['onActivity'] = request.onActivity
   ): Promise<{
     content: string;
     finishReason: string;
@@ -265,6 +284,8 @@ export class CodingAgent implements BaseAgent {
     let tokensUsed = 0;
     let finishReason = 'stop';
     let hasExecutedTools = false;
+    let pendingNudges = 0;
+    let lastModelToolFailed = false;
     const allExecutions: ProjectToolExecution[] = [];
 
     const initialActivityId = 'planning_' + Date.now();
@@ -314,6 +335,28 @@ export class CodingAgent implements BaseAgent {
       timestamp: new Date(),
     });
 
+    const workspace = this.context.workingDirectory || process.cwd();
+    setProcessLogListener((snapshot) => {
+      if (resolve(snapshot.workspace) !== resolve(workspace)) return;
+      const lines = snapshot.logs
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .filter(Boolean)
+        .slice(-8);
+      onActivity?.({
+        id: 'logs_' + snapshot.id,
+        type: 'terminal',
+        status: snapshot.running
+          ? 'running'
+          : snapshot.exitCode === 0
+            ? 'success'
+            : 'error',
+        title: snapshot.running ? 'App logs' : 'App exited',
+        path: snapshot.command,
+        preview: lines.length > 0 ? lines : ['(no output yet)'],
+      });
+    });
+    try {
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const modelActivityId = 'model_round_' + Date.now() + '_' + iteration;
       onActivity?.({
@@ -418,7 +461,14 @@ export class CodingAgent implements BaseAgent {
         };
       }
 
-      const calls = parseProjectToolCalls(response.content);
+      let calls: ProjectToolCall[] = parseProjectToolCalls(response.content);
+      if (calls.length === 0 && pendingNudges < 3) {
+        const recovered = recoverImpliedToolCall(response.content);
+        if (recovered) {
+          pendingNudges += 1;
+          calls = [recovered];
+        }
+      }
       agentDebug('tool.parse', {
         traceId,
         iteration,
@@ -431,7 +481,7 @@ export class CodingAgent implements BaseAgent {
       // aliases. If any raw tool protocol remains but produced zero calls, do
       // not ever present it as a successful final answer: feed it back into
       // the loop as a protocol error and make the model retry.
-      const containsRawToolProtocol = /<tool_call>|<\\|DSML\\|/i.test(response.content);
+      const containsRawToolProtocol = /<tool_call>|<\|DSML\|/i.test(response.content);
 
       if (calls.length === 0) {
         const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
@@ -452,7 +502,7 @@ export class CodingAgent implements BaseAgent {
               (falseCapabilityRefusal
                 ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
                 : '') +
-              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, and run_command. ' +
+              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, run_command, start_process, read_process_logs, and stop_process. ' +
               (containsRawToolProtocol
                 ? 'Your previous response contained tool-call markup that SkyCode could not execute. Do not repeat that syntax. '
                 : '') +
@@ -460,6 +510,34 @@ export class CodingAgent implements BaseAgent {
               '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
               'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +
               'Do not tell the user to copy code manually and do not merely paste code in chat.',
+            timestamp: new Date(),
+          });
+          continue;
+        }
+
+        if (
+          hasExecutedTools &&
+          pendingNudges < 3 &&
+          (responseLooksLikePendingWork(response.content) ||
+            !response.content.trim() ||
+            lastModelToolFailed)
+        ) {
+          pendingNudges += 1;
+          messages.push({
+            id: 'assistant_pending_' + Date.now() + '_' + iteration,
+            role: 'assistant',
+            content: response.content || '(empty response)',
+            timestamp: new Date(),
+          });
+          messages.push({
+            id: 'tool_continue_' + Date.now() + '_' + iteration,
+            role: 'user',
+            content:
+              'You stopped before the task was checked. Do not describe the next command and do not summarize yet. ' +
+              'Call a tool now. Use run_command for tests, builds, log files, and localhost probes. ' +
+              'Use start_process for an app or dev server, then read_process_logs, then stop_process when testing is done. ' +
+              'If the last command failed, fix the code and run the check again. ' +
+              'Use <tool_call>{"name":"...","args":{...}}</tool_call>.',
             timestamp: new Date(),
           });
           continue;
@@ -544,6 +622,7 @@ export class CodingAgent implements BaseAgent {
 
       const executions: ProjectToolExecution[] = [];
       hasExecutedTools = true;
+      lastModelToolFailed = false;
       for (const call of calls.slice(0, 8)) {
         const activityId =
           'tool_' + Date.now() + '_' + iteration + '_' + executions.length;
@@ -556,7 +635,10 @@ export class CodingAgent implements BaseAgent {
               ? 'create'
               : call.name === 'search_files'
                 ? 'search'
-                : call.name === 'run_command'
+                : call.name === 'run_command' ||
+            call.name === 'start_process' ||
+            call.name === 'read_process_logs' ||
+            call.name === 'stop_process'
                   ? 'terminal'
                   : 'inspect';
 
@@ -573,11 +655,18 @@ export class CodingAgent implements BaseAgent {
                   ? 'Searching workspace'
                   : call.name === 'run_command'
                     ? 'Running command'
-                    : call.name === 'read_file'
+                    : call.name === 'start_process'
+                      ? 'Starting app'
+                      : call.name === 'read_process_logs'
+                        ? 'Reading logs'
+                        : call.name === 'stop_process'
+                          ? 'Stopping app'
+                          : call.name === 'read_file'
                       ? 'Reading file'
                       : 'Inspecting workspace',
           path:
-            call.name === 'run_command' && typeof call.args.command === 'string'
+            (call.name === 'run_command' || call.name === 'start_process') &&
+            typeof call.args.command === 'string'
               ? String(call.args.command)
               : path,
         });
@@ -590,6 +679,7 @@ export class CodingAgent implements BaseAgent {
         );
         executions.push(execution);
         allExecutions.push(execution);
+        if (!execution.success) lastModelToolFailed = true;
         agentDebug('tool.execute.result', { traceId, iteration, execution });
         onToolExecution?.(execution);
 
@@ -614,7 +704,19 @@ export class CodingAgent implements BaseAgent {
                     ? execution.success
                       ? 'Command completed'
                       : 'Command failed'
-                    : call.name === 'read_file'
+                    : call.name === 'start_process'
+                      ? execution.success
+                        ? 'App started'
+                        : 'App failed to start'
+                      : call.name === 'read_process_logs'
+                        ? execution.success
+                          ? 'Logs read'
+                          : 'Log read failed'
+                        : call.name === 'stop_process'
+                          ? execution.success
+                            ? 'App stopped'
+                            : 'App stop failed'
+                          : call.name === 'read_file'
                       ? execution.success
                         ? 'Read file'
                         : 'Read failed'
@@ -622,7 +724,8 @@ export class CodingAgent implements BaseAgent {
                         ? 'Workspace inspected'
                         : 'Inspection failed',
           path:
-            call.name === 'run_command' && typeof call.args.command === 'string'
+            (call.name === 'run_command' || call.name === 'start_process') &&
+            typeof call.args.command === 'string'
               ? String(call.args.command)
               : execution.displayPath || path,
           detail: execution.success ? undefined : execution.content,
@@ -656,6 +759,17 @@ export class CodingAgent implements BaseAgent {
       finishReason: 'tool_iteration_limit',
       tokensUsed,
     };
+    } finally {
+      setProcessLogListener(null);
+    }
+  }
+
+  private finishProjectContent(content: string): string {
+    const note = describeRunningProcesses(
+      this.context.workingDirectory || process.cwd()
+    );
+    if (!note || content.includes('Still running in this workspace:')) return content;
+    return content + '\n\n' + note;
   }
 
   /**
@@ -673,15 +787,15 @@ export class CodingAgent implements BaseAgent {
 
     try {
       if (
-        shouldUseProjectTools(request.input) ||
-        (request.taskKind === 'workspace' && request.taskState === 'running')
+        this.shouldRunProjectTools(request)
       ) {
         const toolResult = await this.runProjectToolLoop(request);
         const executionTime = Date.now() - startTime;
+        const content = this.finishProjectContent(toolResult.content);
 
         return {
-          content: toolResult.content,
-          type: this.detectResponseType(toolResult.content),
+          content,
+          type: this.detectResponseType(content),
           metadata: {
             model: this.context.model,
             provider: this.context.provider?.name || 'openrouter',
@@ -689,7 +803,7 @@ export class CodingAgent implements BaseAgent {
             tokensUsed: toolResult.tokensUsed,
             executionTime,
           },
-          codeBlocks: this.extractCodeBlocks(toolResult.content),
+          codeBlocks: this.extractCodeBlocks(content),
           suggestions: [],
         };
       }
@@ -741,22 +855,22 @@ export class CodingAgent implements BaseAgent {
 
     try {
       if (
-        shouldUseProjectTools(request.input) ||
-        (request.taskKind === 'workspace' && request.taskState === 'running')
+        this.shouldRunProjectTools(request)
       ) {
         const toolResult = await this.runProjectToolLoop(
           request,
           undefined,
           request.onActivity
         );
+        const content = this.finishProjectContent(toolResult.content);
 
-        if (toolResult.content) {
-          request.onStream?.(toolResult.content);
+        if (content) {
+          request.onStream?.(content);
         }
 
         request.onComplete?.({
-          content: toolResult.content,
-          type: this.detectResponseType(toolResult.content),
+          content,
+          type: this.detectResponseType(content),
           metadata: {
             model: this.context.model,
             provider: this.context.provider?.name || 'openrouter',
@@ -764,7 +878,7 @@ export class CodingAgent implements BaseAgent {
             tokensUsed: toolResult.tokensUsed,
             executionTime: Date.now() - startTime,
           },
-          codeBlocks: this.extractCodeBlocks(toolResult.content),
+          codeBlocks: this.extractCodeBlocks(content),
           suggestions: [],
         });
         return;

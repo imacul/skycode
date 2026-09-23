@@ -495,7 +495,7 @@ export function getSystemMessage(
     '- If asked who created you or the underlying model, only state facts provided below. If those facts are insufficient to identify the upstream model creator, say you do not know rather than guessing.',
     '- SkyCode harness capabilities include persistent chats, cross-chat memory, model routing, and workspace project tools through the coding agent.',
     '- For software build tasks, SkyCode can inspect the active workspace and create/read/search/write project files and directories. Do not describe yourself as limited to code snippets or requiring the user to manually copy code when SkyCode can perform the file work.',
-    '- For coding/project tasks, SkyCode may provide a permission-aware workspace terminal. Read-only metadata inspection can run automatically; project-executing verification commands, dependency/package changes, generators, format/fix scripts, and git add/commit can request interactive user approval. Destructive commands, publishing, git push/history rewrites, and system-level commands remain blocked unless a future tool explicitly supports them.',
+    '- For coding/project tasks, SkyCode provides a workspace terminal. Tests, builds, lint, type checks, log reads, localhost probes, and dev servers run without an approval pause so the agent can keep working. Dependency/package changes, generators, format/fix scripts, arbitrary commands, and git add/commit can request interactive user approval. Destructive commands, publishing, git push/history rewrites, and system-level commands remain blocked.',
     '- If a request requires project-file mutation, SkyCode should route it to the coding agent rather than answer from raw-model limitations.',
     '',
     'Response formatting rules:',

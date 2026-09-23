@@ -9,6 +9,7 @@ import type {
   ProviderConfig,
 } from './base';
 import type { Message } from '../store/conversation';
+import { appendNativeToolCalls } from './native-tools';
 import { extractSseEvents, getSseData } from '../utils/sse';
 
 /**
@@ -278,7 +279,10 @@ export class OpenRouterProvider implements BaseProvider {
    */
   private convertResponse(response: OpenRouterResponse): ChatResponse {
     const choice = response.choices?.[0];
-    const content = textFromContent(choice?.message?.content).trim();
+    const content = appendNativeToolCalls(
+      textFromContent(choice?.message?.content).trim(),
+      choice?.message
+    );
 
     return {
       content,

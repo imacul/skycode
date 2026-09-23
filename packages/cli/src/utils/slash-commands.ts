@@ -21,6 +21,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/setup', description: 'Configure providers' },
   { command: '/doctor', description: 'Check command/provider/storage health' },
   { command: '/permissions', description: 'Show current tool approvals' },
+  { command: '/servers', description: 'Show or stop background app servers', takesArgs: true },
   { command: '/help', description: 'Show available commands' },
   { command: '/exit', description: 'Exit SkyCode' },
 ];
@@ -68,6 +69,24 @@ export function validateSlashCommand(raw: string): SlashValidation {
     normalized === '/permissions reset'
   ) {
     return { ok: true, normalized };
+  }
+
+  if (normalized === '/servers' || normalized === '/servers stop') {
+    return { ok: true, normalized };
+  }
+
+  if (normalized.startsWith('/servers stop ')) {
+    return normalized.slice('/servers stop '.length).trim()
+      ? { ok: true, normalized }
+      : { ok: false, normalized, error: 'Usage: /servers stop [id]' };
+  }
+
+  if (normalized.startsWith('/servers')) {
+    return {
+      ok: false,
+      normalized,
+      error: 'Usage: /servers or /servers stop [id]',
+    };
   }
 
 
