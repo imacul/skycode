@@ -94,6 +94,11 @@ export interface AgentRequest {
   // Completion callback
   onComplete?: (response: AgentResponse) => void;
   
+  // Explicit harness-owned execution state. Routing must not infer an active
+  // workspace task from English continuation words.
+  taskState?: 'running' | 'completed' | 'blocked' | 'failed';
+  taskKind?: 'workspace';
+
   // Error callback
   onError?: (error: Error) => void;
 }

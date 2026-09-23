@@ -6,12 +6,10 @@ import {
   classifyProjectCommand,
   executeProjectToolCall,
   isProjectCapabilityQuestion,
-  isProjectContinuationInput,
   parseProjectClarification,
   parseProjectPlan,
   parseProjectToolCalls,
   projectToolResultMessage,
-  shouldContinueProjectTools,
   shouldUseProjectTools,
   stripProjectToolCalls,
 } from '../agents/project-tools';
@@ -236,25 +234,6 @@ describe('project tool protocol', () => {
         },
       },
     ]);
-  });
-
-  it('recognizes combined continuation wording without depending on history', () => {
-    expect(isProjectContinuationInput('continue and finish it')).toBe(true);
-    expect(isProjectContinuationInput('resume and complete it')).toBe(true);
-    expect(isProjectContinuationInput('tell me a joke')).toBe(false);
-  });
-
-  it('continues saved project work when tool protocol is the durable history evidence', () => {
-    expect(
-      shouldContinueProjectTools('continue and finish it', [
-        {
-          id: 'assistant_old_tool',
-          role: 'assistant',
-          content: '<tool_call>terminal <arg_key>command</arg_key> <arg_value>npm test</arg_value> </tool_call>',
-          timestamp: new Date(),
-        },
-      ])
-    ).toBe(true);
   });
 
   it('normalizes generic terminal XML calls to run_command', () => {

@@ -30,7 +30,7 @@ import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
 import { createAgentOrchestrator } from './agents';
-import { isProjectContinuationInput, shouldContinueProjectTools } from './agents/project-tools';
+import { shouldUseProjectTools } from './agents/project-tools';
 import type { BaseProvider } from './providers/base';
 import type {
   AgentActivity,
@@ -477,28 +477,35 @@ function App() {
       const fittedHistory = fitHistoryToBudget(fullHistory, budget.historyBudget);
       const previousMessages = fittedHistory.messages;
 
-      addMessage('user', text);
       setHistoryView(null);
       setShowHistoryPanel(false);
 
       const abortController = new AbortController();
       activeAbortControllerRef.current = abortController;
 
-      // Create agent request
-      const previousRouteWasCoding =
-        orchestratorRef.current?.getLastRouteDecision()?.agentName === 'coding-agent';
-      const continuingProjectWork =
-        shouldContinueProjectTools(text, previousMessages) ||
-        (previousRouteWasCoding && isProjectContinuationInput(text));
+      // Create agent request. Workspace execution state is persisted as
+      // structured metadata; follow-up routing never depends on matching words
+      // such as "continue", "resume", or "finish".
+      const activeWorkspaceTask = [...fullHistory]
+        .reverse()
+        .find((message) => message.metadata?.taskKind === 'workspace')
+        ?.metadata?.taskState === 'running';
+      const startsWorkspaceTask = shouldUseProjectTools(text);
+      const workspaceTaskRunning = activeWorkspaceTask || startsWorkspaceTask;
+
+      addMessage('user', text, workspaceTaskRunning
+        ? { taskKind: 'workspace', taskState: 'running' }
+        : undefined);
 
       const request: AgentRequest = {
         input: text,
+        taskKind: workspaceTaskRunning ? 'workspace' : undefined,
+        taskState: workspaceTaskRunning ? 'running' : undefined,
         context: {
           maxTokens: budget.responseReserve,
           contextWindow: budget.contextWindow,
           droppedHistoryMessages: fittedHistory.droppedCount,
           signal: abortController.signal,
-          ...(continuingProjectWork ? { agent: 'coding-agent' } : {}),
         },
         // Leave mode unset so the orchestrator can route general work,
         // coding, planning, and business requests intelligently.
@@ -534,9 +541,21 @@ function App() {
             return;
           }
 
+          const taskFinishReason = response.metadata?.finishReason || '';
+          const taskState = workspaceTaskRunning
+            ? taskFinishReason === 'clarification_required'
+              ? 'blocked'
+              : /tool_iteration_limit|provider_stopped|tool_protocol_not_followed/i.test(taskFinishReason)
+                ? 'running'
+                : 'completed'
+            : undefined;
+
           addMessage('assistant', response.content, {
             model: response.metadata?.model,
             finishReason: response.metadata?.finishReason,
+            ...(workspaceTaskRunning
+              ? { taskKind: 'workspace' as const, taskState }
+              : {}),
           });
           activeAbortControllerRef.current = null;
           setIsProcessing(false);

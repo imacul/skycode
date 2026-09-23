@@ -20,7 +20,6 @@ import {
   parseProjectToolCalls,
   parseProjectClarification,
   projectToolResultMessage,
-  shouldContinueProjectTools,
   shouldUseProjectTools,
   stripProjectToolCalls,
   type ProjectToolExecution,
@@ -635,7 +634,7 @@ export class CodingAgent implements BaseAgent {
     try {
       if (
         shouldUseProjectTools(request.input) ||
-        shouldContinueProjectTools(request.input, this.context.messages)
+        (request.taskKind === 'workspace' && request.taskState === 'running')
       ) {
         const toolResult = await this.runProjectToolLoop(request);
         const executionTime = Date.now() - startTime;
@@ -703,7 +702,7 @@ export class CodingAgent implements BaseAgent {
     try {
       if (
         shouldUseProjectTools(request.input) ||
-        shouldContinueProjectTools(request.input, this.context.messages)
+        (request.taskKind === 'workspace' && request.taskState === 'running')
       ) {
         const toolResult = await this.runProjectToolLoop(
           request,

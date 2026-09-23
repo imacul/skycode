@@ -69,36 +69,6 @@ export function shouldUseProjectTools(input: string): boolean {
 }
 
 
-export function isProjectContinuationInput(input: string): boolean {
-  const clean = input.trim().toLowerCase();
-
-  // Continuations are deliberately recognized from the current turn alone.
-  // The UI/orchestrator can then combine this signal with recent project
-  // history. Requiring the original build prompt to survive context fitting
-  // made long-running tool sessions silently fall back to chat-agent.
-  return /^(?:please\s+)?(?:(?:continue|resume|proceed|carry on|keep going)(?:\s+(?:and\s+)?(?:finish|complete)(?:\s+it)?)?|(?:finish|complete)(?:\s+it)?|go ahead|do it|yes|yeah|yep|ok|okay)(?:\s+(?:please|with it|from there|the work|the project))?[.!?]*$/i.test(clean);
-}
-
-export function shouldContinueProjectTools(
-  input: string,
-  messages: Message[]
-): boolean {
-  if (!isProjectContinuationInput(input)) return false;
-
-  const recentMessages = [...messages].reverse().slice(0, 16);
-
-  return recentMessages.some((message) => {
-    if (message.role === 'user' && shouldUseProjectTools(message.content)) return true;
-
-    // Saved assistant/tool protocol is durable evidence that this conversation
-    // is already in a workspace task, even if the original user prompt was
-    // trimmed from the model context window.
-    return /<tool_call>|PROJECT TOOL RESULTS|Project work completed|workspace operations completed|runaway-agent fuse|project-tool steps/i.test(
-      message.content
-    );
-  });
-}
-
 function coerceDsmlScalar(value: string, declaredString?: string): unknown {
   const clean = value.trim();
 
