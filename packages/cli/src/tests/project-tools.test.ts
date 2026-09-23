@@ -120,6 +120,11 @@ describe('project tool protocol', () => {
     expect(classifyProjectCommand('git push').allowed).toBe(false);
     expect(classifyProjectCommand('rm -rf .').allowed).toBe(false);
     expect(classifyProjectCommand('npm test && git status').allowed).toBe(false);
+
+    const general = classifyProjectCommand('node scripts/generate.js');
+    expect(general.allowed).toBe(true);
+    expect(general.requiresApproval).toBe(true);
+    expect(general.permissionKey).toBe('terminal:general');
   });
 
   it('asks for approval before project verification commands execute', async () => {
@@ -129,7 +134,7 @@ describe('project tool protocol', () => {
     const result = await executeProjectToolCall(
       {
         name: 'run_command',
-        args: { command: 'bun test' },
+        args: { command: 'bun test', reason: 'Verify the implementation with the test suite.' },
       },
       context(root),
       async (request) => {
@@ -150,7 +155,7 @@ describe('project tool protocol', () => {
     const result = await executeProjectToolCall(
       {
         name: 'run_command',
-        args: { command: 'git add .' },
+        args: { command: 'git add .', reason: 'Stage the completed workspace changes.' },
       },
       context(root),
       async (request) => {
@@ -170,13 +175,29 @@ describe('project tool protocol', () => {
     const result = await executeProjectToolCall(
       {
         name: 'run_command',
-        args: { command: 'npm install react' },
+        args: { command: 'npm install react', reason: 'Install React because the requested app depends on it.' },
       },
       context(root)
     );
 
     expect(result.success).toBe(false);
     expect(result.content).toContain('requires user approval');
+  });
+
+  it('requires an explanation before asking approval for executable commands', async () => {
+    const root = await workspace();
+    let asked = false;
+    const result = await executeProjectToolCall(
+      { name: 'run_command', args: { command: 'node scripts/generate.js' } },
+      context(root),
+      async () => {
+        asked = true;
+        return 'once';
+      }
+    );
+    expect(asked).toBe(false);
+    expect(result.success).toBe(false);
+    expect(result.content).toContain('requires a concise reason');
   });
 
   it('executes safe terminal commands inside the active workspace', async () => {
