@@ -664,7 +664,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- After non-trivial code changes, prefer at least one relevant verification command when the existing project exposes one. Inspect package/config files first so you do not invent scripts.',
     '- Use failed command output as debugging evidence: fix the files, then rerun the relevant verification command.',
     '- Run one command per tool call. Do not use shell chaining, pipes, redirects, subshells, or multiline commands.',
-    '- For every command that requires approval, include a concise reason argument explaining why the command is needed. Package installs must name what the dependency enables before SkyCode asks the user.',
+    '- For every command that requires approval, the reason must explain the purpose/necessity, not restate the action. Bad: "Install Jest dev dependency." Good: "The project uses Jest for its automated tests, so dependencies must be installed before I can run and verify the requested test suite." Package installs must say what capability/package is needed and why the current task cannot proceed or be verified without it.',
     '- Package installation/removal, generators, arbitrary workspace commands, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
     '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
     '- If a needed command is blocked, continue with file work where possible and tell the user exactly which command remains unavailable.',
@@ -788,7 +788,7 @@ export async function executeProjectToolCall(
                   ? 'Approve verification command'
                   : 'Approve workspace command',
             description:
-              'Why: ' + commandReason + '\n' +
+              'Why this is needed: ' + commandReason + '\n' +
               (policy.description || 'This command can change the active workspace.'),
             command: args.command,
             permissionKey: policy.permissionKey,
