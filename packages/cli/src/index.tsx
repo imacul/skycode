@@ -1084,7 +1084,7 @@ Current provider: ${provider?.name || 'none'}
       width="100%"
       height="100%"
       overflow="hidden"
-      gap={1}
+      gap={0}
     >
       <box flexShrink={0} width="100%" alignItems="center">
         <Header />
@@ -1233,7 +1233,6 @@ Current provider: ${provider?.name || 'none'}
         flexGrow={1}
         flexShrink={1}
         minHeight={1}
-        height="100%"
         overflow="hidden"
         stickyScroll={true}
         stickyStart="bottom"
@@ -1332,8 +1331,8 @@ Current provider: ${provider?.name || 'none'}
         )}
       </scrollbox>
 
-      {/* Input bar */}
-      <box width="96%" paddingX={2} flexShrink={0}>
+      {/* Input bar: keep it directly beneath the flexible chat viewport. */}
+      <box width="96%" paddingX={2} flexShrink={0} marginTop={0}>
         <InputBar 
           onSubmit={handleSubmit}
           disabled={!isInitialized || showWelcome}
