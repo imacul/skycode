@@ -47,6 +47,7 @@ interface OpenRouterRequest {
     effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
     exclude?: boolean;
   };
+  models?: string[];
 }
 
 /**
@@ -338,6 +339,9 @@ export class OpenRouterProvider implements BaseProvider {
     const model = request.model || this.config.model || OPEN_WEIGHT_MODELS[0].id;
     const messages = this.convertMessages(request.messages);
 
+    const fallbacks = Array.isArray(request.models)
+      ? request.models.filter((item): item is string => typeof item === 'string' && item !== model)
+      : [];
     const body: OpenRouterRequest = {
       model,
       messages,
@@ -346,6 +350,7 @@ export class OpenRouterProvider implements BaseProvider {
       stream: false,
       stop: request.stop,
       reasoning: this.getOpenRouterReasoning(request),
+      ...(fallbacks.length > 0 ? { models: fallbacks } : {}),
     };
 
     // Add OpenRouter-specific headers

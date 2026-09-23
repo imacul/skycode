@@ -24,6 +24,7 @@ const HANDLER_MARKERS: Record<string, string[]> = {
   '/doctor': ["command === '/doctor'"],
   '/permissions': ["command === '/permissions'"],
   '/servers': ["command === '/servers'", "command === '/servers stop'", "command.startsWith('/servers stop ')"],
+  '/credits': ["command === '/credits'"],
   '/help': ["command === '/help'"],
   '/exit': ["command === '/exit'"],
 };

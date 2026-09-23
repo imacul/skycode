@@ -17,6 +17,15 @@ import { resolve } from 'node:path';
 import { getSystemMessage } from '../store/conversation';
 import { agentDebug } from '../utils/agent-debug';
 import {
+  accountCanUsePaidModels,
+  chooseOpenRouterModel,
+  failureIsRateLimit,
+  failureNeedsLongerContext,
+  fetchOpenRouterKeyStatus,
+  taskNeedsStrongerModel,
+  type RoutableModel,
+} from '../utils/openrouter-route';
+import {
   expandShellCommand,
   executeProjectToolCall,
   getProjectToolInstructions,
@@ -103,6 +112,8 @@ export class CodingAgent implements BaseAgent {
   readonly config: CodingAgentConfig;
   private context: AgentContext;
   private currentMode: AgentMode;
+  private modelSwitchNote = '';
+  private upgradedOnce = false;
 
   constructor(config: Partial<CodingAgentConfig> = {}) {
     this.config = {
@@ -337,6 +348,14 @@ export class CodingAgent implements BaseAgent {
     });
 
     const workspace = this.context.workingDirectory || process.cwd();
+    this.modelSwitchNote = '';
+    this.upgradedOnce = false;
+    if (
+      this.context.provider?.name === 'openrouter' &&
+      taskNeedsStrongerModel(request.input, request.taskKind)
+    ) {
+      await this.upgradeOpenRouterModel();
+    }
     setProcessLogListener((snapshot) => {
       if (resolve(snapshot.workspace) !== resolve(workspace)) return;
       const lines = snapshot.logs
@@ -398,6 +417,13 @@ export class CodingAgent implements BaseAgent {
         });
       } catch (error) {
         agentDebug('model.error', { traceId, iteration, error, hasExecutedTools });
+        const providerMessage = error instanceof Error ? error.message : String(error);
+        if (
+          (failureIsRateLimit(providerMessage) || failureNeedsLongerContext(providerMessage)) &&
+          await this.upgradeOpenRouterModel(providerMessage)
+        ) {
+          continue;
+        }
         if (hasExecutedTools) {
           const written = allExecutions.filter(
             (item) => item.success && item.call.name === 'write_file'
@@ -405,7 +431,6 @@ export class CodingAgent implements BaseAgent {
           const created = allExecutions.filter(
             (item) => item.success && item.call.name === 'create_directory'
           );
-          const providerMessage = error instanceof Error ? error.message : String(error);
           const summary = [
             'The selected model stopped before it produced a final summary, but SkyCode kept the workspace changes that already succeeded.',
             written.length > 0
@@ -414,7 +439,7 @@ export class CodingAgent implements BaseAgent {
             created.length > 0
               ? 'Created ' + created.length + ' director' + (created.length === 1 ? 'y' : 'ies') + '.'
               : '',
-            'Provider note: ' + providerMessage,
+            'Provider note: ' + providerMessage + this.creditsHint(providerMessage),
           ].filter(Boolean).join(' ');
 
           onActivity?.({
@@ -788,8 +813,62 @@ export class CodingAgent implements BaseAgent {
     const note = describeRunningProcesses(
       this.context.workingDirectory || process.cwd()
     );
-    if (!note || content.includes('Still running in this workspace:')) return content;
-    return content + '\n\n' + note;
+    const parts = [content];
+    if (this.modelSwitchNote && !content.includes(this.modelSwitchNote)) {
+      parts.push(this.modelSwitchNote);
+    }
+    if (note && !content.includes('Still running in this workspace:')) parts.push(note);
+    return parts.filter(Boolean).join('\n\n');
+  }
+
+  private creditsHint(message: string): string {
+    if (!failureIsRateLimit(message) || this.context.provider?.name !== 'openrouter') {
+      return '';
+    }
+    return ' Type /credits to add an OpenRouter balance. One payment covers every paid model, and SkyCode can then switch to a stronger model for this kind of task.';
+  }
+
+  private async upgradeOpenRouterModel(failure?: string): Promise<boolean> {
+    const provider = this.context.provider;
+    if (!provider || provider.name !== 'openrouter' || this.upgradedOnce) return false;
+    const apiKey = provider.getConfig().apiKey;
+    if (!apiKey) return false;
+
+    let allowPaid = false;
+    try {
+      allowPaid = accountCanUsePaidModels(
+        await fetchOpenRouterKeyStatus(apiKey, provider.getConfig().baseUrl)
+      );
+    } catch {
+      allowPaid = false;
+    }
+    if (!allowPaid) return false;
+
+    let models: RoutableModel[] = [];
+    try {
+      models = (await provider.listModels()).map((model) => ({
+        id: model.id,
+        contextLength: model.contextLength || 0,
+        promptPrice: Number(model.pricing?.prompt || 0),
+        completionPrice: Number(model.pricing?.completion || 0),
+      }));
+    } catch {
+      return false;
+    }
+
+    const choice = chooseOpenRouterModel({
+      currentId: this.context.model,
+      models,
+      allowPaid,
+      preferStronger: true,
+      minimumContext: failure ? failureNeedsLongerContext(failure) || 64000 : 64000,
+    });
+    if (!choice) return false;
+
+    this.upgradedOnce = true;
+    this.context.model = choice.id;
+    this.modelSwitchNote = choice.reason + ' One OpenRouter balance pays for it.';
+    return true;
   }
 
   /**

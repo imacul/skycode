@@ -22,6 +22,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/doctor', description: 'Check command/provider/storage health' },
   { command: '/permissions', description: 'Show current tool approvals' },
   { command: '/servers', description: 'Show or stop background app servers', takesArgs: true },
+  { command: '/credits', description: 'Show OpenRouter credits and open the payment page' },
   { command: '/help', description: 'Show available commands' },
   { command: '/exit', description: 'Exit SkyCode' },
 ];
@@ -41,6 +42,7 @@ const EXACT_COMMANDS = new Set([
   '/setup',
   '/doctor',
   '/permissions',
+  '/credits',
   '/help',
   '/exit',
 ]);

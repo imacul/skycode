@@ -55,6 +55,11 @@ import {
 } from './utils/model-catalog';
 import { SLASH_COMMANDS, validateSlashCommand } from './utils/slash-commands';
 import {
+  fetchOpenRouterKeyStatus,
+  formatCreditsGuide,
+  openCreditsPage,
+} from './utils/openrouter-route';
+import {
   autoCaptureMemories,
   buildMemoryContext,
   clearMemories,
@@ -595,6 +600,16 @@ function App() {
                 : 'completed'
             : undefined;
 
+          const servedModel = response.metadata?.model;
+          if (
+            servedModel &&
+            servedModel !== model &&
+            response.metadata?.provider === 'openrouter'
+          ) {
+            setModel(servedModel);
+            updateModelSettings({ defaultModel: servedModel });
+          }
+
           addMessage('assistant', finalContent, {
             model: response.metadata?.model,
             finishReason: response.metadata?.finishReason,
@@ -1061,6 +1076,26 @@ function App() {
             : 'No running server with id ' + id + ' in this workspace.'
         );
       }
+    } else if (command === '/credits') {
+      const apiKey = getProviderApiKey('openrouter');
+      if (!apiKey) {
+        addMessage(
+          'system',
+          'Add an OpenRouter key with /openroute first. One key pays for every paid model.'
+        );
+      } else {
+        let guide = '';
+        try {
+          guide = formatCreditsGuide(await fetchOpenRouterKeyStatus(apiKey));
+        } catch (creditError) {
+          guide = formatCreditsGuide(
+            null,
+            creditError instanceof Error ? creditError.message : String(creditError)
+          );
+        }
+        openCreditsPage();
+        addMessage('system', guide + '\n\nOpened the OpenRouter credits page in your browser.');
+      }
     } else if (command === '/doctor') {
       const configuredProviders = getConfiguredProviders();
       const conversationState = useConversationStore.getState();
@@ -1098,6 +1133,7 @@ Available commands:
   /doctor    - Check command/provider/storage health
   /permissions - Show persistent/session tool approvals
   /permissions reset - Clear saved and session approvals
+  /credits  - Show the OpenRouter balance and open the payment page
   /servers  - Show background app servers left running by the agent
   /servers stop - Stop every background server in this workspace
   /servers stop <id> - Stop one background server
