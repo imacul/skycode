@@ -192,6 +192,23 @@ export function parseDuckDuckGoResults(html: string): WebSearchResult[] {
   return results;
 }
 
+export function parseBingRssResults(xml: string): WebSearchResult[] {
+  const decode = (value: string) => htmlToText(value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1'));
+  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 5).flatMap((match) => {
+    const item = match[1];
+    const title = item.match(/<title>([\s\S]*?)<\/title>/i)?.[1];
+    const link = item.match(/<link>([\s\S]*?)<\/link>/i)?.[1];
+    const description = item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || '';
+    if (!title || !link) return [];
+    try {
+      const url = new URL(decode(link)).href;
+      return [{ title: decode(title), url, snippet: decode(description) }];
+    } catch {
+      return [];
+    }
+  });
+}
+
 interface SafeResponse {
   status: number;
   headers: IncomingHttpHeaders;
@@ -210,6 +227,23 @@ async function resolvedAddresses(url: URL, network: 'public' | 'local') {
   return { validated, addresses };
 }
 
+export function createPinnedLookup(pinned: { address: string; family: number }) {
+  if (!pinned?.address || (pinned.family !== 4 && pinned.family !== 6)) {
+    throw new Error('DNS validation returned no usable IP address.');
+  }
+  return (_hostname: string, options: { all?: boolean } | number, callback: (...args: any[]) => void) => {
+    // Node's HTTPS client may request `all: true` for auto-family selection.
+    // That callback contract expects LookupAddress[], not the older
+    // (address, family) pair. Returning the wrong shape caused
+    // ERR_INVALID_IP_ADDRESS with `undefined` on real HTTPS searches.
+    if (typeof options === 'object' && options?.all) {
+      callback(null, [{ address: pinned.address, family: pinned.family }]);
+      return;
+    }
+    callback(null, pinned.address, pinned.family);
+  };
+}
+
 async function requestPinnedText(
   initial: string | URL,
   network: 'public' | 'local',
@@ -219,10 +253,17 @@ async function requestPinnedText(
   let current = new URL(String(initial));
   for (let redirects = 0; redirects <= 5; redirects += 1) {
     const { validated, addresses } = await resolvedAddresses(current, network);
-    const pinned = addresses[0];
+    if (addresses.length === 0) throw new Error('DNS validation returned no usable IP address.');
     const transport = validated.protocol === 'https:' ? httpsRequest : httpRequest;
-    const response = await new Promise<SafeResponse>((resolvePromise, reject) => {
-      const request = transport(validated, {
+    let response: SafeResponse | undefined;
+    let lastConnectionError: unknown;
+    // DNS commonly returns several safe CDN addresses. Pin and try each
+    // already-validated answer without re-resolving; one edge may be
+    // unreachable even though the service is healthy.
+    for (const pinned of addresses) {
+      try {
+        response = await new Promise<SafeResponse>((resolvePromise, reject) => {
+          const request = transport(validated, {
         method: 'GET',
         headers: {
           'User-Agent': 'SkyCode/1.22',
@@ -230,10 +271,8 @@ async function requestPinnedText(
           'Accept-Encoding': 'identity',
           Connection: 'close',
         },
-        lookup: (_hostname, _options, callback) => {
-          callback(null, pinned.address, pinned.family);
-        },
-      }, (incoming) => {
+        lookup: createPinnedLookup(pinned),
+          }, (incoming) => {
         const status = incoming.statusCode || 0;
         const encoding = String(incoming.headers['content-encoding'] || 'identity').toLowerCase();
         if (encoding !== 'identity') {
@@ -264,11 +303,17 @@ async function requestPinnedText(
           body: Buffer.concat(chunks).toString('utf8'),
           url: validated,
         }));
-      });
-      request.setTimeout(15_000, () => request.destroy(new Error('Web request timed out.')));
-      request.on('error', reject);
-      request.end();
-    });
+          });
+          request.setTimeout(15_000, () => request.destroy(new Error('Web request timed out.')));
+          request.on('error', reject);
+          request.end();
+        });
+        break;
+      } catch (error) {
+        lastConnectionError = error;
+      }
+    }
+    if (!response) throw lastConnectionError || new Error('All validated web addresses failed.');
 
     if (![301, 302, 303, 307, 308].includes(response.status)) return response;
     if (redirects === 5) throw new Error('Page fetch exceeded the redirect limit.');
@@ -281,7 +326,7 @@ async function requestPinnedText(
 
 function assertReadableMime(headers: IncomingHttpHeaders): string {
   const contentType = String(headers['content-type'] || 'text/plain').toLowerCase();
-  if (!/^(?:text\/|application\/(?:json|xml|xhtml\+xml))/.test(contentType)) {
+  if (!/^(?:text\/|application\/(?:json|xml|rss\+xml|atom\+xml|xhtml\+xml))/.test(contentType)) {
     throw new Error('Unsupported web response type: ' + contentType);
   }
   return contentType;
@@ -313,7 +358,20 @@ export async function searchWebResults(query: string): Promise<WebSearchResult[]
   assertReadableMime(response.headers);
   const html = response.body;
   const results = parseDuckDuckGoResults(html);
-  return results;
+  if (results.length > 0) return results;
+  if (/anomaly\.js|confirm this search was made by a human/i.test(html)) {
+    const fallback = await requestPinnedText(
+      'https://www.bing.com/search?format=rss&q=' + encodeURIComponent(clean),
+      'public',
+      'application/rss+xml,application/xml,text/xml'
+    );
+    if (fallback.status < 200 || fallback.status >= 300) {
+      throw new Error('Fallback web search failed (' + fallback.status + ').');
+    }
+    assertReadableMime(fallback.headers);
+    return parseBingRssResults(fallback.body);
+  }
+  return [];
 }
 
 export async function fetchWebPage(value: string): Promise<string> {

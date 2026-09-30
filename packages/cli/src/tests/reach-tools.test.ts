@@ -5,7 +5,7 @@ import { shouldUseProjectTools } from '../agents/project-tools';
 import { classifyOpenTarget } from '../agents/desktop-tools';
 import { parseMcpConfig, takeMcpFrames } from '../agents/mcp-client';
 import { parseProjectToolCalls } from '../agents/project-tools';
-import { assertLocalHttpTarget, assertPublicHttpUrl, fetchLocalWebPage, htmlToText, isPrivateNetworkAddress, parseDuckDuckGoResults } from '../agents/web-tools';
+import { assertLocalHttpTarget, assertPublicHttpUrl, createPinnedLookup, fetchLocalWebPage, htmlToText, isPrivateNetworkAddress, parseBingRssResults, parseDuckDuckGoResults } from '../agents/web-tools';
 
 describe('web, desktop, and MCP tools', () => {
   it('parses a web search tool call', () => {
@@ -25,6 +25,9 @@ describe('web, desktop, and MCP tools', () => {
       snippet: 'How to configure the server.',
     });
     expect(htmlToText('<style>p{}</style><p>Hello <b>world</b></p>')).toBe('Hello world');
+    expect(parseBingRssResults('<rss><channel><item><title>Asake &amp; Example</title><link>https://example.com/song</link><description>New release</description></item></channel></rss>')[0]).toEqual({
+      title: 'Asake & Example', url: 'https://example.com/song', snippet: 'New release',
+    });
   });
 
   it('rejects loopback, private, link-local, and IPv6-local web targets', () => {
@@ -76,6 +79,17 @@ describe('web, desktop, and MCP tools', () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it('implements both Node DNS callback shapes for pinned HTTPS requests', () => {
+    const lookup = createPinnedLookup({ address: '93.184.216.34', family: 4 });
+    let single: unknown[] = [];
+    lookup('example.com', { all: false }, (...args) => { single = args; });
+    expect(single).toEqual([null, '93.184.216.34', 4]);
+    let all: unknown[] = [];
+    lookup('example.com', { all: true }, (...args) => { all = args; });
+    expect(all).toEqual([null, [{ address: '93.184.216.34', family: 4 }]]);
+    expect(() => createPinnedLookup({ address: '', family: 4 })).toThrow(/no usable IP/);
   });
 
   it('opens browser URLs and known apps, and rejects arbitrary programs', () => {
