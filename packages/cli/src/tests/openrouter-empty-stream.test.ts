@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { OpenRouterProvider } from '../providers/openrouter';
+import { openRouterErrorMessage } from '../providers/openrouter';
 
 const originalFetch = globalThis.fetch;
 
@@ -25,6 +26,11 @@ function sseResponse(events: string[]): Response {
 }
 
 describe('OpenRouter empty/reasoning-only stream recovery', () => {
+  it('shows a concise provider error instead of raw JSON metadata', () => {
+    const message = openRouterErrorMessage('{"error":{"message":"Reasoning is mandatory","metadata":{"provider_name":null}}}', 400);
+    expect(message).toBe('OpenRouter request failed (400): Reasoning is mandatory');
+    expect(message).not.toContain('metadata');
+  });
   it('retries a reasoning-only stream and surfaces the fallback visible answer', async () => {
     let calls = 0;
 
@@ -294,6 +300,30 @@ describe('OpenRouter empty/reasoning-only stream recovery', () => {
     expect(bodies[1].reasoning).toEqual({ effort: 'none', exclude: true });
     expect('reasoning' in bodies[2]).toBe(false);
     expect(response.content).toBe('visible fallback');
+  });
+
+  it('retries with low reasoning when an endpoint rejects disabled reasoning', async () => {
+    const bodies: any[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || '{}'));
+      bodies.push(body);
+      if (bodies.length === 1) {
+        return new Response(JSON.stringify({ error: { message: 'Reasoning is mandatory for this endpoint and cannot be disabled.' } }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({
+        id: 'ok', model: 'openrouter/pareto-code',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'done' }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+
+    const provider = new OpenRouterProvider();
+    await provider.initialize({ apiKey: 'test-key' });
+    const result = await provider.chat({ model: 'openrouter/pareto-code', messages: [], reasoning: { effort: 'none', exclude: true } });
+    expect(result.content).toBe('done');
+    expect(bodies[0].reasoning.effort).toBe('none');
+    expect(bodies[1].reasoning).toEqual({ effort: 'low', exclude: true });
   });
 
   it('does not retry when the original stream contains visible content', async () => {

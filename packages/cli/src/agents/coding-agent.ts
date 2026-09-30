@@ -433,11 +433,11 @@ export class CodingAgent implements BaseAgent {
           signal: request.context?.signal,
           ...(this.context.provider?.name === 'openrouter'
             ? {
-                // Tool-planning turns need visible protocol output, not hidden
-                // chain-of-thought. Disable reasoning for maximum compatibility
-                // with small/free coding models.
+                // Keep reasoning enabled at low effort. Some OpenRouter coding
+                // endpoints require reasoning and reject effort "none".
+                // `exclude` prevents hidden reasoning from entering transcripts.
                 reasoning: {
-                  effort: 'none',
+                  effort: 'low',
                   exclude: true,
                 },
               }

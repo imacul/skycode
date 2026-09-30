@@ -8,6 +8,23 @@ import type {
   ModelInfo,
   ProviderConfig,
 } from './base';
+
+export function openRouterErrorMessage(raw: string, status: number): string {
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: unknown } | string; message?: unknown };
+    const message = typeof parsed.error === 'object' && typeof parsed.error?.message === 'string'
+      ? parsed.error.message
+      : typeof parsed.error === 'string'
+        ? parsed.error
+        : typeof parsed.message === 'string'
+          ? parsed.message
+          : '';
+    if (message) return `OpenRouter request failed (${status}): ${message}`;
+  } catch {
+    // Non-JSON provider responses are handled below without echoing a body.
+  }
+  return `OpenRouter request failed (${status}).`;
+}
 import type { Message } from '../store/conversation';
 import { appendNativeToolCalls } from './native-tools';
 import { extractSseEvents, getSseData } from '../utils/sse';
@@ -362,15 +379,22 @@ export class OpenRouterProvider implements BaseProvider {
       ...this.config.headers,
     };
 
-    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+    let response = await fetch(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
       signal: this.getRequestSignal(request),
     });
 
+    let error = response.ok ? '' : await response.text();
+    if (!response.ok && response.status === 400 && /reasoning is mandatory|reasoning.*cannot be disabled/i.test(error)) {
+      body.reasoning = { effort: 'low', exclude: true };
+      response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+        method: 'POST', headers, body: JSON.stringify(body), signal: this.getRequestSignal(request),
+      });
+      error = response.ok ? '' : await response.text();
+    }
     if (!response.ok) {
-      const error = await response.text();
       if (response.status === 401) {
         throw new Error('Invalid OpenRouter API key');
       }
@@ -380,7 +404,7 @@ export class OpenRouterProvider implements BaseProvider {
           `Rate limit exceeded${retryAfter ? `. Retry after ${retryAfter}s` : ''}`
         );
       }
-      throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
+      throw new Error(openRouterErrorMessage(error, response.status));
     }
 
     const data = (await response.json()) as OpenRouterResponse;
@@ -470,15 +494,22 @@ export class OpenRouterProvider implements BaseProvider {
       ...this.config.headers,
     };
 
-    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+    let response = await fetch(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
       signal: this.getRequestSignal(request),
     });
 
+    let error = response.ok ? '' : await response.text();
+    if (!response.ok && response.status === 400 && /reasoning is mandatory|reasoning.*cannot be disabled/i.test(error)) {
+      body.reasoning = { effort: 'low', exclude: true };
+      response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+        method: 'POST', headers, body: JSON.stringify(body), signal: this.getRequestSignal(request),
+      });
+      error = response.ok ? '' : await response.text();
+    }
     if (!response.ok) {
-      const error = await response.text();
       if (response.status === 401) {
         throw new Error('Invalid OpenRouter API key');
       }
@@ -488,7 +519,7 @@ export class OpenRouterProvider implements BaseProvider {
           `Rate limit exceeded${retryAfter ? `. Retry after ${retryAfter}s` : ''}`
         );
       }
-      throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
+      throw new Error(openRouterErrorMessage(error, response.status));
     }
 
     if (!response.body) {
