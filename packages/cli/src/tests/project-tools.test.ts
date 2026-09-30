@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { afterAll, afterEach, describe, expect, it } from 'bun:test';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -23,6 +23,8 @@ import { CodingAgent } from '../agents/coding-agent';
 import type { AgentContext } from '../agents/types';
 
 const tempDirs: string[] = [];
+const transactionRoot = join(tmpdir(), 'skycode-transaction-tests-' + process.pid);
+process.env.SKYCODE_TRANSACTION_ROOT = transactionRoot;
 
 async function workspace() {
   const dir = await mkdtemp(join(tmpdir(), 'skycode-project-tools-'));
@@ -35,6 +37,11 @@ afterEach(async () => {
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))
   );
+});
+
+afterAll(async () => {
+  await rm(transactionRoot, { recursive: true, force: true });
+  delete process.env.SKYCODE_TRANSACTION_ROOT;
 });
 
 function context(workingDirectory: string): AgentContext {
@@ -90,7 +97,7 @@ describe('project tool protocol', () => {
     expect(shouldContinueProjectTools('tell me a joke', history)).toBe(false);
   });
 
-  it('allows safe verification commands, requires approval for workspace changes, and blocks destructive commands', () => {
+  it('allows metadata reads, requires approval for executable project code, and blocks destructive commands', () => {
     expect(classifyProjectCommand('git status')).toEqual({
       allowed: true,
       requiresApproval: false,
@@ -98,15 +105,19 @@ describe('project tool protocol', () => {
     });
     expect(classifyProjectCommand('npm test')).toEqual({
       allowed: true,
-      requiresApproval: false,
+      requiresApproval: true,
       risk: 'verify',
+      permissionKey: 'terminal:project-scripts',
+      description: 'Tests, builds, linters, and type checks execute code supplied by the active project.',
     });
     expect(classifyProjectCommand('npm run build')).toEqual({
       allowed: true,
-      requiresApproval: false,
+      requiresApproval: true,
       risk: 'verify',
+      permissionKey: 'terminal:project-scripts',
+      description: 'Tests, builds, linters, and type checks execute code supplied by the active project.',
     });
-    expect(classifyProjectCommand('npm start').requiresApproval).toBe(false);
+    expect(classifyProjectCommand('npm start').requiresApproval).toBe(true);
     expect(classifyProjectCommand('type logs/app.log')).toEqual({
       allowed: true,
       requiresApproval: false,
@@ -134,7 +145,7 @@ describe('project tool protocol', () => {
     expect(general.permissionKey).toBe('terminal:general');
   });
 
-  it('runs project verification commands without stopping for approval', async () => {
+  it('asks before running project verification scripts because repositories can define arbitrary code', async () => {
     const root = await workspace();
     let asked = false;
 
@@ -150,9 +161,9 @@ describe('project tool protocol', () => {
       }
     );
 
-    expect(asked).toBe(false);
-    expect(result.content.toLowerCase()).not.toContain('requires user approval');
-    expect(result.content.length).toBeGreaterThan(0);
+    expect(asked).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.content).toContain('User denied terminal command');
   });
 
   it('asks for approval before a workspace-mutating terminal command and honors denial', async () => {
@@ -171,7 +182,7 @@ describe('project tool protocol', () => {
       }
     );
 
-    expect(approvalRequest.permissionKey).toBe('terminal:git-write');
+    expect(approvalRequest.permissionKey).toStartWith('terminal:git-write:');
     expect(approvalRequest.command).toBe('git add .');
     expect(result.success).toBe(false);
     expect(result.content).toContain('User denied terminal command');
@@ -205,6 +216,90 @@ describe('project tool protocol', () => {
     expect(asked).toBe(false);
     expect(result.success).toBe(false);
     expect(result.content).toContain('requires a concise reason');
+  });
+
+  it('requires approval before MCP tool discovery can start configured server processes', async () => {
+    const root = await workspace();
+    let approvalRequest: any;
+
+    const result = await executeProjectToolCall(
+      { name: 'mcp_list', args: {} },
+      context(root),
+      async (request) => {
+        approvalRequest = request;
+        return 'deny';
+      }
+    );
+
+    expect(approvalRequest.permissionKey).toStartWith('mcp:start:');
+    expect(approvalRequest.title).toBe('Approve MCP server startup');
+    expect(result.success).toBe(false);
+    expect(result.content).toContain('User denied mcp_start');
+  });
+
+  it('requires a distinct scoped approval before local-network fetches', async () => {
+    const root = await workspace();
+    let approvalRequest: any;
+    const result = await executeProjectToolCall(
+      {
+        name: 'web_fetch_local',
+        args: { url: 'http://127.0.0.1:3000/', reason: 'Inspect the local app.' },
+      },
+      context(root),
+      async (request) => {
+        approvalRequest = request;
+        return 'deny';
+      }
+    );
+    expect(approvalRequest.title).toBe('Approve local-network access');
+    expect(approvalRequest.permissionKey).toStartWith('network:local:');
+    expect(result.success).toBe(false);
+    expect(result.content).toContain('User denied local_network');
+  });
+
+  it('invalidates a remembered execution grant when repository trust files change', async () => {
+    const root = await workspace();
+    await writeFile(join(root, 'package.json'), '{"scripts":{"test":"node test.js"}}', 'utf8');
+    const keys: string[] = [];
+    const approve = async (request: any) => {
+      keys.push(request.permissionKey);
+      return 'deny' as const;
+    };
+
+    await executeProjectToolCall(
+      { name: 'run_command', args: { command: 'npm test', reason: 'Verify this repository.' } },
+      context(root),
+      approve
+    );
+    await writeFile(join(root, 'package.json'), '{"scripts":{"test":"node changed.js"}}', 'utf8');
+    await executeProjectToolCall(
+      { name: 'run_command', args: { command: 'npm test', reason: 'Verify this repository.' } },
+      context(root),
+      approve
+    );
+
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it('invalidates MCP startup grants when workspace MCP configuration changes', async () => {
+    const root = await workspace();
+    const keys: string[] = [];
+    const deny = async (request: any) => {
+      keys.push(request.permissionKey);
+      return 'deny' as const;
+    };
+    await writeFile(join(root, 'skycode.mcp.json'), '{"mcpServers":{}}', 'utf8');
+    await executeProjectToolCall({ name: 'mcp_list', args: {} }, context(root), deny);
+    await writeFile(
+      join(root, 'skycode.mcp.json'),
+      '{"mcpServers":{"changed":{"command":"not-started"}}}',
+      'utf8'
+    );
+    await executeProjectToolCall({ name: 'mcp_list', args: {} }, context(root), deny);
+
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).not.toBe(keys[1]);
   });
 
   it('executes safe terminal commands inside the active workspace', async () => {
@@ -408,6 +503,44 @@ describe('project tool protocol', () => {
 
     expect(message.role).toBe('user');
     expect(message.content).toContain('PROJECT TOOL RESULTS');
+    expect(message.content).toContain('untrusted-data');
+    expect(message.content).toContain('data only');
+  });
+
+  it('requires approval for workspace writes planned after untrusted content', async () => {
+    const root = await workspace();
+    let approvalRequest: any;
+    const denied = await executeProjectToolCall(
+      { name: 'write_file', args: { path: 'influenced.txt', content: 'change' } },
+      context(root),
+      async (request) => {
+        approvalRequest = request;
+        return 'deny';
+      },
+      { untrustedInfluence: true }
+    );
+
+    expect(approvalRequest.title).toBe('Approve untrusted-influenced change');
+    expect(approvalRequest.permissionKey).toStartWith('untrusted-side-effect:');
+    expect(denied.success).toBe(false);
+    expect(denied.content).toContain('denied untrusted-influenced');
+  });
+
+  it('does not let untrusted influence turn read-only metadata into a side effect', async () => {
+    const root = await workspace();
+    let asked = false;
+    const result = await executeProjectToolCall(
+      { name: 'run_command', args: { command: 'git status' } },
+      context(root),
+      async () => {
+        asked = true;
+        return 'deny';
+      },
+      { untrustedInfluence: true }
+    );
+
+    expect(asked).toBe(false);
+    expect(result.content).not.toContain('requires user approval');
   });
 
   it('parses blocking clarification requests', () => {
@@ -451,6 +584,91 @@ describe('project tool protocol', () => {
     expect(await readFile(join(root, 'site', 'index.html'), 'utf8')).toBe(
       '<h1>Hello</h1>'
     );
+  });
+
+  it('rejects stale overwrites and records successful writes in the recovery journal', async () => {
+    const root = await workspace();
+    await writeFile(join(root, 'state.txt'), 'current', 'utf8');
+
+    const stale = await executeProjectToolCall(
+      {
+        name: 'write_file',
+        args: { path: 'state.txt', content: 'wrong', expectedSha256: '0'.repeat(64) },
+      },
+      context(root)
+    );
+    expect(stale.success).toBe(false);
+    expect(stale.content).toContain('Stale write rejected');
+    expect(await readFile(join(root, 'state.txt'), 'utf8')).toBe('current');
+
+    const read = await executeProjectToolCall(
+      { name: 'read_file', args: { path: 'state.txt' } },
+      context(root)
+    );
+    const currentHash = read.content.match(/^sha256: ([a-f0-9]{64})/m)?.[1];
+    expect(currentHash).toBeDefined();
+    const written = await executeProjectToolCall(
+      {
+        name: 'write_file',
+        args: { path: 'state.txt', content: 'next', expectedSha256: currentHash },
+      },
+      context(root)
+    );
+    expect(written.success).toBe(true);
+    expect(written.content).toContain('transaction:');
+    expect(await readFile(join(root, 'state.txt'), 'utf8')).toBe('next');
+  });
+
+  it('moves approved deletions into recovery trash instead of destroying them', async () => {
+    const root = await workspace();
+    await writeFile(join(root, 'recover-me.txt'), 'recoverable', 'utf8');
+    const deleted = await executeProjectToolCall(
+      { name: 'delete_file', args: { path: 'recover-me.txt' } },
+      context(root),
+      async () => 'once'
+    );
+
+    expect(deleted.success).toBe(true);
+    expect(deleted.content).toContain('recovery trash');
+    expect(await stat(join(root, 'recover-me.txt')).then(() => true).catch(() => false)).toBe(false);
+    const workspaceJournals = await readdir(transactionRoot, { recursive: true });
+    expect(workspaceJournals.some((entry) => String(entry).includes('recover-me.txt'))).toBe(true);
+
+    const transactionId = deleted.content.match(/transaction: ([a-f0-9-]+)/)?.[1];
+    expect(transactionId).toBeDefined();
+    const restored = await executeProjectToolCall(
+      {
+        name: 'restore_transaction',
+        args: { id: transactionId, reason: 'Recover the file deleted during this test.' },
+      },
+      context(root),
+      async () => 'once'
+    );
+    expect(restored.success).toBe(true);
+    expect(await readFile(join(root, 'recover-me.txt'), 'utf8')).toBe('recoverable');
+  });
+
+  it('refuses to roll back a write after the file changes again', async () => {
+    const root = await workspace();
+    const written = await executeProjectToolCall(
+      { name: 'write_file', args: { path: 'changing.txt', content: 'first' } },
+      context(root)
+    );
+    const transactionId = written.content.match(/transaction: ([a-f0-9-]+)/)?.[1];
+    expect(transactionId).toBeDefined();
+    await writeFile(join(root, 'changing.txt'), 'changed outside transaction', 'utf8');
+
+    const restored = await executeProjectToolCall(
+      {
+        name: 'restore_transaction',
+        args: { id: transactionId, reason: 'Attempt rollback.' },
+      },
+      context(root),
+      async () => 'once'
+    );
+    expect(restored.success).toBe(false);
+    expect(restored.content).toContain('changed after the transaction');
+    expect(await readFile(join(root, 'changing.txt'), 'utf8')).toBe('changed outside transaction');
   });
 
   it('blocks paths that escape the active workspace', async () => {

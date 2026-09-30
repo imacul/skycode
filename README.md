@@ -67,7 +67,7 @@ SkyCode is under active development.
 
 - Automatic routing heuristics
 - Provider/model discovery across different local runtimes
-- Workspace terminal for coding agents: tests, builds, log reads, localhost probes, and background app servers. Healthy servers stay running after the task, stream logs in the work panel, and stop with /servers stop. Installs, generators, and git writes still ask first
+- Workspace terminal for coding agents: log reads, localhost probes, and permission-gated tests, builds, and background app servers. Healthy approved servers stay running after the task, stream logs in the work panel, and stop with /servers stop. Repository scripts, installs, generators, and git writes ask first
 
 ### Planned
 
@@ -166,23 +166,25 @@ For actual build requests, SkyCode retries models that incorrectly answer with r
 
 ## Permission and approval engine
 
-SkyCode now separates read-only terminal inspection from commands that execute project code or mutate the workspace. Read-only metadata checks such as `git status`, `git diff`, and runtime version checks can run without interruption. Tests/builds, dependency changes, generators, format/fix scripts, and Git staging/history changes pause the agent and show an interactive approval card.
+SkyCode separates read-only terminal inspection from commands that execute project code or mutate the workspace. Read-only metadata checks such as `git status`, `git diff`, runtime version checks, log reads, and localhost probes can run without interruption. Tests, builds, linters, type checks, dev servers, dependency changes, generators, format/fix scripts, and Git staging/history changes pause the agent and show an interactive approval card because repositories can define arbitrary executable scripts behind familiar command names.
 
 Approval choices:
 - **Allow once** — run only this command.
-- **Allow session** — allow that permission family until SkyCode exits.
-- **Always allow** — persist that permission family in `~/.skycode/settings.json`.
+- **Allow session** — allow that exact workspace/action/configuration fingerprint until SkyCode exits.
+- **Always allow** — persist that narrowly scoped capability in `~/.skycode/settings.json`. Execution grants stop matching when relevant manifests or lockfiles change.
 - **Deny** — reject the command and feed the denial back to the agent so it can continue safely.
 
 Use `/permissions` to inspect session and persistent permissions, and `/permissions reset` to revoke them. Destructive filesystem commands, package publishing, git push/history rewrites, and system-management commands remain blocked rather than approvable.
 
 ## Internal agent terminal
 
-SkyCode coding agents can use a restricted terminal inside the active workspace during project work. The autonomous allowlist includes read-only repository checks and common verification commands such as `git status`, `git diff`, `npm test`, `npm run build`, `bun test`, type checks, lint/check scripts, Pytest, Cargo test/check/build, Go test/vet/build, and similar verification commands.
+SkyCode coding agents can use a restricted terminal inside the active workspace during project work. The autonomous allowlist is limited to read-only repository metadata, runtime version checks, workspace log reads, and localhost probes. Project tests, builds, linters, type checks, and dev servers require approval because they execute repository-controlled code.
 
-Terminal execution is deliberately narrower than a raw shell: commands are single-command only, parent/absolute paths and shell chaining/redirects/pipes/subshells are blocked, and the child environment excludes provider API keys and arbitrary secrets. Dependency/package changes, generators, format/fix scripts, and git add/commit are permission-gated; destructive filesystem commands, package publishing, git push/history rewrites, and system-management commands remain blocked.
+Terminal execution does not invoke a command shell: SkyCode parses one executable plus its arguments and launches it directly. Parent/absolute paths and shell chaining/redirects/pipes/subshells are blocked, and the child environment excludes provider API keys and arbitrary secrets. Repository-controlled execution, dependency/package changes, generators, format/fix scripts, and git add/commit are permission-gated; destructive filesystem commands, package publishing, git push/history rewrites, and system-management commands remain blocked.
 
 Command runs appear in the live work panel so the agent can follow the loop: edit → run test/build → inspect failure → fix → rerun.
+
+Workspace writes are atomic and recorded in SkyCode's per-workspace recovery journal. Reads expose a SHA-256 value that models can pass back as `expectedSha256`; a mismatched value blocks stale overwrites. Approved deletions move to recovery storage instead of being destroyed. `restore_transaction` can restore a recorded write or deletion after a separate approval, and refuses cross-workspace or stale restoration. Tool loops also have a hard action budget in addition to the model-round fuse.
 
 ## Live workspace activity
 

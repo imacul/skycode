@@ -65,7 +65,7 @@ SkyCode capability facts:
 - You can design project architecture and create multi-file software projects for web, backend, CLI, mobile, or desktop stacks when the requested stack can be represented as source files in the workspace.
 - Do not tell the user they must manually copy your code into files when SkyCode project tools can perform the requested file work.
 - Do not claim you cannot create software merely because the underlying model by itself has no filesystem. You are operating through SkyCode, and SkyCode supplies workspace tools for build tasks.
-- Be precise about current limits: when project tools are active, SkyCode has workspace file tools plus a terminal. Reading files, git metadata, tests, builds, lint, type checks, log files, and localhost probes run immediately. Dev servers start in the background so you can read their logs and keep working. Dependency changes, generators, arbitrary commands, format/fix scripts, git add/commit, and deletions can ask the user for approval. Publishing, git push/history rewrites, and system-level destructive commands remain blocked.
+- Be precise about current limits: when project tools are active, SkyCode has workspace file tools plus a terminal. Reading files, git metadata, log files, and localhost probes run immediately. Tests, builds, lint, type checks, dev servers, dependency changes, generators, arbitrary commands, format/fix scripts, git add/commit, and deletions can ask the user for approval because project scripts execute repository-controlled code. Publishing, git push/history rewrites, and system-level destructive commands remain blocked.
 - Never stop the task when you reach a tool. Call the tool, read the result, and continue until the code has been checked. After edits, run the project's test or build. To test a running app, start it in the background, read the live logs, and probe localhost. Leave a healthy server running and tell the user its URL. The user stops it with /servers stop.
 - If the user only asks whether you can build software, answer from these SkyCode capabilities; do not start creating files until they actually ask you to build something.
 
@@ -323,11 +323,15 @@ export class CodingAgent implements BaseAgent {
     // Keep a generous emergency fuse for genuinely runaway agents, but do not
     // treat a small arbitrary turn count as task completion.
     const maxIterations = 40;
+    const maxToolExecutions = 120;
+    const requiresWebEvidence = /\b(search|research|look up|find|browse)\b.{0,100}\b(web|internet|online|sources?|latest|current|today|news)\b/i.test(request.input);
+    let hasWebEvidence = false;
     let tokensUsed = 0;
     let finishReason = 'stop';
     let hasExecutedTools = false;
     let pendingNudges = 0;
     let lastModelToolFailed = false;
+    let untrustedInfluence = false;
     const allExecutions: ProjectToolExecution[] = [];
 
     const initialActivityId = 'planning_' + Date.now();
@@ -536,7 +540,7 @@ export class CodingAgent implements BaseAgent {
       if (calls.length === 0) {
         const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
 
-        if (containsRawToolProtocol || (!hasExecutedTools && iteration < 3)) {
+        if (containsRawToolProtocol || (!hasExecutedTools && iteration < 3) || (requiresWebEvidence && !hasWebEvidence && iteration < 4)) {
           messages.push({
             id: 'assistant_invalid_tool_plan_' + Date.now() + '_' + iteration,
             role: 'assistant',
@@ -556,7 +560,10 @@ export class CodingAgent implements BaseAgent {
               (containsRawToolProtocol
                 ? 'Your previous response contained tool-call markup that SkyCode could not execute. Do not repeat that syntax. '
                 : '') +
-              'The user asked you to modify real project files. Use the exact ' +
+              (requiresWebEvidence
+                ? 'The user asked for current web research. You must call web_search and, where useful, web_fetch before answering. Do not invent URLs, dates, releases, or sources. '
+                : 'The user asked you to modify real project files. ') +
+              'Use the exact ' +
               '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
               'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +
               'Do not tell the user to copy code manually and do not merely paste code in chat.',
@@ -599,6 +606,15 @@ export class CodingAgent implements BaseAgent {
               'SkyCode can create and structure this software in the active workspace, but the selected model did not follow the workspace tool protocol after multiple retries. ' +
               'Try the build request again or switch to a stronger coding model; SkyCode will keep the same real file-creation capabilities.',
             finishReason: 'tool_protocol_not_followed',
+            tokensUsed,
+          };
+        }
+
+        if (requiresWebEvidence && !hasWebEvidence) {
+          return {
+            content:
+              'SkyCode did not return a research answer because the selected model failed to use the web tools. No current facts or links were fabricated. Try again or switch to a stronger tool-capable model.',
+            finishReason: 'web_evidence_required',
             tokensUsed,
           };
         }
@@ -692,7 +708,17 @@ export class CodingAgent implements BaseAgent {
         }
         executableCalls.push(call);
       }
-      for (const call of executableCalls.slice(0, 8)) {
+      const remainingToolBudget = maxToolExecutions - allExecutions.length;
+      if (remainingToolBudget <= 0) {
+        return {
+          content:
+            'SkyCode stopped because this task reached its hard tool-action budget of ' +
+            maxToolExecutions + '. Existing changes and recovery transactions were preserved.',
+          finishReason: 'tool_action_budget',
+          tokensUsed,
+        };
+      }
+      for (const call of executableCalls.slice(0, Math.min(8, remainingToolBudget))) {
         const activityId =
           'tool_' + Date.now() + '_' + iteration + '_' + executions.length;
         const path =
@@ -748,10 +774,14 @@ export class CodingAgent implements BaseAgent {
         const execution = await executeProjectToolCall(
           call,
           this.context,
-          request.onApproval
+          request.onApproval,
+          { untrustedInfluence }
         );
         executions.push(execution);
         allExecutions.push(execution);
+        if (execution.success && (call.name === 'web_search' || call.name === 'web_fetch')) {
+          hasWebEvidence = true;
+        }
         if (!execution.success) lastModelToolFailed = true;
         agentDebug('tool.execute.result', { traceId, iteration, execution });
         onToolExecution?.(execution);
@@ -806,6 +836,19 @@ export class CodingAgent implements BaseAgent {
           deletions: execution.deletions,
           preview: execution.preview,
         });
+      }
+
+      if (
+        executions.some(
+          (execution) =>
+            execution.success &&
+            [
+              'read_file', 'search_files', 'run_command', 'start_process',
+              'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call',
+            ].includes(execution.call.name)
+        )
+      ) {
+        untrustedInfluence = true;
       }
 
       const toolResult = projectToolResultMessage(executions);

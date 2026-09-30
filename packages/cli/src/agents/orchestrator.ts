@@ -220,6 +220,13 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
     const planningOnly = /\b(implementation plan|project plan|roadmap|launch plan|rollout plan)\b/i.test(request.input);
     const activeWorkspaceTask =
       request.taskKind === 'workspace' && request.taskState === 'running';
+    if (planningOnly && !activeWorkspaceTask) {
+      return {
+        agentName: 'planning-agent',
+        reason: 'request asks for a plan rather than tool execution',
+        scores: { 'planning-agent': 100 },
+      };
+    }
     if ((shouldUseProjectTools(request.input) || activeWorkspaceTask) && !planningOnly) {
       return {
         agentName: 'coding-agent',

@@ -46,6 +46,12 @@ describe('agent routing', () => {
     expect(route('Tell me a short joke about rain.')).toBe('chat-agent');
   });
 
+  it('hard-routes browsing, research, and music playback to tool-capable agent', () => {
+    expect(route('Find the latest Asake song and play it.')).toBe('coding-agent');
+    expect(route('Research the latest AI browser benchmarks online.')).toBe('coding-agent');
+    expect(route('Open Brave and browse to the documentation.')).toBe('coding-agent');
+  });
+
   it('keeps previous route for short follow-ups without a new signal', () => {
     const orchestrator = new SkyCodeAgentOrchestrator();
     const first = orchestrator.explainRoute({ input: 'Write a TypeScript debounce function.' });

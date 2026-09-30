@@ -1,13 +1,9 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
+import { redactSensitive } from '../security/redaction';
 
 const LOG_PATH = process.env.SKYCODE_DEBUG_LOG || join(homedir(), '.skycode', 'debug', 'agent-debug.jsonl');
-
-function safe(value: unknown): unknown {
-  if (value instanceof Error) return { name: value.name, message: value.message, stack: value.stack };
-  return value;
-}
 
 export function getAgentDebugLogPath(): string { return LOG_PATH; }
 
@@ -18,7 +14,7 @@ export function agentDebug(event: string, data: Record<string, unknown> = {}): v
       ts: new Date().toISOString(),
       pid: process.pid,
       event,
-      ...Object.fromEntries(Object.entries(data).map(([key, value]) => [key, safe(value)])),
+      ...redactSensitive(data) as Record<string, unknown>,
     }) + '\n', 'utf8');
   } catch {
     // Diagnostics must never change agent behavior or make a task fail.

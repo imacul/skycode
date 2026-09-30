@@ -1,16 +1,118 @@
 // Command execution tools
-import { exec, spawn } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'node:child_process';
 import type { BaseTool, ToolArgs, ToolResult, ToolParameter } from './types';
 
-const execAsync = promisify(exec);
+export function parseCommandArguments(command: string): { executable: string; argv: string[] } {
+  if (command.includes('\0')) throw new Error('Command contains a null byte.');
+
+  const parts: string[] = [];
+  let current = '';
+  let quote: 'single' | 'double' | null = null;
+  let tokenStarted = false;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (quote === 'single') {
+      if (char === "'") quote = null;
+      else current += char;
+      tokenStarted = true;
+      continue;
+    }
+    if (quote === 'double') {
+      if (char === '"') {
+        quote = null;
+      } else if (char === '\\' && ['"', '\\'].includes(command[index + 1] || '')) {
+        current += command[index + 1];
+        index += 1;
+      } else {
+        current += char;
+      }
+      tokenStarted = true;
+      continue;
+    }
+    if (char === "'") {
+      quote = 'single';
+      tokenStarted = true;
+    } else if (char === '"') {
+      quote = 'double';
+      tokenStarted = true;
+    } else if (/\s/.test(char)) {
+      if (tokenStarted) {
+        parts.push(current);
+        current = '';
+        tokenStarted = false;
+      }
+    } else {
+      current += char;
+      tokenStarted = true;
+    }
+  }
+
+  if (quote) throw new Error('Command contains an unterminated quote.');
+  if (tokenStarted) parts.push(current);
+  if (!parts[0]) throw new Error('Command is empty.');
+  return { executable: parts[0], argv: parts.slice(1) };
+}
+
+interface CapturedProcess {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+}
+
+function executeWithoutShell(
+  command: string,
+  options: { cwd?: string; timeout: number; maxBuffer: number; env?: Record<string, string> }
+): Promise<CapturedProcess> {
+  const { executable, argv } = parseCommandArguments(command);
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(executable, argv, {
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let total = 0;
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(Object.assign(error, { stdout, stderr }));
+      else resolvePromise({ stdout, stderr, exitCode: child.exitCode, signal: child.signalCode });
+    };
+    const collect = (target: 'stdout' | 'stderr', chunk: Buffer | string) => {
+      const value = chunk.toString();
+      total += Buffer.byteLength(value);
+      if (total > options.maxBuffer) {
+        child.kill('SIGTERM');
+        finish(new Error('Command output exceeded the configured maximum buffer.'));
+        return;
+      }
+      if (target === 'stdout') stdout += value;
+      else stderr += value;
+    };
+    child.stdout?.on('data', (chunk) => collect('stdout', chunk));
+    child.stderr?.on('data', (chunk) => collect('stderr', chunk));
+    child.on('error', (error) => finish(error));
+    child.on('close', () => finish());
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      finish(new Error(`Command timed out after ${options.timeout}ms`));
+    }, options.timeout);
+  });
+}
 
 /**
  * Run command tool
  */
 export class RunCommandTool implements BaseTool {
   readonly name = 'run_command';
-  readonly description = 'Execute a shell command';
+  readonly description = 'Execute a program directly without a shell';
   readonly type = 'run_command';
 
   async execute(args: ToolArgs): Promise<ToolResult> {
@@ -43,19 +145,27 @@ export class RunCommandTool implements BaseTool {
         cwd,
         timeout,
         maxBuffer: args.maxBuffer ? Number(args.maxBuffer) : 1024 * 1024 * 10, // 10MB
-        env: args.env as Record<string, string> | undefined,
-        shell: true,
+        env: args.env as unknown as Record<string, string> | undefined,
       };
 
-      const result = await execAsync(command, options);
+      const result = await executeWithoutShell(command, options);
+
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          error: result.stderr || `Command exited with code ${result.exitCode}.`,
+          data: result,
+          metadata: { executionTime: Date.now() - startTime, timestamp: new Date() },
+        };
+      }
 
       return {
         success: true,
-        content: captureOutput ? result.stdout || result.stderr : `Command executed (exit code: ${result.code})`,
+        content: captureOutput ? result.stdout || result.stderr : `Command executed (exit code: ${result.exitCode})`,
         data: {
           stdout: result.stdout,
           stderr: result.stderr,
-          exitCode: result.code,
+          exitCode: result.exitCode,
           signal: result.signal,
         },
         metadata: { executionTime: Date.now() - startTime, timestamp: new Date() },
@@ -90,7 +200,7 @@ export class RunCommandTool implements BaseTool {
       {
         name: 'command',
         type: 'string',
-        description: 'Shell command to execute',
+        description: 'Program and arguments to execute without shell interpretation',
         required: true,
       },
       {
@@ -169,7 +279,7 @@ export class RunCommandTool implements BaseTool {
  */
 export class RunCommandStreamTool implements BaseTool {
   readonly name = 'run_command_stream';
-  readonly description = 'Execute a shell command with streaming output';
+  readonly description = 'Execute a program directly with streaming output';
   readonly type = 'run_command';
 
   async execute(args: ToolArgs): Promise<ToolResult> {
@@ -197,13 +307,14 @@ export class RunCommandStreamTool implements BaseTool {
         };
       }
 
-      const options = {
+      const { executable, argv } = parseCommandArguments(command);
+      const child = spawn(executable, argv, {
         cwd,
-        env: args.env as Record<string, string> | undefined,
-        shell: true,
-      };
-
-      const child = spawn(command, { ...options, stdio: 'pipe' });
+        env: args.env as unknown as Record<string, string> | undefined,
+        shell: false,
+        windowsHide: true,
+        stdio: 'pipe',
+      });
 
       // Set timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -281,7 +392,7 @@ export class RunCommandStreamTool implements BaseTool {
       {
         name: 'command',
         type: 'string',
-        description: 'Shell command to execute',
+        description: 'Program and arguments to execute without shell interpretation',
         required: true,
       },
       {

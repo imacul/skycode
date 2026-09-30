@@ -14,6 +14,7 @@
     "start:cli": "cd packages/cli && npm run start",
     "test": "npm run test:cli",
     "test:cli": "cd packages/cli && npm test",
+    "test:security": "bun test packages/cli/src/tests/credential-store.test.ts && bun test packages/cli/src/tests/security-redaction.test.ts && bun test packages/cli/src/tests/safety-control.test.ts && bun test packages/cli/src/tests/semantic-desktop-policy.test.ts && bun test packages/cli/src/tests/device-enrollment.test.ts && bun test packages/cli/src/tests/reach-tools.test.ts && bun test packages/cli/src/tests/project-tools.test.ts && bun test packages/cli/src/tests/tools.test.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepublishOnly": "npm run build"

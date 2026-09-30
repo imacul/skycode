@@ -1,6 +1,7 @@
 // File system tools
 import { promises as fs } from 'fs';
 import { resolve, join, dirname, basename, extname } from 'path';
+import { randomUUID } from 'node:crypto';
 import type { BaseTool, ToolArgs, ToolResult, ToolParameter } from './types';
 
 /**
@@ -136,7 +137,17 @@ export class WriteFileTool implements BaseTool {
         }
       }
 
-      await fs.writeFile(filePath, content, 'utf-8');
+      const temporaryPath = join(
+        dir,
+        '.' + basename(filePath) + '.skycode-' + randomUUID() + '.tmp'
+      );
+      try {
+        await fs.writeFile(temporaryPath, content, 'utf-8');
+        await fs.rename(temporaryPath, filePath);
+      } catch (error) {
+        await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
+        throw error;
+      }
 
       const stats = await fs.stat(filePath);
 
@@ -291,7 +302,7 @@ export class ListFilesTool implements BaseTool {
 
     try {
       const dirPath = this.resolvePath(args.path as string || '.', args.cwd as string | undefined);
-      const recursive = args.recursive === true;
+      const recursive = args.recursive !== false;
       const includeHidden = args.includeHidden === true;
       const pattern = args.pattern as string | undefined;
 
@@ -707,7 +718,7 @@ export class DeleteDirectoryTool implements BaseTool {
 
     try {
       const dirPath = this.resolvePath(args.path as string, args.cwd as string | undefined);
-      const recursive = args.recursive === true;
+      const recursive = args.recursive !== false;
 
       await fs.rm(dirPath, { recursive, force: true });
 

@@ -4,6 +4,12 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
+import {
+  deleteSecureCredential,
+  readSecureCredential,
+  writeSecureCredentialVerified,
+} from './credential-store';
+import { forgetSensitiveValue, registerSensitiveValue } from '../security/redaction';
 
 /**
  * Provider settings
@@ -69,7 +75,9 @@ export interface AgentSettings {
 }
 
 export interface PermissionSettings {
+  /** Legacy grants are read only for migration and are never honored indefinitely. */
   alwaysAllow: string[];
+  leases: Array<{ permissionKey: string; expiresAt: number }>;
 }
 
 /**
@@ -134,6 +142,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   permissions: {
     alwaysAllow: [],
+    leases: [],
   },
 };
 
@@ -184,7 +193,27 @@ const SETTINGS_FILE =
 const fileStorage: StateStorage = {
   getItem: () => {
     if (!existsSync(SETTINGS_FILE)) return null;
-    return readFileSync(SETTINGS_FILE, 'utf8');
+    const raw = readFileSync(SETTINGS_FILE, 'utf8');
+    try {
+      const persisted = JSON.parse(raw) as { state?: { providers?: Record<string, { apiKey?: string }> } };
+      for (const [name, provider] of Object.entries(persisted.state?.providers || {})) {
+        if (provider && typeof provider === 'object') {
+          if (typeof provider.apiKey === 'string' && provider.apiKey) {
+            const migrated = writeSecureCredentialVerified('provider-' + name, provider.apiKey);
+            if (!migrated) {
+              // Keep the existing value intact rather than silently losing a credential.
+              return raw;
+            }
+          }
+          provider.apiKey = '';
+        }
+      }
+      const sanitized = JSON.stringify(persisted);
+      if (sanitized !== raw) writeFileSync(SETTINGS_FILE, sanitized, { encoding: 'utf8', mode: 0o600 });
+      return sanitized;
+    } catch {
+      return raw;
+    }
   },
   setItem: (_name, value) => {
     mkdirSync(dirname(SETTINGS_FILE), { recursive: true });
@@ -264,7 +293,8 @@ export const useSettingsStore = create<SettingsStore>()(
 
       isProviderConfigured: (provider) => {
         const settings = get();
-        return !!settings.providers[provider]?.apiKey;
+        const providerState = settings.providers[provider];
+        return 'apiKey' in providerState && !!providerState.apiKey;
       },
 
       clearProviderApiKey: (provider) =>
@@ -281,8 +311,15 @@ export const useSettingsStore = create<SettingsStore>()(
     {
       name: 'skycode-settings',
       storage: createJSONStorage(() => fileStorage),
-      // Persist CLI settings in ~/.skycode/settings.json instead of browser localStorage.
-      // API keys are still stored for convenience and can be cleared manually.
+      partialize: (state) => ({
+        ...state,
+        providers: Object.fromEntries(
+          Object.entries(state.providers).map(([name, settings]) => [
+            name,
+            { ...settings, ...('apiKey' in settings ? { apiKey: '' } : {}) },
+          ])
+        ) as unknown as ProviderSettings,
+      }),
     }
   )
 );
@@ -292,27 +329,45 @@ export const useSettingsStore = create<SettingsStore>()(
  * Priority: Store > Environment
  */
 export function getProviderApiKey(provider: keyof ProviderSettings): string {
-  const storeKey = useSettingsStore.getState().providers[provider]?.apiKey;
+  const providerState = useSettingsStore.getState().providers[provider];
+  const storeKey = 'apiKey' in providerState ? providerState.apiKey : '';
   
   // Check environment first (for security-conscious users)
   const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
   
-  return envKey || storeKey || '';
+  const apiKey = envKey || storeKey || readSecureCredential('provider-' + provider) || '';
+  if (apiKey) registerSensitiveValue(apiKey);
+  return apiKey;
 }
 
 /**
  * Set API key for a provider (in store)
  */
 export function setProviderApiKey(provider: keyof ProviderSettings, apiKey: string): void {
+  const previous = getProviderApiKey(provider);
+  if (apiKey && !writeSecureCredentialVerified('provider-' + provider, apiKey)) {
+    throw new Error(
+      'SkyCode could not verify the key in your operating-system credential store. ' +
+      'The key was not accepted; use the provider environment variable for this session.'
+    );
+  }
   useSettingsStore.getState().setProviderApiKey(provider, apiKey);
+  if (previous) forgetSensitiveValue(previous);
+  if (apiKey) registerSensitiveValue(apiKey);
 }
 
 /**
  * Clear API key for a provider
  */
 export function clearProviderApiKey(provider: keyof ProviderSettings): void {
+  const previous = getProviderApiKey(provider);
+  if (previous) forgetSensitiveValue(previous);
   useSettingsStore.getState().clearProviderApiKey(provider);
+  deleteSecureCredential('provider-' + provider);
 }
+
+export const setOpenRouterApiKey = (apiKey: string): void => setProviderApiKey('openrouter', apiKey);
+export const getOpenRouterApiKey = (): string => getProviderApiKey('openrouter');
 
 /**
  * Check if any provider is configured

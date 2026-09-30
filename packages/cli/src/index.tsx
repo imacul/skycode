@@ -159,7 +159,7 @@ function App() {
   const approvalResolverRef = useRef<
     ((decision: AgentApprovalDecision) => void) | null
   >(null);
-  const sessionPermissionKeysRef = useRef<Set<string>>(new Set());
+  const sessionPermissionKeysRef = useRef<Map<string, number>>(new Map());
   
   const {
     currentMessages,
@@ -219,15 +219,22 @@ function App() {
 
   const requestAgentApproval = useCallback(
     async (request: AgentApprovalRequest): Promise<AgentApprovalDecision> => {
-      const persistent = useSettingsStore.getState().permissions?.alwaysAllow || [];
-
-      if (persistent.includes(request.permissionKey)) {
+      const permissions = useSettingsStore.getState().permissions;
+      const now = Date.now();
+      const persistent = permissions?.leases || [];
+      const liveLeases = persistent.filter((lease) => lease.expiresAt > now);
+      if (liveLeases.length !== persistent.length) {
+        updatePermissionSettings({ leases: liveLeases });
+      }
+      if (liveLeases.some((lease) => lease.permissionKey === request.permissionKey)) {
         return 'always';
       }
 
-      if (sessionPermissionKeysRef.current.has(request.permissionKey)) {
+      const sessionExpiry = sessionPermissionKeysRef.current.get(request.permissionKey) || 0;
+      if (sessionExpiry > now) {
         return 'session';
       }
+      sessionPermissionKeysRef.current.delete(request.permissionKey);
 
       return await new Promise<AgentApprovalDecision>((resolve) => {
         approvalResolverRef.current = resolve;
@@ -245,16 +252,18 @@ function App() {
       if (!request || !resolver) return;
 
       if (decision === 'session' || decision === 'always') {
-        sessionPermissionKeysRef.current.add(request.permissionKey);
+        sessionPermissionKeysRef.current.set(request.permissionKey, Date.now() + 30 * 60 * 1000);
       }
 
       if (decision === 'always') {
-        const current = useSettingsStore.getState().permissions?.alwaysAllow || [];
-        if (!current.includes(request.permissionKey)) {
-          updatePermissionSettings({
-            alwaysAllow: [...current, request.permissionKey],
-          });
-        }
+        const current = useSettingsStore.getState().permissions?.leases || [];
+        updatePermissionSettings({
+          leases: [
+            ...current.filter((lease) => lease.permissionKey !== request.permissionKey),
+            { permissionKey: request.permissionKey, expiresAt: Date.now() + 24 * 60 * 60 * 1000 },
+          ],
+          alwaysAllow: [],
+        });
       }
 
       approvalResolverRef.current = null;

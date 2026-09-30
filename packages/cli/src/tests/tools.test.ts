@@ -1,7 +1,7 @@
 // Tests for tools
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { ReadFileTool, WriteFileTool, ListFilesTool, SearchFilesTool, DeleteFileTool, CreateDirectoryTool, DeleteDirectoryTool } from '../tools/file-system';
-import { RunCommandTool } from '../tools/command';
+import { parseCommandArguments, RunCommandTool } from '../tools/command';
 import { TOOLS, getTool, executeTool, getToolNames, hasTool } from '../tools';
 import { promises as fs } from 'fs';
 import { join, resolve } from 'path';
@@ -384,7 +384,7 @@ describe('Tools', () => {
 
     it('should execute command', async () => {
       const result = await tool.execute({
-        command: 'echo hello',
+        command: `"${process.execPath}" -e "console.log('hello')"`,
       });
 
       expect(result.success).toBe(true);
@@ -394,7 +394,7 @@ describe('Tools', () => {
 
     it('should capture output', async () => {
       const result = await tool.execute({
-        command: 'echo test output',
+        command: `"${process.execPath}" -e "console.log('test output')"`,
         captureOutput: true,
       });
 
@@ -404,10 +404,20 @@ describe('Tools', () => {
 
     it('should handle command errors', async () => {
       const result = await tool.execute({
-        command: 'ls /nonexistent/path',
+        command: `"${process.execPath}" -e "process.exit(7)"`,
       });
 
       expect(result.success).toBe(false);
+    });
+
+    it('parses quoted commands into an executable and arguments', () => {
+      expect(
+        parseCommandArguments('"C:\\Program Files\\nodejs\\node.exe" -e "console.log(1)"')
+      ).toEqual({
+        executable: 'C:\\Program Files\\nodejs\\node.exe',
+        argv: ['-e', 'console.log(1)'],
+      });
+      expect(() => parseCommandArguments('node -e "unterminated')).toThrow(/unterminated/);
     });
 
     it('should block dangerous commands', async () => {
