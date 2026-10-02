@@ -218,7 +218,8 @@ export class LocalLLMProvider implements BaseProvider {
   constructor(config: LocalLLMConfig = {}) {
     this.config = {
       baseUrl: 'http://localhost:11434', // Default to Ollama
-      timeout: 120000,
+      // CPU local models (especially with SkyCode tool prompts) often need minutes.
+      timeout: 600000,
       enableThinking: false,
       ...config,
     };
@@ -227,7 +228,7 @@ export class LocalLLMProvider implements BaseProvider {
 
   private getRequestSignal(request: ChatRequestOptions): AbortSignal {
     const timeoutSignal = AbortSignal.timeout(
-      (request.timeout as number | undefined) || this.config.timeout || 120000
+      (request.timeout as number | undefined) || this.config.timeout || 600000
     );
     const externalSignal = request.signal as AbortSignal | undefined;
 

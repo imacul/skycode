@@ -339,6 +339,8 @@ function App() {
               'http://localhost:11434',
             model: process.env.LOCAL_LLM_MODEL,
             enableThinking: process.env.LOCAL_LLM_THINKING === 'true',
+            // CPU 7B + tool prompts can take several minutes per turn.
+            timeout: Number(process.env.LOCAL_LLM_TIMEOUT_MS || 600000),
           });
         } else {
           await providerInstance.initialize({
@@ -753,6 +755,7 @@ function App() {
         baseUrl: localBaseUrl,
         model: process.env.LOCAL_LLM_MODEL,
         enableThinking: process.env.LOCAL_LLM_THINKING === 'true',
+        timeout: Number(process.env.LOCAL_LLM_TIMEOUT_MS || 600000),
       });
 
       try {
@@ -803,6 +806,7 @@ function App() {
         baseUrl,
         model: modelId,
         enableThinking: process.env.LOCAL_LLM_THINKING === 'true',
+        timeout: Number(process.env.LOCAL_LLM_TIMEOUT_MS || 600000),
       });
     }
 
