@@ -29,15 +29,21 @@ export function createContextBudget(
   options: {
     responseReserve?: number;
     systemReserve?: number;
+    /** Leave headroom for tokenizer mismatch vs the char/4 estimate (default 10%). */
+    safetyMargin?: number;
   } = {}
 ): ContextBudget {
-  const safeWindow = Math.max(1024, Math.floor(contextWindow || 8192));
+  const rawWindow = Math.max(1024, Math.floor(contextWindow || 8192));
+  const safetyMargin = Math.min(0.25, Math.max(0, options.safetyMargin ?? 0.1));
+  // Budget against a slightly smaller window so local servers reject less often.
+  const safeWindow = Math.max(1024, Math.floor(rawWindow * (1 - safetyMargin)));
   const responseReserve =
     options.responseReserve ??
-    Math.min(2048, Math.max(384, Math.floor(safeWindow * 0.25)));
+    Math.min(1024, Math.max(256, Math.floor(safeWindow * 0.15)));
+  // Coding/tool system prompts are large; keep a bigger reserve than chat-only.
   const systemReserve =
     options.systemReserve ??
-    Math.min(1024, Math.max(384, Math.floor(safeWindow * 0.2)));
+    Math.min(2800, Math.max(512, Math.floor(safeWindow * 0.4)));
   const currentInputTokens = estimateTextTokens(currentInput) + MESSAGE_OVERHEAD_TOKENS;
   const historyBudget = Math.max(
     0,
@@ -45,7 +51,7 @@ export function createContextBudget(
   );
 
   return {
-    contextWindow: safeWindow,
+    contextWindow: rawWindow,
     responseReserve,
     systemReserve,
     currentInputTokens,

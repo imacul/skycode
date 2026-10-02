@@ -20,15 +20,28 @@ describe('context window utilities', () => {
     const budget = createContextBudget(2048, 'hello');
 
     expect(budget.contextWindow).toBe(2048);
-    expect(budget.responseReserve).toBeGreaterThanOrEqual(384);
-    expect(budget.systemReserve).toBeGreaterThanOrEqual(384);
-    expect(budget.historyBudget).toBeGreaterThan(0);
+    expect(budget.responseReserve).toBeGreaterThanOrEqual(256);
+    expect(budget.systemReserve).toBeGreaterThanOrEqual(512);
+    expect(budget.historyBudget).toBeGreaterThanOrEqual(0);
+    // Budget math uses a safety margin, so reserves fit in the effective window.
+    const effective = Math.floor(2048 * 0.9);
     expect(
       budget.responseReserve +
         budget.systemReserve +
         budget.currentInputTokens +
         budget.historyBudget
-    ).toBeLessThanOrEqual(2048);
+    ).toBeLessThanOrEqual(effective);
+  });
+
+  it('keeps a large system reserve for small local windows', () => {
+    const budget = createContextBudget(4096, 'open example.com', {
+      systemReserve: Math.min(3000, Math.floor(4096 * 0.55)),
+      responseReserve: 512,
+      safetyMargin: 0.12,
+    });
+
+    expect(budget.systemReserve).toBeGreaterThanOrEqual(2000);
+    expect(budget.historyBudget).toBeLessThan(1500);
   });
 
   it('keeps newest messages when history exceeds the budget', () => {

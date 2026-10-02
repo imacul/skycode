@@ -502,15 +502,38 @@ function App() {
         workspace: process.cwd(),
       });
 
+      const lastWorkspaceState = [...fullHistory]
+        .reverse()
+        .find((message) => message.metadata?.taskKind === 'workspace')
+        ?.metadata?.taskState;
+      const activeWorkspaceTask =
+        lastWorkspaceState === 'running' ||
+        shouldResumeWorkspaceTask(text, lastWorkspaceState);
+      const startsWorkspaceTask = shouldUseProjectTools(text);
+      const workspaceTaskRunning = activeWorkspaceTask || startsWorkspaceTask;
+
+      // Local/small windows need a tight memory + system reserve so tool prompts
+      // and chat history do not exceed the runtime n_ctx (e.g. llama.cpp 4096/8192).
       const memoryContext = buildMemoryContext({
         query: text,
         workspace: process.cwd(),
         currentConversationId: conversationState.currentConversationId,
         conversations: conversationState.conversations,
-        maxChars: Math.min(6000, Math.max(1200, Math.floor(contextWindow * 0.6))),
+        maxChars: Math.min(
+          contextWindow <= 8192 ? 1200 : 6000,
+          Math.max(400, Math.floor(contextWindow * (contextWindow <= 8192 ? 0.2 : 0.6)))
+        ),
       });
 
-      const budget = createContextBudget(contextWindow, text);
+      const budget = createContextBudget(contextWindow, text, {
+        safetyMargin: contextWindow <= 8192 ? 0.12 : 0.1,
+        systemReserve: workspaceTaskRunning
+          ? Math.min(3000, Math.max(1400, Math.floor(contextWindow * 0.55)))
+          : undefined,
+        responseReserve: contextWindow <= 8192
+          ? Math.min(512, Math.max(256, Math.floor(contextWindow * 0.12)))
+          : undefined,
+      });
       const fittedHistory = fitHistoryToBudget(fullHistory, budget.historyBudget);
       const previousMessages = fittedHistory.messages;
 
@@ -523,16 +546,6 @@ function App() {
       // Create agent request. Workspace execution state is persisted as
       // structured metadata; follow-up routing never depends on matching words
       // such as "continue", "resume", or "finish".
-      const lastWorkspaceState = [...fullHistory]
-        .reverse()
-        .find((message) => message.metadata?.taskKind === 'workspace')
-        ?.metadata?.taskState;
-      const activeWorkspaceTask =
-        lastWorkspaceState === 'running' ||
-        shouldResumeWorkspaceTask(text, lastWorkspaceState);
-      const startsWorkspaceTask = shouldUseProjectTools(text);
-      const workspaceTaskRunning = activeWorkspaceTask || startsWorkspaceTask;
-
       addMessage('user', text, workspaceTaskRunning
         ? { taskKind: 'workspace', taskState: 'running' }
         : undefined);
