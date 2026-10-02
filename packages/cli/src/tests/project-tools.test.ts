@@ -14,6 +14,8 @@ import {
   listWorkspaceProcesses,
   recoverImpliedToolCall,
   shouldContinueProjectTools,
+  classifyToolLoopMode,
+  getProjectToolInstructions,
   shouldResumeWorkspaceTask,
   shouldUseProjectTools,
   stopAllBackgroundProcesses,
@@ -64,6 +66,15 @@ describe('project tool protocol', () => {
       )
     ).toBe(true);
     expect(shouldUseProjectTools('Explain how Array.map works')).toBe(false);
+    expect(classifyToolLoopMode('Create a portfolio website in ./portfolio')).toBe('build');
+    expect(classifyToolLoopMode('Open vercel website in the browser')).toBe('reach');
+  });
+
+  it('tells the model SkyCode exposes tools without hardcoding intents', () => {
+    const text = getProjectToolInstructions(process.cwd());
+    expect(text).toContain('SkyCode is your hands, eyes, and legs');
+    expect(text).toContain('does not hardcode intents');
+    expect(text).toContain('does not currently provide that capability');
   });
 
   it('routes broad software creation intents to project tools but not capability-only questions', () => {

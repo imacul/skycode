@@ -176,6 +176,12 @@ Approval choices:
 
 Use `/permissions` to inspect session and persistent permissions, and `/permissions reset` to revoke them. Destructive filesystem commands, package publishing, git push/history rewrites, and system-management commands remain blocked rather than approvable.
 
+### Model-driven tools
+
+SkyCode exposes tools (`open_url`, `browser`, `web_search`, file tools, terminal, MCP, …) and lets the **model** choose which ones fit a request — the same way an agent harness provides hands/eyes/legs. SkyCode does not hardcode intents like “open this website” or “play this song.” If no tool fits, the model should say that SkyCode lacks that capability instead of inventing success.
+
+Workspace file inspection runs automatically only for build/edit tasks. Browser/web/MCP-style requests skip that preflight so the model can call tools directly.
+
 ### Owner Mode (opt-in PC control)
 
 For local machines where you want SkyCode agents to act as your Windows user with far fewer gates:

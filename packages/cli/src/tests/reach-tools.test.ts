@@ -2,12 +2,16 @@ import { describe, expect, it } from 'bun:test';
 import { createServer } from 'node:http';
 import {
   detectBrowserPlayRequest,
-  detectOpenWebsiteRequest,
   extractYoutubeVideoIds,
   selectRecentYoutubeCandidate,
   youtubeMusicWatchUrl,
 } from '../agents/browser-control';
-import { shouldUseProjectTools } from '../agents/project-tools';
+import {
+  classifyToolLoopMode,
+  needsReachTools,
+  needsWorkspaceMutation,
+  shouldUseProjectTools,
+} from '../agents/project-tools';
 import { classifyOpenTarget } from '../agents/desktop-tools';
 import { parseMcpConfig, takeMcpFrames } from '../agents/mcp-client';
 import { parseProjectToolCalls } from '../agents/project-tools';
@@ -125,16 +129,16 @@ describe('web, desktop, and MCP tools', () => {
     expect(shouldUseProjectTools('Open Brave and browse the web.')).toBe(true);
   });
 
-  it('hard-routes open-website requests to a concrete https URL', () => {
-    expect(detectOpenWebsiteRequest('Open vercel website in the browser')).toBe(
-      'https://vercel.com/'
-    );
-    expect(detectOpenWebsiteRequest('open https://example.com/docs')).toBe(
-      'https://example.com/docs'
-    );
-    expect(detectOpenWebsiteRequest('open google.com')).toBe('https://google.com/');
-    expect(detectOpenWebsiteRequest('Build a vercel website in this folder')).toBeNull();
+  it('classifies reach vs build without hardcoding the concrete tool', () => {
+    expect(classifyToolLoopMode('Open vercel website in the browser')).toBe('reach');
+    expect(needsReachTools('Open vercel website in the browser')).toBe(true);
+    expect(needsWorkspaceMutation('Open vercel website in the browser')).toBe(false);
     expect(shouldUseProjectTools('Open vercel website in the browser')).toBe(true);
+
+    expect(classifyToolLoopMode('Create a portfolio website in ./portfolio')).toBe('build');
+    expect(needsWorkspaceMutation('Create a portfolio website in ./portfolio')).toBe(true);
+
+    expect(classifyToolLoopMode('Play lo-fi jazz on YouTube Music')).toBe('reach');
   });
 
   it('builds a YouTube Music autoplay link from search HTML', () => {

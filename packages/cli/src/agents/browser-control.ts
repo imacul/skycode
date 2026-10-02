@@ -7,57 +7,6 @@ import { assertPublicHttpUrl, searchWeb, searchWebResults } from './web-tools';
 const DEBUG_PORT = 9333;
 const SKYCODE_BROWSER_PROFILE = join(homedir(), '.skycode', 'browser-profile');
 
-/**
- * Detect a simple "open this website/URL in the browser" request and return a
- * public https URL. Returns null for build/edit intents.
- */
-export function detectOpenWebsiteRequest(input: string): string | null {
-  const text = input.replace(/\s+/g, ' ').trim();
-  if (!/\b(open|launch|go to|visit|browse)\b/i.test(text)) return null;
-  // Do not steal real coding intents like "open the website folder and edit index.html".
-  if (
-    /\b(create|build|develop|scaffold|generate|implement|edit|modify|refactor|fix|write|code)\b/i.test(
-      text
-    )
-  ) {
-    return null;
-  }
-
-  const explicit = text.match(/\bhttps?:\/\/[^\s<>"']+/i);
-  if (explicit) {
-    try {
-      return assertPublicHttpUrl(explicit[0].replace(/[.,;:!?)\]}]+$/g, '')).href;
-    } catch {
-      return null;
-    }
-  }
-
-  // "open google.com" / "open www.github.com in chrome"
-  const dotted = text.match(
-    /\b(?:open|launch|go to|visit|browse)\s+(?:the\s+)?((?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i
-  );
-  if (dotted) {
-    try {
-      return assertPublicHttpUrl('https://' + dotted[1].replace(/^www\./i, '')).href;
-    } catch {
-      return null;
-    }
-  }
-
-  // "Open vercel website in the browser" / "visit the github site"
-  const named = text.match(
-    /\b(?:open|launch|go to|visit|browse)\s+(?:the\s+)?([a-z0-9][a-z0-9-]{0,61}[a-z0-9])\s+(?:website|site|page|homepage)\b/i
-  );
-  if (!named) return null;
-
-  const host = named[1].toLowerCase() + '.com';
-  try {
-    return assertPublicHttpUrl('https://' + host).href;
-  } catch {
-    return null;
-  }
-}
-
 export function detectBrowserPlayRequest(input: string): string | null {
   const text = input.replace(/\s+/g, ' ').trim();
   if (!/\b(play|listen to|put on)\b/i.test(text)) return null;

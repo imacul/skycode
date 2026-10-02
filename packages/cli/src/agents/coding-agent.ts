@@ -24,7 +24,6 @@ import {
   fetchOpenRouterKeyStatus,
   type RoutableModel,
 } from '../utils/openrouter-route';
-import { detectBrowserPlayRequest, detectOpenWebsiteRequest } from './browser-control';
 import {
   expandShellCommand,
   executeProjectToolCall,
@@ -38,6 +37,7 @@ import {
   setProcessLogListener,
   shouldContinueProjectTools,
   shouldUseProjectTools,
+  classifyToolLoopMode,
   stripProjectToolCalls,
   type ProjectToolCall,
   type ProjectToolExecution,
@@ -275,70 +275,17 @@ export class CodingAgent implements BaseAgent {
       throw new Error('Provider not initialized');
     }
 
-    const playQuery = detectBrowserPlayRequest(request.input);
-    if (playQuery) {
-      const execution = await executeProjectToolCall(
-        {
-          name: 'browser',
-          args: {
-            action: 'play',
-            query: playQuery,
-            app: 'brave',
-            reason: 'The user asked SkyCode to play this on YouTube Music in Brave.',
-          },
-        },
-        this.context,
-        request.onApproval
-      );
-      onActivity?.({
-        id: 'browser_play',
-        type: 'terminal',
-        status: execution.success ? 'success' : 'error',
-        title: execution.success ? 'Playing on YouTube Music' : 'Playback failed',
-        path: 'brave',
-        preview: execution.content.split('\n').slice(0, 6),
-      });
-      return {
-        content: execution.content,
-        finishReason: execution.success ? 'stop' : 'error',
-        tokensUsed: 0,
-      };
-    }
-
-    const openUrl = detectOpenWebsiteRequest(request.input);
-    if (openUrl) {
-      const execution = await executeProjectToolCall(
-        {
-          name: 'open_url',
-          args: {
-            url: openUrl,
-            reason: 'The user asked SkyCode to open this website in the browser.',
-          },
-        },
-        this.context,
-        request.onApproval
-      );
-      onActivity?.({
-        id: 'open_url',
-        type: execution.success ? 'complete' : 'error',
-        status: execution.success ? 'success' : 'error',
-        title: execution.success ? 'Opened in browser' : 'Could not open browser',
-        path: openUrl,
-        preview: execution.content.split('\n').slice(0, 6),
-      });
-      return {
-        content: execution.content,
-        finishReason: execution.success ? 'stop' : 'error',
-        tokensUsed: 0,
-      };
-    }
-
+    // Model-driven tools only: SkyCode never hardcodes the user's intent into a
+    // forced open_url / browser play. The model must choose tools (or say that
+    // no suitable capability exists).
+    const loopMode = classifyToolLoopMode(request.input);
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
     const traceId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     agentDebug('tool_loop.start', {
       traceId,
       input: request.input,
+      loopMode,
       provider: this.context.provider?.name,
       model: this.context.model,
       workingDirectory: this.context.workingDirectory,
@@ -362,52 +309,68 @@ export class CodingAgent implements BaseAgent {
     let untrustedInfluence = false;
     const allExecutions: ProjectToolExecution[] = [];
 
-    const initialActivityId = 'planning_' + Date.now();
-    onActivity?.({
-      id: initialActivityId,
-      type: 'planning',
-      status: 'running',
-      title: 'Inspecting workspace',
-      detail: 'SkyCode is reading the workspace before asking the model to plan changes.',
-    });
+    if (loopMode === 'build') {
+      const initialActivityId = 'planning_' + Date.now();
+      onActivity?.({
+        id: initialActivityId,
+        type: 'planning',
+        status: 'running',
+        title: 'Inspecting workspace',
+        detail: 'SkyCode is reading the workspace before asking the model to plan changes.',
+      });
 
-    // Always inspect the workspace once in the harness before the first model
-    // round trip. This removes a slow "please list files" turn from project
-    // builds and gives weak/free models immediate repository context.
-    const initialInspection = await executeProjectToolCall(
-      {
-        name: 'list_files',
-        args: { path: '.', recursive: false },
-      },
-      this.context,
-      request.onApproval
-    );
-    allExecutions.push(initialInspection);
-    agentDebug('tool.preflight.result', { traceId, execution: initialInspection });
-    // Harness-owned preflight inspection is context gathering, not a model
-    // tool action. Do not mark the model as having executed tools here:
-    // otherwise a malformed first model tool call is mistaken for a final
-    // answer and leaks raw protocol text into the chat instead of retrying.
+      // Workspace preflight only for build/edit tasks. Reach tasks (open
+      // browser, web search, etc.) must not force file inspection.
+      const initialInspection = await executeProjectToolCall(
+        {
+          name: 'list_files',
+          args: { path: '.', recursive: false },
+        },
+        this.context,
+        request.onApproval
+      );
+      allExecutions.push(initialInspection);
+      agentDebug('tool.preflight.result', { traceId, execution: initialInspection });
 
-    onActivity?.({
-      id: initialActivityId,
-      type: 'inspect',
-      status: initialInspection.success ? 'success' : 'error',
-      title: initialInspection.success ? 'Workspace inspected' : 'Workspace inspection failed',
-      path: initialInspection.displayPath || '.',
-      detail: initialInspection.success ? undefined : initialInspection.content,
-    });
+      onActivity?.({
+        id: initialActivityId,
+        type: 'inspect',
+        status: initialInspection.success ? 'success' : 'error',
+        title: initialInspection.success ? 'Workspace inspected' : 'Workspace inspection failed',
+        path: initialInspection.displayPath || '.',
+        detail: initialInspection.success ? undefined : initialInspection.content,
+      });
 
-    messages.push(projectToolResultMessage([initialInspection]));
-    messages.push({
-      id: 'workspace_hint_' + Date.now(),
-      role: 'user',
-      content:
-        'SkyCode already inspected the workspace root and provided the result above. ' +
-        'Do not spend a turn listing the root again unless you genuinely need deeper inspection. ' +
-        'Proceed with the architecture and file operations now.',
-      timestamp: new Date(),
-    });
+      messages.push(projectToolResultMessage([initialInspection]));
+      messages.push({
+        id: 'workspace_hint_' + Date.now(),
+        role: 'user',
+        content:
+          'SkyCode already inspected the workspace root and provided the result above. ' +
+          'Do not spend a turn listing the root again unless you genuinely need deeper inspection. ' +
+          'Proceed with the architecture and file operations now.',
+        timestamp: new Date(),
+      });
+    } else {
+      onActivity?.({
+        id: 'reach_' + Date.now(),
+        type: 'planning',
+        status: 'running',
+        title: 'Choosing tools',
+        detail: 'The model will pick SkyCode tools for this request (or report a missing capability).',
+      });
+      messages.push({
+        id: 'reach_hint_' + Date.now(),
+        role: 'user',
+        content:
+          'This request does not require workspace file inspection first. ' +
+          'Review the SkyCode tools available to you and call the one that fits. ' +
+          'Typical fits: open_url / open_app / browser / web_search / web_fetch / mcp_*. ' +
+          'If none fit, say clearly that SkyCode does not provide that capability yet. ' +
+          'Do not invent success and do not start unrelated file edits.',
+        timestamp: new Date(),
+      });
+    }
 
     const workspace = this.context.workingDirectory || process.cwd();
     this.modelSwitchNote = '';
@@ -439,8 +402,18 @@ export class CodingAgent implements BaseAgent {
         id: modelActivityId,
         type: 'planning',
         status: 'running',
-        title: iteration === 0 ? 'Planning file changes' : 'Continuing project work',
-        detail: 'Continuing until the requested work is completed and verified.',
+        title:
+          loopMode === 'reach'
+            ? iteration === 0
+              ? 'Selecting tools'
+              : 'Continuing with tools'
+            : iteration === 0
+              ? 'Planning file changes'
+              : 'Continuing project work',
+        detail:
+          loopMode === 'reach'
+            ? 'Model chooses tools from SkyCode capabilities, or reports a gap.'
+            : 'Continuing until the requested work is completed and verified.',
       });
 
       let response;

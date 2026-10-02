@@ -21,12 +21,7 @@ import {
 import { recordOwnerAction } from '../security/owner-audit';
 import { useSettingsStore } from '../store/settings';
 import { openOnDesktop } from './desktop-tools';
-import {
-  braveIsRunning,
-  detectBrowserPlayRequest,
-  detectOpenWebsiteRequest,
-  playOnYoutubeMusic,
-} from './browser-control';
+import { braveIsRunning, playOnYoutubeMusic } from './browser-control';
 import { callMcpTool, listMcpTools } from './mcp-client';
 import { fetchLocalWebPage, fetchWebPage, searchWeb } from './web-tools';
 import {
@@ -105,14 +100,12 @@ export function isProjectCapabilityQuestion(input: string): boolean {
   );
 }
 
-export function shouldUseProjectTools(input: string): boolean {
+/**
+ * File/project mutation intents that benefit from workspace preflight inspection.
+ */
+export function needsWorkspaceMutation(input: string): boolean {
   const text = input.toLowerCase();
-
   if (isProjectCapabilityQuestion(text)) return false;
-  if (detectBrowserPlayRequest(input)) return true;
-  if (detectOpenWebsiteRequest(input)) return true;
-  if (/\b(search|research|look up|find|browse)\b.{0,80}\b(web|internet|online|sources?|latest|current|today|news)\b/.test(text)) return true;
-  if (/\b(open|launch|use|control)\b.{0,50}\b(browser|brave|chrome|firefox|edge|figma|powerpoint|excel|word)\b/.test(text)) return true;
 
   const projectNouns =
     /\b(project|repo|repository|software|website|site|web app|desktop app|desktop application|mobile app|application|app|cli|command-line tool|service|backend|frontend|full-stack|full stack|api|landing page|portfolio|folder|directory|file|files|html|css|javascript|typescript|react|next\.js|vue|svelte|node(?:\.js)?|python|rust|go|java|c#|\.net|electron|tauri)\b/;
@@ -122,6 +115,50 @@ export function shouldUseProjectTools(input: string): boolean {
     /\b(create|write|edit|modify|update|add)\b.{0,35}\b(file|files|folder|directory|index\.html|style\.css|script\.js)\b/;
 
   return directFileIntent.test(text) || (projectNouns.test(text) && mutationVerbs.test(text));
+}
+
+/**
+ * Desktop/web/MCP reach intents. SkyCode exposes tools; the model chooses which
+ * ones to call. This classifier only decides whether the tool loop is needed.
+ */
+export function needsReachTools(input: string): boolean {
+  const text = input.toLowerCase();
+  if (isProjectCapabilityQuestion(text)) return false;
+  if (
+    /\b(search|research|look up|find|browse)\b.{0,80}\b(web|internet|online|sources?|latest|current|today|news)\b/.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(open|launch|use|control|go to|visit)\b.{0,80}\b(browser|brave|chrome|firefox|edge|msedge|url|website|site|page|homepage|figma|powerpoint|excel|word)\b/.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (/\b(play|listen to|put on)\b.{0,80}\b(music|song|track|album|youtube|spotify)\b/.test(text)) {
+    return true;
+  }
+  if (/\bmcp\b/.test(text)) return true;
+  return false;
+}
+
+export type ToolLoopMode = 'reach' | 'build';
+
+/**
+ * Which tool-loop posture to use. Never chooses the concrete tool for the model.
+ */
+export function classifyToolLoopMode(input: string): ToolLoopMode {
+  if (needsWorkspaceMutation(input)) return 'build';
+  if (needsReachTools(input)) return 'reach';
+  return 'build';
+}
+
+export function shouldUseProjectTools(input: string): boolean {
+  if (isProjectCapabilityQuestion(input.toLowerCase())) return false;
+  return needsWorkspaceMutation(input) || needsReachTools(input);
 }
 
 export function shouldResumeWorkspaceTask(
@@ -1571,6 +1608,11 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- Create configuration, tests, README, environment examples, and entry points when the task actually needs them.',
     '- If the user specifies an architecture or folder convention, follow it unless it is internally inconsistent; explain conflicts rather than silently replacing it.',
     '',
+    'How to use SkyCode tools:',
+    '- SkyCode is your hands, eyes, and legs. It exposes tools; you choose which ones fit the user request.',
+    '- SkyCode does not decide the action for you and does not hardcode intents like "open this site" or "play this song".',
+    '- Read the available tools below, pick the suitable one(s), and emit tool calls. If no tool fits, say clearly that SkyCode does not currently provide that capability — do not invent success and do not start unrelated file work.',
+    '',
     'Use one or more tool calls in exactly this format:',
     '<tool_call>{"name":"create_directory","args":{"path":"my-site"}}</tool_call>',
     '<tool_call>{"name":"write_file","args":{"path":"my-site/index.html","content":"<!doctype html>..."}}</tool_call>',
@@ -1592,7 +1634,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- web_fetch_local: {"url":"http://localhost:3000/","reason":"Inspect the locally running app"} — requires approval for a separately scoped local-network capability.',
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the real system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. Asks the user once.',
-    '- browser: {"action":"play","query":"Asake latest album","app":"brave","reason":"The user asked to hear this on YouTube Music"} — if Brave is closed, SkyCode starts it. If it is already open, SkyCode uses that window. It searches YouTube Music and starts playback. Also supports {"action":"open","url":"https://music.youtube.com","app":"brave","reason":"..."}.',
+    '- browser: {"action":"play","query":"search terms","app":"brave","reason":"..."} — Brave + YouTube Music playback helper when you decide that fits. Also supports {"action":"open","url":"https://...","app":"brave","reason":"..."}.',
     '- browser: {"action":"status","app":"brave"} — reports whether Brave is already running.',
     '- mcp_list: {"reason":"Discover the configured integration tools needed for this task"} — asks for approval before starting and listing tools from MCP servers configured in ~/.skycode/mcp.json or skycode.mcp.json.',
     '- mcp_call: {"server":"figma","tool":"get_figma_data","args":{"fileKey":"...","nodeId":"1:2"},"reason":"Read the Figma frame before building the screen"} — calls one MCP tool. Asks the user once. Figma needs a configured stdio server such as figma-developer-mcp.',
