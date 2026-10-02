@@ -1,9 +1,12 @@
 import { TextAttributes } from '@opentui/core';
 import { useSettingsStore } from '../store/settings';
+import { normalizeOwnershipSettings } from '../security/ownership';
 
 export function StatusBar() {
-  const { model: modelSettings } = useSettingsStore();
+  const { model: modelSettings, ownership } = useSettingsStore();
   const currentModel = modelSettings.defaultModel || 'meta-llama/llama-3.1-70b-instruct';
+  const ownershipState = normalizeOwnershipSettings(ownership);
+  const ownerMode = ownershipState.mode === 'owner';
 
   // Extract short name from model ID
   const getModelName = (modelId: string): string => {
@@ -26,6 +29,12 @@ export function StatusBar() {
         \u203a
       </text>
       <text fg="white">{getModelName(currentModel)}</text>
+      {ownerMode ? (
+        <text attributes={TextAttributes.DIM} fg="gray">
+          ·
+        </text>
+      ) : null}
+      {ownerMode ? <text fg="yellow">Owner</text> : null}
     </box>
   );
 }
