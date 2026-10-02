@@ -46,5 +46,9 @@ describe('interactive permission approval UI', () => {
     expect(appSource).toContain("command === '/owner confirm'");
     expect(appSource).toContain("command === '/owner off'");
     expect(appSource).toContain("ownershipState?.mode === 'owner' && ownershipState.autoApprove");
+    // Owner status stays out of the chat transcript; use the ephemeral history banner.
+    expect(appSource).toContain("Owner Mode: ON");
+    expect(appSource).toContain("setHistoryView(");
+    expect(appSource).not.toContain('describeOwnership(ownership)');
   });
 });

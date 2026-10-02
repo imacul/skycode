@@ -28,7 +28,7 @@ import { useSettingsStore, getProviderApiKey, setProviderApiKey, getConfiguredPr
 import {
   createOwnerSettings,
   createSafeOwnershipSettings,
-  describeOwnership,
+  normalizeOwnershipSettings,
 } from './security/ownership';
 import { emergencyStopActive } from './security/safety-control';
 import { createOpenRouterProvider } from './providers/openrouter';
@@ -182,7 +182,6 @@ function App() {
     updateModelSettings,
     updatePermissionSettings,
     updateOwnershipSettings,
-    ownership,
   } = useSettingsStore();
   const pendingOwnerEnableRef = useRef(false);
 
@@ -881,46 +880,38 @@ function App() {
       command === '/owner' ||
       command === '/owner status'
     ) {
-      addMessage(
-        'system',
-        [
-          describeOwnership(ownership),
-          '',
-          'Emergency stop active: ' + String(emergencyStopActive()),
-          '',
-          'Commands: /owner on  →  /owner confirm  → enable',
-          '          /owner off → return to safe mode',
-        ].join('\n')
+      const live = normalizeOwnershipSettings(
+        useSettingsStore.getState().ownership
+      );
+      const stop = emergencyStopActive();
+      setHistoryView(
+        live.mode === 'owner'
+          ? 'Owner Mode: ON' +
+              (stop ? ' · EMERGENCY STOP active' : '') +
+              ' · shown on the model line · /owner off to disable'
+          : 'Owner Mode: OFF (safe)' +
+              (stop ? ' · EMERGENCY STOP active' : '') +
+              ' · /owner on then /owner confirm to enable'
       );
     } else if (command === '/owner on') {
       pendingOwnerEnableRef.current = true;
-      addMessage(
-        'system',
-        [
-          'Owner Mode lets SkyCode agents act as your Windows user:',
-          '- Auto-approve terminal, desktop, MCP, and network tools',
-          '- Allow system/destructive commands, absolute paths, shell pipes, and any desktop app',
-          '- Still blocked: Secure Desktop / lock screen / silent Admin elevation',
-          '- Kill switch: create ~/.skycode/EMERGENCY_STOP',
-          '',
-          'Type /owner confirm to enable, or anything else to cancel.',
-        ].join('\n')
+      setHistoryView(
+        'Enable Owner Mode? Type /owner confirm to allow PC-level control as your user, or /owner off to cancel.'
       );
     } else if (command === '/owner confirm') {
       if (!pendingOwnerEnableRef.current) {
-        addMessage('system', 'Nothing to confirm. Run /owner on first.');
+        setHistoryView('Nothing to confirm. Run /owner on first.');
       } else {
         pendingOwnerEnableRef.current = false;
         updateOwnershipSettings(createOwnerSettings());
-        addMessage(
-          'system',
-          'Owner Mode ENABLED. Agents can operate this PC as your user. Use /owner off to revoke.'
+        setHistoryView(
+          'Owner Mode: ON · Model line shows Owner · /owner off to disable'
         );
       }
     } else if (command === '/owner off') {
       pendingOwnerEnableRef.current = false;
       updateOwnershipSettings(createSafeOwnershipSettings());
-      addMessage('system', 'Owner Mode disabled. Safe mode restored.');
+      setHistoryView('Owner Mode: OFF (safe mode restored)');
     } else if (command.startsWith('/remember ')) {
       const fact = command.slice('/remember '.length).trim();
       const saved = remember(fact, {
