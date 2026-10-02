@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { createServer } from 'node:http';
 import {
+  buildWebSearchUrl,
   detectBrowserPlayRequest,
   extractYoutubeVideoIds,
   selectRecentYoutubeCandidate,
@@ -8,6 +9,7 @@ import {
 } from '../agents/browser-control';
 import {
   classifyToolLoopMode,
+  getProjectToolInstructions,
   needsReachTools,
   needsWorkspaceMutation,
   shouldUseProjectTools,
@@ -139,6 +141,21 @@ describe('web, desktop, and MCP tools', () => {
     expect(needsWorkspaceMutation('Create a portfolio website in ./portfolio')).toBe(true);
 
     expect(classifyToolLoopMode('Play lo-fi jazz on YouTube Music')).toBe('reach');
+  });
+
+  it('builds a Brave/Google search URL for browser search action', () => {
+    expect(buildWebSearchUrl('goat')).toBe('https://www.google.com/search?q=goat');
+    expect(buildWebSearchUrl('lo-fi jazz', 'duckduckgo')).toBe(
+      'https://duckduckgo.com/?q=lo-fi%20jazz'
+    );
+    expect(() => buildWebSearchUrl('  ')).toThrow(/query/);
+  });
+
+  it('documents that web_search is not a Brave open', () => {
+    const text = getProjectToolInstructions(process.cwd());
+    expect(text).toContain('does NOT open Brave');
+    expect(text).toContain('action":"search"');
+    expect(text).toContain('call browser action=search ONCE');
   });
 
   it('builds a YouTube Music autoplay link from search HTML', () => {

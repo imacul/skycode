@@ -109,6 +109,36 @@ function launchBrave(bravePath: string, args: string[]): Promise<void> {
   });
 }
 
+/**
+ * Build a public search-results URL. Prefer this over claiming a typed browser search.
+ */
+export function buildWebSearchUrl(query: string, engine: string = 'google'): string {
+  const q = query.trim();
+  if (!q) throw new Error('query must be a non-empty string.');
+  const normalized = engine.trim().toLowerCase();
+  if (normalized === 'duckduckgo' || normalized === 'ddg') {
+    return 'https://duckduckgo.com/?q=' + encodeURIComponent(q);
+  }
+  return 'https://www.google.com/search?q=' + encodeURIComponent(q);
+}
+
+async function openTabInExistingBrave(url: string): Promise<boolean> {
+  try {
+    // Chrome/Brave debugging API: PUT /json/new?<url> opens one tab in the
+    // existing process instead of spawning another browser window.
+    const response = await fetch(
+      'http://127.0.0.1:' + DEBUG_PORT + '/json/new?' + encodeURIComponent(url),
+      {
+        method: 'PUT',
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function openInBrave(url: string): Promise<{ runningBefore: boolean; opened: string }> {
   const target = assertPublicHttpUrl(url).href;
   const bravePath = findBraveExecutable();
@@ -118,24 +148,42 @@ export async function openInBrave(url: string): Promise<{ runningBefore: boolean
 
   const runningBefore = await braveIsRunning();
   const debug = await debuggingPortOpen();
-  const args = debug
-    ? ['--user-data-dir=' + SKYCODE_BROWSER_PROFILE, target]
-    : [
-        '--user-data-dir=' + SKYCODE_BROWSER_PROFILE,
-        '--remote-debugging-port=' + DEBUG_PORT,
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--new-window',
-        target,
-      ];
 
-  await launchBrave(bravePath, args);
+  // Reuse the existing controllable Brave — never spawn a second/third copy.
+  if (debug) {
+    const openedTab = await openTabInExistingBrave(target);
+    if (openedTab) {
+      return {
+        runningBefore: true,
+        opened: 'Opened one tab in the existing Brave window (no new browser process).',
+      };
+    }
+  }
+
+  await launchBrave(bravePath, [
+    '--user-data-dir=' + SKYCODE_BROWSER_PROFILE,
+    '--remote-debugging-port=' + DEBUG_PORT,
+    '--no-first-run',
+    '--no-default-browser-check',
+    target,
+  ]);
+  // Give the debug port a moment to come up for later tab opens.
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 800));
   return {
     runningBefore,
-    opened: debug
-      ? 'Opened a tab in SkyCode’s isolated Brave profile.'
-      : 'Started SkyCode’s isolated Brave profile and opened the page.',
+    opened: runningBefore
+      ? 'Launched SkyCode’s Brave control profile and opened the page.'
+      : 'Started Brave once and opened the page.',
   };
+}
+
+export async function searchInBrave(
+  query: string,
+  engine: string = 'google'
+): Promise<string> {
+  const url = buildWebSearchUrl(query, engine);
+  const opened = await openInBrave(url);
+  return [opened.opened, 'Brave search opened for "' + query.trim() + '".', url].join('\n');
 }
 
 async function clickYoutubeMusicPlay(): Promise<string> {

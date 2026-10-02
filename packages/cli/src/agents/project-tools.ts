@@ -21,7 +21,12 @@ import {
 import { recordOwnerAction } from '../security/owner-audit';
 import { useSettingsStore } from '../store/settings';
 import { openOnDesktop } from './desktop-tools';
-import { braveIsRunning, playOnYoutubeMusic } from './browser-control';
+import {
+  braveIsRunning,
+  openInBrave,
+  playOnYoutubeMusic,
+  searchInBrave,
+} from './browser-control';
 import { callMcpTool, listMcpTools } from './mcp-client';
 import { fetchLocalWebPage, fetchWebPage, searchWeb } from './web-tools';
 import {
@@ -1629,13 +1634,16 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- start_process: {"command":"npm start","reason":"Boot the app so I can read its logs and test it"} — starts a long-running app/dev server in the background and returns immediately with an id and the first logs.',
     '- read_process_logs: {"id":"proc_..."} — returns the latest logs from a background process. Omit id to read the latest process in this workspace.',
     '- stop_process: {"id":"proc_..."} — stops a background process. Use it only to restart a failed server or when the user asked you to stop it.',
-    '- web_search: {"query":"react useEffect cleanup"} — searches the public web and returns titles, URLs, and snippets. Use this for research.',
+    '- web_search: {"query":"react useEffect cleanup"} — returns text snippets to YOU only. It does NOT open Brave or show the user a browser. Never claim you opened a browser if you only used web_search.',
     '- web_fetch: {"url":"https://example.com/docs"} — reads a public page as text through pinned, public-only network access.',
     '- web_fetch_local: {"url":"http://localhost:3000/","reason":"Inspect the locally running app"} — requires approval for a separately scoped local-network capability.',
-    '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the real system browser. Asks the user once.',
-    '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. Asks the user once.',
-    '- browser: {"action":"play","query":"search terms","app":"brave","reason":"..."} — Brave + YouTube Music playback helper when you decide that fits. Also supports {"action":"open","url":"https://...","app":"brave","reason":"..."}.',
+    '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
+    '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
+    '- browser: {"action":"search","query":"goat","engine":"google","reason":"..."} — opens ONE Brave window/tab to a Google (or duckduckgo) search URL for that query. Use this when the user wants to see a search in Brave.',
+    '- browser: {"action":"open","url":"https://...","reason":"..."} — opens one URL in Brave (reuses the existing Brave process when possible).',
+    '- browser: {"action":"play","query":"search terms","app":"brave","reason":"..."} — Brave + YouTube Music playback helper when you decide that fits.',
     '- browser: {"action":"status","app":"brave"} — reports whether Brave is already running.',
+    '- Important: for "open Brave and search for X", call browser action=search ONCE. Do not also call open_app, open_url, and web_search for the same request.',
     '- mcp_list: {"reason":"Discover the configured integration tools needed for this task"} — asks for approval before starting and listing tools from MCP servers configured in ~/.skycode/mcp.json or skycode.mcp.json.',
     '- mcp_call: {"server":"figma","tool":"get_figma_data","args":{"fileKey":"...","nodeId":"1:2"},"reason":"Read the Figma frame before building the screen"} — calls one MCP tool. Asks the user once. Figma needs a configured stdio server such as figma-developer-mcp.',
     '- restore_transaction: {"id":"transaction UUID","reason":"Restore the file or directory from SkyCode recovery storage"} — requires approval and refuses stale or cross-workspace restoration.',
@@ -1928,6 +1936,17 @@ export async function executeProjectToolCall(
           throw new Error(call.name === 'open_url' ? 'url must be a non-empty string.' : 'name must be a non-empty string.');
         }
         await ensureDesktopApproval(workspace, call.name, target, args.reason, requestApproval);
+        // Route Brave through the single-instance controller so open_app does
+        // not spawn a second browser beside browser/search/open calls.
+        if (call.name === 'open_app' && /^brave$/i.test(target.trim())) {
+          const opened = await openInBrave('https://www.google.com/');
+          return {
+            call,
+            success: true,
+            content: opened.opened + '\nBrave is ready.',
+            displayPath: 'brave',
+          };
+        }
         return {
           call,
           success: true,
@@ -1939,7 +1958,7 @@ export async function executeProjectToolCall(
         const action = typeof args.action === 'string' && args.action.trim()
           ? args.action.trim().toLowerCase()
           : typeof args.query === 'string'
-            ? 'play'
+            ? 'search'
             : 'status';
         if (action === 'status') {
           const running = await braveIsRunning();
@@ -1949,6 +1968,28 @@ export async function executeProjectToolCall(
             content: running
               ? 'Brave is already open.'
               : 'Brave is not running.',
+            displayPath: 'brave',
+          };
+        }
+        if (action === 'search') {
+          if (typeof args.query !== 'string' || !args.query.trim()) {
+            throw new Error('query must be a non-empty string.');
+          }
+          const engine =
+            typeof args.engine === 'string' && args.engine.trim()
+              ? args.engine.trim()
+              : 'google';
+          await ensureDesktopApproval(
+            workspace,
+            'browser',
+            'brave search ' + args.query,
+            args.reason,
+            requestApproval
+          );
+          return {
+            call,
+            success: true,
+            content: await searchInBrave(args.query, engine),
             displayPath: 'brave',
           };
         }
@@ -1969,7 +2010,6 @@ export async function executeProjectToolCall(
             throw new Error('url must be a non-empty string.');
           }
           await ensureDesktopApproval(workspace, 'browser', args.url, args.reason, requestApproval);
-          const { openInBrave } = await import('./browser-control');
           const opened = await openInBrave(args.url);
           return {
             call,
@@ -1978,7 +2018,7 @@ export async function executeProjectToolCall(
             displayPath: args.url,
           };
         }
-        throw new Error('browser action must be status, open, or play.');
+        throw new Error('browser action must be status, search, open, or play.');
       }
       case 'mcp_list':
         await ensureDesktopApproval(
