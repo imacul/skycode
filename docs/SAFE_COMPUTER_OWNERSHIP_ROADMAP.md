@@ -4,6 +4,25 @@ Skycode "owns" a computer only in the sense that it can operate an enrolled
 device for its user. The model proposes actions; deterministic policy and an
 unprivileged capability broker decide what may run.
 
+## Owner Mode (opt-in)
+
+Local operators can raise autonomy with `/owner on` then `/owner confirm`.
+
+When `ownership.mode = "owner"` in `~/.skycode/settings.json`:
+
+- Approvals auto-grant (`autoApprove`)
+- System/destructive commands, absolute paths, shell pipes/chaining, and arbitrary
+  desktop apps become allowed under the matching flags
+- Actions are appended to `~/.skycode/audit/owner-actions.jsonl`
+- `/owner off` restores safe mode
+
+Still enforced in Owner Mode:
+
+- `~/.skycode/EMERGENCY_STOP` hard-stops every tool
+- Secure desktop / lock screen / password-field rejection
+- No silent Admin/UAC elevation (still the Windows user token)
+- Credential vault + redaction boundaries
+
 ## Delivery rules
 
 - Ship milestones in order. A later capability may not bypass an earlier boundary.

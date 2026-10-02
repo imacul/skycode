@@ -10,6 +10,11 @@ import {
   writeSecureCredentialVerified,
 } from './credential-store';
 import { forgetSensitiveValue, registerSensitiveValue } from '../security/redaction';
+import {
+  DEFAULT_OWNERSHIP,
+  normalizeOwnershipSettings,
+  type OwnershipSettings,
+} from '../security/ownership';
 
 /**
  * Provider settings
@@ -80,6 +85,8 @@ export interface PermissionSettings {
   leases: Array<{ permissionKey: string; expiresAt: number }>;
 }
 
+export type { OwnershipSettings };
+
 /**
  * All settings combined
  */
@@ -89,6 +96,7 @@ export interface Settings {
   model: ModelSettings;
   agent: AgentSettings;
   permissions: PermissionSettings;
+  ownership: OwnershipSettings;
   // Version for migrations
   version: number;
 }
@@ -144,6 +152,7 @@ export const DEFAULT_SETTINGS: Settings = {
     alwaysAllow: [],
     leases: [],
   },
+  ownership: { ...DEFAULT_OWNERSHIP },
 };
 
 /**
@@ -170,6 +179,9 @@ interface SettingsActions {
 
   // Update persistent permission settings
   updatePermissionSettings: (settings: Partial<PermissionSettings>) => void;
+
+  // Update ownership / Owner Mode settings
+  updateOwnershipSettings: (settings: Partial<OwnershipSettings>) => void;
   
   // Reset to defaults
   resetSettings: () => void;
@@ -285,6 +297,14 @@ export const useSettingsStore = create<SettingsStore>()(
             ...(state.permissions || DEFAULT_SETTINGS.permissions),
             ...settings,
           },
+        })),
+
+      updateOwnershipSettings: (settings) =>
+        set((state) => ({
+          ownership: normalizeOwnershipSettings({
+            ...(state.ownership || DEFAULT_SETTINGS.ownership),
+            ...settings,
+          }),
         })),
 
       resetSettings: () => set({ ...DEFAULT_SETTINGS }),

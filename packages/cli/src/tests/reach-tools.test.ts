@@ -96,6 +96,17 @@ describe('web, desktop, and MCP tools', () => {
     expect(classifyOpenTarget('https://example.com/docs').kind).toBe('url');
     expect(classifyOpenTarget('figma').value).toBe('figma');
     expect(() => classifyOpenTarget('cmd')).toThrow(/cannot launch arbitrary/);
+    expect(
+      classifyOpenTarget('cmd', {
+        mode: 'owner',
+        autoApprove: true,
+        allowSystemCommands: true,
+        allowAbsolutePaths: true,
+        allowShellFeatures: true,
+        allowArbitraryDesktopApps: true,
+        leaseTtlHours: 168,
+      }).value
+    ).toBe('cmd');
   });
 
   it('treats a Brave YouTube Music request as something SkyCode does itself', () => {

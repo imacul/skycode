@@ -21,6 +21,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/setup', description: 'Configure providers' },
   { command: '/doctor', description: 'Check command/provider/storage health' },
   { command: '/permissions', description: 'Show current tool approvals' },
+  { command: '/owner', description: 'Show or toggle Owner Mode (PC-level control)', takesArgs: true },
   { command: '/servers', description: 'Show or stop background app servers', takesArgs: true },
   { command: '/credits', description: 'Show OpenRouter credits and open the payment page' },
   { command: '/help', description: 'Show available commands' },
@@ -71,6 +72,24 @@ export function validateSlashCommand(raw: string): SlashValidation {
     normalized === '/permissions reset'
   ) {
     return { ok: true, normalized };
+  }
+
+  if (
+    normalized === '/owner' ||
+    normalized === '/owner status' ||
+    normalized === '/owner on' ||
+    normalized === '/owner off' ||
+    normalized === '/owner confirm'
+  ) {
+    return { ok: true, normalized };
+  }
+
+  if (normalized.startsWith('/owner ')) {
+    return {
+      ok: false,
+      normalized,
+      error: 'Usage: /owner, /owner status, /owner on, /owner confirm, or /owner off',
+    };
   }
 
   if (normalized === '/servers' || normalized === '/servers stop') {

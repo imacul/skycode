@@ -14,6 +14,12 @@ import type { Message } from '../store/conversation';
 import { agentDebug } from '../utils/agent-debug';
 import { redactSensitiveText } from '../security/redaction';
 import { assertSafetyEnabled } from '../security/safety-control';
+import {
+  normalizeOwnershipSettings,
+  type OwnershipSettings,
+} from '../security/ownership';
+import { recordOwnerAction } from '../security/owner-audit';
+import { useSettingsStore } from '../store/settings';
 import { openOnDesktop } from './desktop-tools';
 import { braveIsRunning, detectBrowserPlayRequest, playOnYoutubeMusic } from './browser-control';
 import { callMcpTool, listMcpTools } from './mcp-client';
@@ -413,8 +419,13 @@ export interface ProjectCommandPolicy {
   reason?: string;
 }
 
-export function classifyProjectCommand(command: string): ProjectCommandPolicy {
+export function classifyProjectCommand(
+  command: string,
+  ownership?: Partial<OwnershipSettings> | null
+): ProjectCommandPolicy {
   const clean = command.trim();
+  const owner = normalizeOwnershipSettings(ownership);
+  const ownerActive = owner.mode === 'owner';
 
   if (!clean) {
     return {
@@ -426,6 +437,16 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   }
 
   if (/[\r\n;&|><\x60]/.test(clean) || /\$\(/.test(clean)) {
+    if (ownerActive && owner.allowShellFeatures) {
+      return {
+        allowed: true,
+        requiresApproval: !owner.autoApprove,
+        risk: 'workspace',
+        permissionKey: 'terminal:owner-shell',
+        description:
+          'Owner Mode allows shell features (pipes, redirects, chaining) as your user account.',
+      };
+    }
     return {
       allowed: false,
       requiresApproval: false,
@@ -436,19 +457,31 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   }
 
   if (/(?:^|\s)(?:\.\.[\\/]|[A-Za-z]:[\\/]|\/(?!\/))/.test(clean)) {
-    return {
-      allowed: false,
-      requiresApproval: false,
-      risk: 'blocked',
-      reason:
-        'Terminal commands must stay inside the active workspace and may not reference parent or absolute paths.',
-    };
+    if (!(ownerActive && owner.allowAbsolutePaths)) {
+      return {
+        allowed: false,
+        requiresApproval: false,
+        risk: 'blocked',
+        reason:
+          'Terminal commands must stay inside the active workspace and may not reference parent or absolute paths.',
+      };
+    }
   }
 
   const destructive =
     /\b(rm|rmdir|del|erase|format|mkfs|shutdown|reboot|halt|poweroff)\b|\bgit\s+(reset|clean|checkout\s+--|restore\s+--staged|push|rebase)\b|\b(remove-item|clear-content|set-acl)\b/i;
 
   if (destructive.test(clean)) {
+    if (ownerActive && owner.allowSystemCommands) {
+      return {
+        allowed: true,
+        requiresApproval: !owner.autoApprove,
+        risk: 'workspace',
+        permissionKey: 'terminal:owner',
+        description:
+          'Owner Mode allows system and destructive commands as your user account.',
+      };
+    }
     return {
       allowed: false,
       requiresApproval: false,
@@ -459,6 +492,15 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   }
 
   if (/^(?:npm|pnpm|yarn|bun)\s+publish\b/i.test(clean)) {
+    if (ownerActive && owner.allowSystemCommands) {
+      return {
+        allowed: true,
+        requiresApproval: !owner.autoApprove,
+        risk: 'workspace',
+        permissionKey: 'terminal:owner',
+        description: 'Owner Mode allows package publishing as your user account.',
+      };
+    }
     return {
       allowed: false,
       requiresApproval: false,
@@ -467,10 +509,12 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
     };
   }
 
+  const needsApproval = !(ownerActive && owner.autoApprove);
+
   if (/^git\s+(?:add|commit)\b/i.test(clean)) {
     return {
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: needsApproval,
       risk: 'git-write',
       permissionKey: 'terminal:git-write',
       description: 'This command changes Git staging/history in the active workspace.',
@@ -482,7 +526,7 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   if (formatter.test(clean)) {
     return {
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: needsApproval,
       risk: 'workspace',
       permissionKey: 'terminal:format',
       description: 'This command may rewrite project files using a formatter or fixer.',
@@ -494,7 +538,7 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   if (packageMutation.test(clean)) {
     return {
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: needsApproval,
       risk: 'workspace',
       permissionKey: 'terminal:packages',
       description: 'This command may install/remove packages or modify dependency files.',
@@ -504,7 +548,7 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   if (/^npx\s+(?!tsc\b)/i.test(clean)) {
     return {
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: needsApproval,
       risk: 'workspace',
       permissionKey: 'terminal:generator',
       description: 'This command may download/execute a package or generator in the workspace.',
@@ -539,7 +583,7 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   if (verifyPatterns.some((pattern) => pattern.test(clean))) {
     return {
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: needsApproval,
       risk: 'verify',
       permissionKey: 'terminal:project-scripts',
       description:
@@ -567,7 +611,7 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   if (isDevServerCommand(clean)) {
     return {
       allowed: true,
-      requiresApproval: true,
+      requiresApproval: needsApproval,
       risk: 'verify',
       permissionKey: 'terminal:project-scripts',
       description: 'Starting the project executes code supplied by the active project.',
@@ -580,10 +624,12 @@ export function classifyProjectCommand(command: string): ProjectCommandPolicy {
   // agent capable without silently granting it authority.
   return {
     allowed: true,
-    requiresApproval: true,
+    requiresApproval: needsApproval,
     risk: 'workspace',
-    permissionKey: 'terminal:general',
-    description: 'This command will execute in the active workspace.',
+    permissionKey: ownerActive ? 'terminal:owner' : 'terminal:general',
+    description: ownerActive
+      ? 'Owner Mode: this command runs as your user account.'
+      : 'This command will execute in the active workspace.',
   };
 }
 
@@ -679,7 +725,7 @@ export function expandShellCommand(
       continue;
     }
 
-    if (classifyProjectCommand(rewritten).allowed === false) return null;
+    if (classifyProjectCommand(rewritten, currentOwnership()).allowed === false) return null;
     if (rewritten === piece && pieces.length === 1) return null;
     calls.push({
       name: 'run_command',
@@ -726,7 +772,7 @@ export function recoverImpliedToolCall(content: string): ProjectToolCall | null 
   if (lines.length !== 1) return null;
 
   const command = lines[0].replace(/^(?:\$|>)\s+/, '');
-  const policy = classifyProjectCommand(command);
+  const policy = classifyProjectCommand(command, currentOwnership());
   if (!policy.allowed) return null;
 
   return {
@@ -998,22 +1044,52 @@ function processInWorkspace(
   return matches[matches.length - 1];
 }
 
+function ownerShellSpawn(
+  command: string,
+  options: { cwd: string; env: Record<string, string> }
+): ChildProcess {
+  if (process.platform === 'win32') {
+    return spawn(
+      process.env.ComSpec || 'cmd.exe',
+      ['/d', '/s', '/c', command],
+      {
+        cwd: options.cwd,
+        env: options.env,
+        shell: false,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+  }
+  return spawn('/bin/bash', ['-lc', command], {
+    cwd: options.cwd,
+    env: options.env,
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
 async function startBackgroundProcess(
   call: ProjectToolCall,
   workspace: string,
   command: string,
-  env: Record<string, string>
+  env: Record<string, string>,
+  useOwnerShell = false
 ): Promise<ProjectToolExecution> {
   const id =
     'proc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
-  const { executable, argv } = parseCommandArguments(command);
-  const child = spawn(executable, argv, {
-    cwd: workspace,
-    env,
-    shell: false,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const child = useOwnerShell
+    ? ownerShellSpawn(command, { cwd: workspace, env })
+    : (() => {
+        const { executable, argv } = parseCommandArguments(command);
+        return spawn(executable, argv, {
+          cwd: workspace,
+          env,
+          shell: false,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      })();
 
   const proc: BackgroundProcess = {
     id,
@@ -1161,6 +1237,10 @@ async function scopedPermissionKey(
   return base + ':' + hash.digest('hex').slice(0, 24);
 }
 
+function currentOwnership(): OwnershipSettings {
+  return normalizeOwnershipSettings(useSettingsStore.getState().ownership);
+}
+
 async function ensureCommandPermitted(
   workspace: string,
   command: string,
@@ -1170,8 +1250,9 @@ async function ensureCommandPermitted(
   ) => Promise<AgentApprovalDecision>,
   untrustedInfluence = false
 ): Promise<void> {
-  const policy = classifyProjectCommand(command);
-  agentDebug('tool.command.policy', { command, reason, policy });
+  const ownership = currentOwnership();
+  const policy = classifyProjectCommand(command, ownership);
+  agentDebug('tool.command.policy', { command, reason, policy, ownership: ownership.mode });
   if (!policy.allowed) {
     throw new Error(
       'Terminal command blocked: ' +
@@ -1179,7 +1260,16 @@ async function ensureCommandPermitted(
     );
   }
 
-  if (!policy.requiresApproval && (!untrustedInfluence || policy.risk === 'read')) return;
+  if (!policy.requiresApproval && (!untrustedInfluence || policy.risk === 'read')) {
+    recordOwnerAction(ownership, {
+      action: 'terminal.auto',
+      detail: command,
+      workspace,
+      permissionKey: policy.permissionKey,
+      success: true,
+    });
+    return;
+  }
 
   const commandReason = typeof reason === 'string' ? reason.trim() : '';
   if (!commandReason) {
@@ -1228,6 +1318,14 @@ async function ensureCommandPermitted(
   if (decision === 'deny') {
     throw new Error('User denied terminal command: ' + command);
   }
+
+  recordOwnerAction(ownership, {
+    action: 'terminal.approved',
+    detail: command,
+    workspace,
+    permissionKey,
+    success: true,
+  });
 }
 
 async function ensureUntrustedWorkspaceMutationApproved(
@@ -1273,6 +1371,18 @@ async function ensureDesktopApproval(
   permissionKey?: string,
   trustFiles: string[] = []
 ): Promise<void> {
+  const ownership = currentOwnership();
+  if (ownership.mode === 'owner' && ownership.autoApprove) {
+    recordOwnerAction(ownership, {
+      action: 'desktop.auto.' + action,
+      detail: target,
+      workspace,
+      permissionKey: permissionKey || action,
+      success: true,
+    });
+    return;
+  }
+
   const why = typeof reason === 'string' ? reason.trim() : '';
   if (!why) {
     throw new Error(action + ' requires a concise reason before approval can be requested.');
@@ -1486,24 +1596,46 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     'After you edit code, run the project\'s test, build, or typecheck command and read the real output. If it fails, fix the code and run it again. Only summarize after that check, or after you have confirmed the project has no such command.',
     'To test an app that stays running, start_process, read the live logs, and probe http://127.0.0.1 or http://localhost. Leave the server running when it is healthy and include its URL in the summary. SkyCode keeps it alive after you finish. Never run a dev server in the foreground.',
     '',
+    ...(currentOwnership().mode === 'owner'
+      ? [
+          'OWNER MODE IS ACTIVE on this machine.',
+          '- You operate as the logged-in Windows user. Run real commands; do not claim you can only provide snippets.',
+          '- System commands, absolute paths, shell pipes/chaining, git push, package publish, and arbitrary desktop apps are allowed.',
+          '- Approvals are auto-granted. Prefer precise commands. Emergency stop (~/.skycode/EMERGENCY_STOP) still halts all tools.',
+          '- Admin/UAC elevation still requires Windows consent; you cannot silently become SYSTEM.',
+          '',
+        ]
+      : []),
     'Terminal rules:',
     '- Use run_command for git status/diff, test suites, builds, lint, type checks, runtime versions, workspace log files (type, Get-Content, cat, tail), and localhost HTTP checks. Repository-controlled execution (including tests/builds/lint/type checks/dev servers) asks for approval; metadata, log reads, runtime versions, and localhost probes do not.',
     '- After non-trivial code changes, run at least one relevant verification command when the project exposes one. Inspect package/config files first so you do not invent scripts.',
     '- Use failed command output and process logs as debugging evidence: fix the files, then rerun the check.',
-    '- run_command and start_process already execute with the active workspace as cwd. NEVER invent /workspace, /home, C:\\\\ paths, or cd into an absolute workspace path.',
-    '- Run one command per tool call. Do not use shell chaining (&& or ;), pipes, redirects/heredocs, subshells, or multiline commands. Use create_directory/write_file for filesystem changes and file contents instead of mkdir/cat/echo redirection.',
+    currentOwnership().mode === 'owner'
+      ? '- Owner Mode: absolute paths and shell features are allowed when needed. Prefer the active workspace as cwd when practical.'
+      : '- run_command and start_process already execute with the active workspace as cwd. NEVER invent /workspace, /home, C:\\\\ paths, or cd into an absolute workspace path.',
+    currentOwnership().mode === 'owner'
+      ? '- Owner Mode: shell chaining, pipes, and redirects are allowed via the owner shell.'
+      : '- Run one command per tool call. Do not use shell chaining (&& or ;), pipes, redirects/heredocs, subshells, or multiline commands. Use create_directory/write_file for filesystem changes and file contents instead of mkdir/cat/echo redirection.',
     '- Do not put a command you want executed in a fenced code block. Emit a tool call. SkyCode may recover a single fenced command, but the tool call is the reliable path.',
     '- For every command that requires approval, the reason must explain the purpose/necessity, not restate the action. Bad: "Install Jest dev dependency." Good: "The project uses Jest for its automated tests, so dependencies must be installed before I can run and verify the requested test suite." Package installs must say what capability/package is needed and why the current task cannot proceed or be verified without it.',
-    '- Package installation/removal, generators, arbitrary workspace commands, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
-    '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
+    currentOwnership().mode === 'owner'
+      ? '- Owner Mode auto-approves terminal, desktop, MCP, and network capabilities for this session.'
+      : '- Package installation/removal, generators, arbitrary workspace commands, format/fix scripts, and git add/commit require interactive user approval. SkyCode can remember approval once, for the current session, or persistently for that permission family.',
+    currentOwnership().mode === 'owner'
+      ? '- Owner Mode lifts the hard block on destructive/system commands. Still avoid irreversible damage unless the user asked for it.'
+      : '- Destructive filesystem commands, git push/history rewrites, package publishing, and system-management commands remain blocked even with approval.',
     '- If a needed command is blocked, keep going with file work or another allowed check and tell the user exactly which command remains unavailable. Do not end the task at the blocked command.',
     '',
     'Rules:',
-    '- All paths must stay inside the workspace root.',
+    currentOwnership().mode === 'owner'
+      ? '- File tools (read/write/delete) still use the workspace root. Use run_command for machine-wide actions outside the workspace.'
+      : '- All paths must stay inside the workspace root.',
     '- Prefer relative paths.',
     '- Never claim a file was created or changed unless the tool result says success.',
     '- Inspect existing files before overwriting when the request targets an existing project.',
-    '- Do not delete files, publish code, rewrite git history, or access paths outside the workspace. Package/dependency changes and approved git workspace changes are allowed only through the interactive permission flow.',
+    currentOwnership().mode === 'owner'
+      ? '- Owner Mode permits deletions, publishing, and git history changes through the terminal when the user request requires them.'
+      : '- Do not delete files, publish code, rewrite git history, or access paths outside the workspace. Package/dependency changes and approved git workspace changes are allowed only through the interactive permission flow.',
     '- For a small plain HTML/CSS/JavaScript project, normally keep markup in index.html, shared presentation in one or more CSS files, and behavior in JavaScript modules instead of embedding everything in index.html.',
     '- For larger projects, create a folder structure appropriate to the stack before writing implementation files.',
     '- Batch independent tool calls in the same response whenever possible. Do not spend one model round trip per file; SkyCode can execute multiple create_directory/write_file calls from one response.',
@@ -1641,8 +1773,20 @@ export async function executeProjectToolCall(
         }
         const env = safeTerminalEnv(context.env || {});
 
+        const ownership = currentOwnership();
+        const useOwnerShell =
+          ownership.mode === 'owner' &&
+          ownership.allowShellFeatures &&
+          (/[\r\n;&|><\x60]/.test(args.command) || /\$\(/.test(args.command));
+
         if (call.name === 'start_process' || isDevServerCommand(args.command)) {
-          return await startBackgroundProcess(call, workspace, args.command, env);
+          return await startBackgroundProcess(
+            call,
+            workspace,
+            args.command,
+            env,
+            useOwnerShell
+          );
         }
 
         args.cwd = workspace;
@@ -1652,6 +1796,7 @@ export async function executeProjectToolCall(
         );
         args.captureOutput = true;
         args.env = env;
+        args.useShell = useOwnerShell;
         break;
       }
       case 'read_process_logs':
@@ -1738,7 +1883,7 @@ export async function executeProjectToolCall(
         return {
           call,
           success: true,
-          content: await openOnDesktop(target),
+          content: await openOnDesktop(target, currentOwnership()),
           displayPath: target,
         };
       }

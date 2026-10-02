@@ -176,6 +176,15 @@ Approval choices:
 
 Use `/permissions` to inspect session and persistent permissions, and `/permissions reset` to revoke them. Destructive filesystem commands, package publishing, git push/history rewrites, and system-management commands remain blocked rather than approvable.
 
+### Owner Mode (opt-in PC control)
+
+For local machines where you want SkyCode agents to act as your Windows user with far fewer gates:
+
+1. `/owner on`
+2. `/owner confirm`
+
+Owner Mode auto-approves tools and lifts the hard blocks on system commands, absolute paths, shell pipes/chaining, and arbitrary desktop apps. It still cannot bypass Secure Desktop/lock screens or silent Admin elevation. Create `~/.skycode/EMERGENCY_STOP` to halt every tool immediately. Use `/owner off` to return to safe mode.
+
 ## Internal agent terminal
 
 SkyCode coding agents can use a restricted terminal inside the active workspace during project work. The autonomous allowlist is limited to read-only repository metadata, runtime version checks, workspace log reads, and localhost probes. Project tests, builds, linters, type checks, and dev servers require approval because they execute repository-controlled code.

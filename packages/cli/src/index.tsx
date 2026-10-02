@@ -25,6 +25,12 @@ import {
   runUpdateCommand,
 } from './utils/updater';
 import { useSettingsStore, getProviderApiKey, setProviderApiKey, getConfiguredProviders } from './store/settings';
+import {
+  createOwnerSettings,
+  createSafeOwnershipSettings,
+  describeOwnership,
+} from './security/ownership';
+import { emergencyStopActive } from './security/safety-control';
 import { createOpenRouterProvider } from './providers/openrouter';
 import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
@@ -175,7 +181,10 @@ function App() {
     model: modelSettings,
     updateModelSettings,
     updatePermissionSettings,
+    updateOwnershipSettings,
+    ownership,
   } = useSettingsStore();
+  const pendingOwnerEnableRef = useRef(false);
 
   const visibleMessages = getVisibleConversationMessages(currentMessages);
 
@@ -219,7 +228,13 @@ function App() {
 
   const requestAgentApproval = useCallback(
     async (request: AgentApprovalRequest): Promise<AgentApprovalDecision> => {
-      const permissions = useSettingsStore.getState().permissions;
+      const state = useSettingsStore.getState();
+      const ownershipState = state.ownership;
+      if (ownershipState?.mode === 'owner' && ownershipState.autoApprove) {
+        return 'always';
+      }
+
+      const permissions = state.permissions;
       const now = Date.now();
       const persistent = permissions?.leases || [];
       const liveLeases = persistent.filter((lease) => lease.expiresAt > now);
@@ -242,7 +257,7 @@ function App() {
         scrollChatToBottom();
       });
     },
-    [scrollChatToBottom]
+    [scrollChatToBottom, updatePermissionSettings]
   );
 
   const resolveApproval = useCallback(
@@ -862,6 +877,50 @@ function App() {
         'system',
         'Cleared persistent and session tool approvals. Future workspace-changing commands will ask again.'
       );
+    } else if (
+      command === '/owner' ||
+      command === '/owner status'
+    ) {
+      addMessage(
+        'system',
+        [
+          describeOwnership(ownership),
+          '',
+          'Emergency stop active: ' + String(emergencyStopActive()),
+          '',
+          'Commands: /owner on  →  /owner confirm  → enable',
+          '          /owner off → return to safe mode',
+        ].join('\n')
+      );
+    } else if (command === '/owner on') {
+      pendingOwnerEnableRef.current = true;
+      addMessage(
+        'system',
+        [
+          'Owner Mode lets SkyCode agents act as your Windows user:',
+          '- Auto-approve terminal, desktop, MCP, and network tools',
+          '- Allow system/destructive commands, absolute paths, shell pipes, and any desktop app',
+          '- Still blocked: Secure Desktop / lock screen / silent Admin elevation',
+          '- Kill switch: create ~/.skycode/EMERGENCY_STOP',
+          '',
+          'Type /owner confirm to enable, or anything else to cancel.',
+        ].join('\n')
+      );
+    } else if (command === '/owner confirm') {
+      if (!pendingOwnerEnableRef.current) {
+        addMessage('system', 'Nothing to confirm. Run /owner on first.');
+      } else {
+        pendingOwnerEnableRef.current = false;
+        updateOwnershipSettings(createOwnerSettings());
+        addMessage(
+          'system',
+          'Owner Mode ENABLED. Agents can operate this PC as your user. Use /owner off to revoke.'
+        );
+      }
+    } else if (command === '/owner off') {
+      pendingOwnerEnableRef.current = false;
+      updateOwnershipSettings(createSafeOwnershipSettings());
+      addMessage('system', 'Owner Mode disabled. Safe mode restored.');
     } else if (command.startsWith('/remember ')) {
       const fact = command.slice('/remember '.length).trim();
       const saved = remember(fact, {
@@ -1142,6 +1201,9 @@ Available commands:
   /doctor    - Check command/provider/storage health
   /permissions - Show persistent/session tool approvals
   /permissions reset - Clear saved and session approvals
+  /owner    - Show Owner Mode status (PC-level agent control)
+  /owner on - Start enabling Owner Mode (then /owner confirm)
+  /owner off - Disable Owner Mode
   /credits  - Show the OpenRouter balance and open the payment page
   /servers  - Show background app servers left running by the agent
   /servers stop - Stop every background server in this workspace

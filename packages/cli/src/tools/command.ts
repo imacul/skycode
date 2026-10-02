@@ -63,17 +63,40 @@ interface CapturedProcess {
 
 function executeWithoutShell(
   command: string,
-  options: { cwd?: string; timeout: number; maxBuffer: number; env?: Record<string, string> }
+  options: {
+    cwd?: string;
+    timeout: number;
+    maxBuffer: number;
+    env?: Record<string, string>;
+    useShell?: boolean;
+  }
 ): Promise<CapturedProcess> {
-  const { executable, argv } = parseCommandArguments(command);
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(executable, argv, {
-      cwd: options.cwd,
-      env: options.env,
-      shell: false,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = options.useShell
+      ? process.platform === 'win32'
+        ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], {
+            cwd: options.cwd,
+            env: options.env,
+            shell: false,
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+        : spawn('/bin/bash', ['-lc', command], {
+            cwd: options.cwd,
+            env: options.env,
+            shell: false,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+      : (() => {
+          const { executable, argv } = parseCommandArguments(command);
+          return spawn(executable, argv, {
+            cwd: options.cwd,
+            env: options.env,
+            shell: false,
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+        })();
     let stdout = '';
     let stderr = '';
     let total = 0;
@@ -132,8 +155,11 @@ export class RunCommandTool implements BaseTool {
         };
       }
 
-      // Validate command (basic security check)
-      if (!this.isCommandAllowed(command)) {
+      const useShell = args.useShell === true;
+
+      // Validate command (basic security check). Owner Mode shell bypasses the
+      // legacy substring denylist because classifyProjectCommand already gated it.
+      if (!useShell && !this.isCommandAllowed(command)) {
         return {
           success: false,
           error: `Command not allowed: ${command}`,
@@ -146,6 +172,7 @@ export class RunCommandTool implements BaseTool {
         timeout,
         maxBuffer: args.maxBuffer ? Number(args.maxBuffer) : 1024 * 1024 * 10, // 10MB
         env: args.env as unknown as Record<string, string> | undefined,
+        useShell,
       };
 
       const result = await executeWithoutShell(command, options);

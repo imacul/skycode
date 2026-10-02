@@ -145,6 +145,31 @@ describe('project tool protocol', () => {
     expect(general.permissionKey).toBe('terminal:general');
   });
 
+  it('Owner Mode lifts hard blocks and auto-approves when enabled', () => {
+    const owner = {
+      mode: 'owner' as const,
+      autoApprove: true,
+      allowSystemCommands: true,
+      allowAbsolutePaths: true,
+      allowShellFeatures: true,
+      allowArbitraryDesktopApps: true,
+      leaseTtlHours: 168,
+    };
+
+    expect(classifyProjectCommand('git push', owner).allowed).toBe(true);
+    expect(classifyProjectCommand('git push', owner).requiresApproval).toBe(false);
+    expect(classifyProjectCommand('rm -rf .', owner).allowed).toBe(true);
+    expect(classifyProjectCommand('npm test && git status', owner).allowed).toBe(true);
+    expect(classifyProjectCommand('npm test && git status', owner).permissionKey).toBe(
+      'terminal:owner-shell'
+    );
+    expect(classifyProjectCommand('type C:\\Windows\\win.ini', owner).allowed).toBe(true);
+    expect(classifyProjectCommand('npm test', owner).requiresApproval).toBe(false);
+    expect(classifyProjectCommand('node scripts/generate.js', owner).permissionKey).toBe(
+      'terminal:owner'
+    );
+  });
+
   it('asks before running project verification scripts because repositories can define arbitrary code', async () => {
     const root = await workspace();
     let asked = false;

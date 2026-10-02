@@ -38,4 +38,13 @@ describe('interactive permission approval UI', () => {
     expect(appSource).toContain("command === '/permissions'");
     expect(appSource).toContain("command === '/permissions reset'");
   });
+
+  it('supports Owner Mode settings and slash commands', () => {
+    expect(settingsSource).toContain('ownership: OwnershipSettings');
+    expect(settingsSource).toContain('updateOwnershipSettings');
+    expect(appSource).toContain("command === '/owner on'");
+    expect(appSource).toContain("command === '/owner confirm'");
+    expect(appSource).toContain("command === '/owner off'");
+    expect(appSource).toContain("ownershipState?.mode === 'owner' && ownershipState.autoApprove");
+  });
 });

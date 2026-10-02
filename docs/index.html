@@ -32,6 +32,7 @@
       <a href="#history">Chat history</a>
       <a href="#memory">Cross-chat memory</a>
       <a href="#project-tools">Project creation</a>
+      <a href="#owner-mode">Owner Mode</a>
       <a href="#eval">AI evaluation</a>
     </aside>
 
@@ -148,6 +149,10 @@
           <div><code>/doctor</code><span>Check slash-command, provider, storage, and workspace health before a demo.</span></div>
           <div><code>/permissions</code><span>Inspect persistent and session tool approvals.</span></div>
           <div><code>/permissions reset</code><span>Clear saved and session approvals.</span></div>
+          <div><code>/owner</code><span>Show Owner Mode status (PC-level agent control).</span></div>
+          <div><code>/owner on</code><span>Start enabling Owner Mode (then confirm).</span></div>
+          <div><code>/owner confirm</code><span>Confirm and enable Owner Mode.</span></div>
+          <div><code>/owner off</code><span>Disable Owner Mode and restore safe mode.</span></div>
           <div><code>Page Up / Page Down</code><span>Scroll through a long chat transcript.</span></div>
           <div><code>Ctrl + Home / Ctrl + End</code><span>Jump to the oldest or newest part of the transcript.</span></div>
         </div>
@@ -165,7 +170,32 @@
         <p>Launch SkyCode in a workspace and ask the coding agent to create, scaffold, build, edit, or modify a project. It can create directories and write, read, list, and search files directly inside that workspace.</p>
         <div class="codebox"><code>Create a portfolio website in ./portfolio using HTML, CSS, and JavaScript.</code></div>
         <p>File operations are restricted to the directory where SkyCode was launched. The coding agent also has a permission-aware workspace terminal: read-only metadata checks can run directly, while tests/builds, dependency changes, generators, format/fix scripts, and Git staging/commit commands pause for an interactive approval.</p>
-        <p>Choose <strong>Allow once</strong>, <strong>Allow session</strong>, <strong>Always allow</strong>, or <strong>Deny</strong>. Destructive commands, package publishing, Git push/history rewrites, and system-management commands remain blocked.</p>
+        <p>Choose <strong>Allow once</strong>, <strong>Allow session</strong>, <strong>Always allow</strong>, or <strong>Deny</strong>. In safe mode, destructive commands, package publishing, Git push/history rewrites, and system-management commands remain blocked. Use <a href="#owner-mode">Owner Mode</a> when you want broader PC-level control.</p>
+      </section>
+
+      <section id="owner-mode" class="plain-section">
+        <div class="eyebrow">OWNER MODE · v1.23.0</div>
+        <h2>Opt-in PC-level agent control</h2>
+        <p>Owner Mode lets SkyCode agents operate as your logged-in OS user with far fewer gates. It is off by default and requires an explicit confirm step.</p>
+        <div class="codebox"><code>/owner on</code><button class="copy" data-copy="/owner on">Copy</button></div>
+        <div class="codebox"><code>/owner confirm</code><button class="copy" data-copy="/owner confirm">Copy</button></div>
+        <p>When enabled, SkyCode can:</p>
+        <ul>
+          <li>Auto-approve terminal, desktop, MCP, and local-network tool calls</li>
+          <li>Run system and destructive commands as your user account</li>
+          <li>Use absolute paths and shell features (pipes, redirects, chaining)</li>
+          <li>Open arbitrary desktop apps, not only the safe-mode whitelist</li>
+        </ul>
+        <p>Still enforced:</p>
+        <ul>
+          <li>Secure Desktop / lock screen / password fields stay blocked</li>
+          <li>No silent Admin / UAC elevation</li>
+          <li>Credential vault and secret redaction remain active</li>
+          <li>Emergency stop: create <code>~/.skycode/EMERGENCY_STOP</code> to halt every tool</li>
+        </ul>
+        <p>Check status with <code>/owner</code> or <code>/owner status</code>. Disable with:</p>
+        <div class="codebox"><code>/owner off</code><button class="copy" data-copy="/owner off">Copy</button></div>
+        <div class="note">Owner Mode actions are audited under <code>~/.skycode/audit/owner-actions.jsonl</code>. Prefer safe mode for untrusted repos and demos.</div>
       </section>
 
       <section id="eval" class="plain-section">
@@ -197,7 +227,7 @@
         <p>Conversation history is stored on your machine under <code>~/.skycode/conversations.json</code>. Provider settings are stored under <code>~/.skycode/settings.json</code>.</p>
       </section>
 
-      <footer>SkyCode · Built for local + cloud AI workflows.</footer>
+      <footer>SkyCode v1.23.0 · Built for local + cloud AI workflows.</footer>
     </main>
   </div>
 
