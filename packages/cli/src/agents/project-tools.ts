@@ -21,7 +21,12 @@ import {
 import { recordOwnerAction } from '../security/owner-audit';
 import { useSettingsStore } from '../store/settings';
 import { openOnDesktop } from './desktop-tools';
-import { braveIsRunning, detectBrowserPlayRequest, playOnYoutubeMusic } from './browser-control';
+import {
+  braveIsRunning,
+  detectBrowserPlayRequest,
+  detectOpenWebsiteRequest,
+  playOnYoutubeMusic,
+} from './browser-control';
 import { callMcpTool, listMcpTools } from './mcp-client';
 import { fetchLocalWebPage, fetchWebPage, searchWeb } from './web-tools';
 import {
@@ -105,6 +110,7 @@ export function shouldUseProjectTools(input: string): boolean {
 
   if (isProjectCapabilityQuestion(text)) return false;
   if (detectBrowserPlayRequest(input)) return true;
+  if (detectOpenWebsiteRequest(input)) return true;
   if (/\b(search|research|look up|find|browse)\b.{0,80}\b(web|internet|online|sources?|latest|current|today|news)\b/.test(text)) return true;
   if (/\b(open|launch|use|control)\b.{0,50}\b(browser|brave|chrome|firefox|edge|figma|powerpoint|excel|word)\b/.test(text)) return true;
 

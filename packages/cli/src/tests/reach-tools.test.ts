@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { createServer } from 'node:http';
-import { detectBrowserPlayRequest, extractYoutubeVideoIds, selectRecentYoutubeCandidate, youtubeMusicWatchUrl } from '../agents/browser-control';
+import {
+  detectBrowserPlayRequest,
+  detectOpenWebsiteRequest,
+  extractYoutubeVideoIds,
+  selectRecentYoutubeCandidate,
+  youtubeMusicWatchUrl,
+} from '../agents/browser-control';
 import { shouldUseProjectTools } from '../agents/project-tools';
 import { classifyOpenTarget } from '../agents/desktop-tools';
 import { parseMcpConfig, takeMcpFrames } from '../agents/mcp-client';
@@ -117,6 +123,18 @@ describe('web, desktop, and MCP tools', () => {
     expect(detectBrowserPlayRequest('Find the latest Asake song and play it.')).toBe('Asake latest song');
     expect(shouldUseProjectTools('Research the latest Asake release online.')).toBe(true);
     expect(shouldUseProjectTools('Open Brave and browse the web.')).toBe(true);
+  });
+
+  it('hard-routes open-website requests to a concrete https URL', () => {
+    expect(detectOpenWebsiteRequest('Open vercel website in the browser')).toBe(
+      'https://vercel.com/'
+    );
+    expect(detectOpenWebsiteRequest('open https://example.com/docs')).toBe(
+      'https://example.com/docs'
+    );
+    expect(detectOpenWebsiteRequest('open google.com')).toBe('https://google.com/');
+    expect(detectOpenWebsiteRequest('Build a vercel website in this folder')).toBeNull();
+    expect(shouldUseProjectTools('Open vercel website in the browser')).toBe(true);
   });
 
   it('builds a YouTube Music autoplay link from search HTML', () => {

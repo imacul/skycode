@@ -24,7 +24,7 @@ import {
   fetchOpenRouterKeyStatus,
   type RoutableModel,
 } from '../utils/openrouter-route';
-import { detectBrowserPlayRequest } from './browser-control';
+import { detectBrowserPlayRequest, detectOpenWebsiteRequest } from './browser-control';
 import {
   expandShellCommand,
   executeProjectToolCall,
@@ -296,6 +296,34 @@ export class CodingAgent implements BaseAgent {
         status: execution.success ? 'success' : 'error',
         title: execution.success ? 'Playing on YouTube Music' : 'Playback failed',
         path: 'brave',
+        preview: execution.content.split('\n').slice(0, 6),
+      });
+      return {
+        content: execution.content,
+        finishReason: execution.success ? 'stop' : 'error',
+        tokensUsed: 0,
+      };
+    }
+
+    const openUrl = detectOpenWebsiteRequest(request.input);
+    if (openUrl) {
+      const execution = await executeProjectToolCall(
+        {
+          name: 'open_url',
+          args: {
+            url: openUrl,
+            reason: 'The user asked SkyCode to open this website in the browser.',
+          },
+        },
+        this.context,
+        request.onApproval
+      );
+      onActivity?.({
+        id: 'open_url',
+        type: execution.success ? 'complete' : 'error',
+        status: execution.success ? 'success' : 'error',
+        title: execution.success ? 'Opened in browser' : 'Could not open browser',
+        path: openUrl,
         preview: execution.content.split('\n').slice(0, 6),
       });
       return {
