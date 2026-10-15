@@ -4,13 +4,15 @@ These tools belong to the existing SkyCode task loop; they are not separate Note
 
 | Skill | Capability |
 | --- | --- |
+| `computer_observe_window` | Inspect an exact discovered window without changing foreground focus |
+| `computer_focus_window` | Restore/focus an exact discovered window and verify Windows accepted activation |
 | `computer_observe` | Read the foreground window identity and a bounded semantic UIA control snapshot |
 | `computer_act` | Execute one UIA focus, invoke, value assignment, scroll, or approved shortcut |
 | `computer_batch` | Execute 1–8 actions in the same local Windows adapter without additional model calls; stop on failure |
 | `computer_verify` | Compare the current foreground window and optionally an accessible control against explicitly expected values |
 | `desktop_list_windows` | Categorize top-level windows without inspecting pixel screenshots |
 
-Call `computer_observe` to obtain the exact window title, process ID and control name or automation ID. Pass those identities into `computer_act` or `computer_batch`; the adapter refuses to act when focus changes. Use `computer_verify` after changing a control. The `postObserved` field means that another UIA snapshot was captured after an action; it is **not** proof that the user's overall task succeeded.
+Call `desktop_list_windows` to obtain the exact window title, process ID, and optional handle. Use `computer_observe_window` to inspect an app without changing focus, or `computer_focus_window` to activate it. Then call `computer_observe` to obtain the foreground controls. Pass those identities into `computer_act` or `computer_batch`; the adapter refuses to act when focus changes. Use `computer_verify` after changing a control. The `postObserved` field means that another UIA snapshot was captured after an action; it is **not** proof that the user's overall task succeeded.
 
 ### Bounds
 
