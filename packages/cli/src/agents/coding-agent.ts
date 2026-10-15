@@ -38,6 +38,7 @@ import {
   shouldContinueProjectTools,
   shouldUseProjectTools,
   classifyToolLoopMode,
+  selectDesktopObservation,
   stripProjectToolCalls,
   type ProjectToolCall,
   type ProjectToolExecution,
@@ -278,6 +279,34 @@ export class CodingAgent implements BaseAgent {
     // Model-driven tools only: SkyCode never hardcodes the user's intent into a
     // forced open_url / browser play. The model must choose tools (or say that
     // no suitable capability exists).
+    const desktopObservation = selectDesktopObservation(request.input);
+    if (desktopObservation) {
+      // Read-only desktop observations need one approved tool call, not a
+      // forty-round model session attempting arbitrary shell commands.
+      const execution = await executeProjectToolCall(
+        desktopObservation, this.context, request.onApproval
+      );
+      onToolExecution?.(execution);
+      if (!execution.success) {
+        return { content: 'Could not list windows: ' + execution.content, finishReason: 'tool_error', tokensUsed: 0 };
+      }
+      try {
+        const data = JSON.parse(execution.content) as { windows?: Array<{ title: string; processName: string; focused: boolean }> };
+        const windows = data.windows || [];
+        const display = windows.slice(0, 35).map((window, index) =>
+          String(index + 1) + '. ' + window.processName + ' — ' + window.title +
+          (window.focused ? ' (active)' : '')
+        );
+        return {
+          content: windows.length
+            ? 'Open application windows (' + windows.length + '):\\n' + display.join('\\n')
+            : 'No accessible application windows were returned.',
+          finishReason: 'stop', tokensUsed: 0,
+        };
+      } catch {
+        return { content: 'Window discovery returned an invalid result.', finishReason: 'tool_error', tokensUsed: 0 };
+      }
+    }
     const loopMode = classifyToolLoopMode(request.input);
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
@@ -308,6 +337,7 @@ export class CodingAgent implements BaseAgent {
     let lastModelToolFailed = false;
     let untrustedInfluence = false;
     const allExecutions: ProjectToolExecution[] = [];
+    const failedCallCounts = new Map<string, number>();
 
     if (loopMode === 'build') {
       const initialActivityId = 'planning_' + Date.now();
@@ -720,6 +750,19 @@ export class CodingAgent implements BaseAgent {
         };
       }
       for (const call of executableCalls.slice(0, Math.min(8, remainingToolBudget))) {
+        const signature = call.name + ':' + JSON.stringify(call.args);
+        if ((failedCallCounts.get(signature) || 0) >= 2) {
+          const blocked: ProjectToolExecution = {
+            call, success: false,
+            content: 'This identical action already failed twice. Do not retry it. Use a different tool or request clarification.',
+            trust: 'trusted-control',
+          };
+          executions.push(blocked);
+          allExecutions.push(blocked);
+          lastModelToolFailed = true;
+          onToolExecution?.(blocked);
+          continue;
+        }
         const activityId =
           'tool_' + Date.now() + '_' + iteration + '_' + executions.length;
         const path =
@@ -780,6 +823,7 @@ export class CodingAgent implements BaseAgent {
         );
         executions.push(execution);
         allExecutions.push(execution);
+        if (!execution.success) failedCallCounts.set(signature, (failedCallCounts.get(signature) || 0) + 1);
         if (execution.success && (call.name === 'web_search' || call.name === 'web_fetch')) {
           hasWebEvidence = true;
         }
@@ -852,6 +896,15 @@ export class CodingAgent implements BaseAgent {
         untrustedInfluence = true;
       }
 
+      const recentFailures = allExecutions.slice(-6);
+      if (recentFailures.length >= 4 && recentFailures.filter(item => !item.success).length >= 4) {
+        return {
+          content: 'SkyCode stopped after repeated tool failures instead of wasting further model calls. Last error: ' +
+            (recentFailures[recentFailures.length - 1]?.content || 'unknown').slice(0, 900) +
+            '\\nTry a different approach or inspect the tool implementation.',
+          finishReason: 'repeated_tool_failure', tokensUsed,
+        };
+      }
       const toolResult = projectToolResultMessage(executions);
       agentDebug('tool.result.to_model', { traceId, iteration, content: toolResult.content });
       messages.push(toolResult);
