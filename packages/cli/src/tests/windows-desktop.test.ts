@@ -491,3 +491,32 @@ describe('whole-desktop visual observation', () => {
     expect(script).toContain("if($snap.scope -cne 'window')");
   });
 });
+
+describe('automatic dynamic visual loop', () => {
+  test('feeds new screen pixels to the model after GUI actions, including failures', () => {
+    const source=readFileSync(resolve(import.meta.dir,'../agents/project-tools.ts'),'utf8');
+    expect(source).toContain("const result = await runComputerCore('capture', [], undefined, undefined, scope)");
+    expect(source).toContain("try { visual = await captureComputerFeedback('desktop'); }");
+    expect(source).toContain("result = { ok: false, error: actionError }");
+    expect(source).toContain("imageDataUrl: visual?.imageDataUrl");
+    expect(source).toContain("Fresh pixels after the attempted action");
+    expect(source).toContain("imageDataUrl: [...executions].reverse().find");
+  });
+  test('refreshes screenshot when the model focuses a different window', () => {
+    const source=readFileSync(resolve(import.meta.dir,'../agents/project-tools.ts'),'utf8');
+    expect(source).toContain("if (focusing && ['openai', 'openrouter', 'chatgpt'].includes");
+    expect(source).toContain('Fresh screen pixels after window focus');
+  });
+  test('attempts semantic UI Automation focus when Windows refuses foreground activation', () => {
+    const adapter=readFileSync(resolve(import.meta.dir,'../../scripts/computer-core.ps1'),'utf8');
+    expect(adapter).toContain('try {$window.SetFocus(); Start-Sleep -Milliseconds 180}');
+    expect(adapter).toContain('No input was sent; refresh desktop observation');
+  });
+  test('the model gets screenshot images after capture but not repeatedly in future rounds', () => {
+    const agent=readFileSync(resolve(import.meta.dir,'../agents/coding-agent.ts'),'utf8');
+    const send=agent.indexOf('response = await this.context.provider.chat({');
+    const clear=agent.indexOf('if (message.imageDataUrl) delete message.imageDataUrl;',send);
+    expect(send).toBeGreaterThan(0);
+    expect(clear).toBeGreaterThan(send);
+  });
+});
