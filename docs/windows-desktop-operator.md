@@ -18,6 +18,14 @@ Call `desktop_list_windows` to obtain the exact window title, process ID, and op
 
 After a `type` or `set_value` action, call `computer_verify` with `expectedTitle`, `expectedProcessId`, and `expectedText` (1–1000 characters). This checks text actually exposed by accessible Edit/Document controls, searching up to 3,000 descendants instead of relying on the first 40 nodes returned by `computer_observe`. When the app does not expose readable text, the outcome is `verified:false` (unknown), **not** proof that the action failed or succeeded. Do not use `controlName` as evidence that the expected text was typed.
 
+### Automatic visual refresh after computer actions
+
+The desktop operator now attaches a fresh, full-desktop JPEG automatically after each `computer_act` / `computer_batch` operation, including a failed operation when capture is possible. The model receives actual new pixels in the next decision round without manually asking for a screenshot each time. `computer_focus_window` also returns a fresh visual observation. The most recent screenshot is forwarded if one tool response has multiple captures, and the transient image is cleared after the model request consumes it rather than added permanently to transcript history.
+
+When Windows rejects `SetForegroundWindow`, the adapter also tries UI Automation's `SetFocus` against the exact previously discovered window before declining to send input. It never sends the action if the target isn't foreground. Failed actions return an error alongside post-attempt pixels, not a false success.
+
+This loop is event-driven after GUI operations, not continuous video streaming. Screenshot evidence is observation, **not independent proof** that the requested operation succeeded. The model must inspect the resulting frame before continuing or reporting completion. Images can contain private screen content, which is sent to the configured vision model.
+
 ### GUI-first, efficient desktop execution
 
 For an ordinary visual Windows task, the model should follow a short loop: locate/focus or launch the required application, inspect its accessible controls or screenshot, perform physical mouse/keyboard interaction, then verify the actual resulting state. `run_command` is an allowed general skill but **not** the default means of navigating windows, folders, menus or dialogs. This is a model planning preference shared across all applications, not a hardcoded dictionary of user commands or application names.
