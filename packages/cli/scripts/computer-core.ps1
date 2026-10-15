@@ -129,7 +129,7 @@ function GetSafePoint($window,$target){
  $belongs=$false
  for($j=0;$j -lt 35 -and $cursorElement;$j++){
   $current=$cursorElement.Current
-  if([int]$current.NativeWindowHandle -eq [int]$window.Current.NativeWindowHandle -and
+  if([IntPtr]$current.NativeWindowHandle -eq [IntPtr]$window.Current.NativeWindowHandle -and
      [int]$current.ProcessId -eq [int]$window.Current.ProcessId){$belongs=$true;break}
   if($cursorElement -eq $target -or $cursorElement -eq $window){$belongs=$true;break}
   $cursorElement=[System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($cursorElement)
