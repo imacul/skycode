@@ -233,3 +233,20 @@ describe('semantic drag and mouse release', () => {
     expect(script).toContain('outcomeVerified=$false');
   });
 });
+
+describe('cross-application UI control disambiguation', () => {
+  test('requires conjunction of all supplied selectors, not fallback from ID to name', () => {
+    const adapter = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    expect(adapter).toContain('if($step.automationId -and $c.AutomationId -cne');
+    expect(adapter).toContain('if($step.name -and $c.Name -cne');
+    expect(adapter).toContain('if($step.role -and $c.ControlType.ProgrammaticName -cne');
+    expect(adapter).toContain('candidates:');
+    expect(adapter).toContain('Select-Object -First 6');
+  });
+  test('guides recovery without duplicating windows or guessing shell commands', () => {
+    const src = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
+    expect(src).toContain('Never retry the same ambiguous selector');
+    expect(src).toContain('reuse the existing target if it is already open');
+    expect(src).toContain('Do not attempt fragile shell commands');
+  });
+});
