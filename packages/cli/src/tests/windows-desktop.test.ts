@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateNotepadTarget, runWindowsDesktop, validateComputerStep } from '../agents/windows-desktop';
+import { validateNotepadTarget, runWindowsDesktop, validateComputerStep, verifyComputerObservation } from '../agents/windows-desktop';
 import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls, selectDesktopObservation, projectToolResultMessage } from '../agents/project-tools';
 
 describe('Windows desktop operator milestone', () => {
@@ -23,6 +23,7 @@ describe('Windows desktop operator milestone', () => {
     expect(PROJECT_TOOL_NAMES).toContain('computer_observe');
     expect(PROJECT_TOOL_NAMES).toContain('computer_act');
     expect(PROJECT_TOOL_NAMES).toContain('computer_batch');
+    expect(PROJECT_TOOL_NAMES).toContain('computer_verify');
     expect(PROJECT_TOOL_NAMES).toContain('desktop_snapshot');
     expect(PROJECT_TOOL_NAMES).toContain('desktop_list_windows');
     expect(PROJECT_TOOL_NAMES).toContain('desktop_close_document');
@@ -108,5 +109,14 @@ describe('generic computer operations', () => {
     expect(() => validateComputerStep({kind:'invoke',...window})).toThrow(/Specify/);
     expect(() => validateComputerStep({kind:'keypress',...window,keys:'%{F4}'})).toThrow(/shortcut/);
     expect(() => validateComputerStep({kind:'set_value',...window,name:'Text',value:'x'.repeat(3001)})).toThrow(/long/);
+  });
+});
+
+describe('deterministic desktop verification', () => {
+  test('checks actual foreground identity rather than trusting tool success', () => {
+    const window = { title: 'Notepad', processId: 4321, nodes: [{ name: 'Editor' }] };
+    expect(verifyComputerObservation({ window }, { expectedTitle: 'Notepad', expectedProcessId: 4321, controlName: 'Editor' }).verified).toBe(true);
+    expect(verifyComputerObservation({ window }, { expectedTitle: 'PowerShell', expectedProcessId: 4321 }).verified).toBe(false);
+    expect(verifyComputerObservation({ window }, { expectedTitle: 'Notepad', expectedProcessId: 4321, controlName: 'Save' }).verified).toBe(false);
   });
 });
