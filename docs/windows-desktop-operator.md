@@ -18,6 +18,14 @@ Call `desktop_list_windows` to obtain the exact window title, process ID, and op
 
 After a `type` or `set_value` action, call `computer_verify` with `expectedTitle`, `expectedProcessId`, and `expectedText` (1–1000 characters). This checks text actually exposed by accessible Edit/Document controls, searching up to 3,000 descendants instead of relying on the first 40 nodes returned by `computer_observe`. When the app does not expose readable text, the outcome is `verified:false` (unknown), **not** proof that the action failed or succeeded. Do not use `controlName` as evidence that the expected text was typed.
 
+### Dynamic task routing and cross-turn references
+
+Automatic SkyCode requests now use **one model-led agent with optional tools**, independent of the user's exact command words. The model receives conversation context and decides whether to answer in chat, inspect the desktop, operate a window, edit source files, or combine tools. `go to VS Code and create a file`, `create a folder in Explorer`, and follow-ups like `open it` no longer need keyword matches to make computer tools available.
+
+The separate chat, business, and planning agents remain available through explicit agent or specialist-mode selection. Owner Mode controls tool approvals and permissions, not the meaning of user phrases. The desktop adapter still validates supported action kinds, window identity, sensitive controls and permissions; removing phrase-based routing does **not** remove those safeguards.
+
+For context-dependent instructions, first resolve the referent from recent conversation and available desktop observations. When more than one target fits, ask for clarification instead of inventing a selection. For instructions about a GUI, prefer seeing and using the real application's interface, but use file/terminal APIs when requested or when they offer a clearly authorized, verifiable outcome.
+
 ### Ambiguous controls and cross-application recovery
 
 Targeted computer actions may identify controls by exact `name`, `automationId`, and `role` (e.g. `ControlType.Button`). When multiple fields are supplied, **all must match**; the operator never falls back to a looser name search. An ambiguous match reports a bounded sample of candidate control identities. The agent should inspect and narrow rather than repeat the same click. It should also avoid launching new application windows when the requested window is already present.
