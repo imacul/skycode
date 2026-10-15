@@ -20,7 +20,7 @@ function Wait-Window([int]$targetProcessId,[int]$milliseconds=12000) {
   if (!$proc) { throw "Notepad exited before the window opened." }
   $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
     [System.Windows.Automation.TreeScope]::Children,
-    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $targetProcessId)))
+    ([System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $targetProcessId)))
   if ($window) { return $window }
   Start-Sleep -Milliseconds 200
  }
@@ -44,7 +44,7 @@ function Assert-SafeForeground($window) {
  if ([SkyCodeWin32]::GetForegroundWindow() -ne $hwnd) { throw "Focus changed; refusing to type." }
 }
 function Find-Edit($window) {
- $condition=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)
+ $condition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)
  $items=$window.FindAll([System.Windows.Automation.TreeScope]::Descendants,$condition)
  foreach($item in $items) {if ($item.Current.IsEnabled -and !$item.Current.IsOffscreen) {return $item}}
  return $null
