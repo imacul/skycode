@@ -272,3 +272,18 @@ describe('physical Windows mouse interaction', () => {
     expect(agent).toContain('Mouse action sent: ');
   });
 });
+
+describe('natural-language mouse task routing', () => {
+  test('routes real Windows pointer actions to the tool loop', () => {
+    expect(needsReachTools("Move my mouse to the View button in File Explorer and click it. Tell me what options appear. Don't change any files.")).toBe(true);
+    expect(needsReachTools('Click the View menu in File Explorer')).toBe(true);
+    expect(needsReachTools('Drag the selected item in File Explorer')).toBe(true);
+    expect(needsReachTools('Scroll down in the current Windows application')).toBe(true);
+    expect(needsReachTools('Move the pointer to the Chrome search field')).toBe(true);
+  });
+  test('leaves explanatory questions in ordinary chat', () => {
+    expect(needsReachTools('How do I click the View button in File Explorer?')).toBe(false);
+    expect(needsReachTools('What is a mouse pointer?')).toBe(false);
+    expect(needsReachTools('Explain how to drag files in Windows.')).toBe(false);
+  });
+});
