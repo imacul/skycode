@@ -1644,7 +1644,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
     '- desktop_snapshot: {"reason":"Inspect the current foreground Windows app"} — reads a bounded UI Automation accessibility tree (requires approval). Never claim to see pixels; this is semantic-only.',
-    '- desktop_notepad_document: {"filename":"skycode-demo.txt","content":"Hello from SkyCode","reason":"Create and inspect the requested Notepad note"} — creates one new .txt in the active workspace, confirms its contents on disk, opens it in Notepad and attempts to compare accessible editor text. Requires approval. This milestone writes the file using the filesystem; it does NOT yet type into Notepad through the GUI.',
+    '- desktop_notepad_document: {"filename":"skycode-demo.txt","content":"Hello from SkyCode","reason":"Create and inspect the requested Notepad note"} — creates one new .txt in the active workspace, verifies it on disk, opens and inspects it in Notepad, then safely closes only its document tab, reopens it, and verifies the editor text again. Reports each stage separately. Requires approval. This milestone writes the file using the filesystem; it does NOT yet type into Notepad through the GUI.',
     '- browser: {"action":"search","query":"goat","engine":"google","reason":"..."} — opens ONE Brave window/tab to a Google (or duckduckgo) search URL for that query. Use this when the user wants to see a search in Brave.',
     '- browser: {"action":"open","url":"https://...","reason":"..."} — opens one URL in Brave (reuses the existing Brave process when possible).',
     '- browser: {"action":"play","query":"search terms","app":"brave","reason":"..."} — Brave + YouTube Music playback helper when you decide that fits.',
@@ -1950,7 +1950,7 @@ export async function executeProjectToolCall(
         await ensureDesktopApproval(workspace, 'desktop_notepad_document', filePath, args.reason, requestApproval, 'desktop:notepad-create');
         const result = await runWindowsDesktop({ action: 'notepad_document', path: filePath, content: args.content });
         return {
-          call, success: result.diskVerified === true, displayPath: filePath,
+          call, success: result.verified === true, displayPath: filePath,
           content: 'Notepad document result: ' + JSON.stringify(result),
           trust: 'trusted-control',
         };
