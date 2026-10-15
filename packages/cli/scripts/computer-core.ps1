@@ -173,7 +173,7 @@ try{
     if($handle -eq [IntPtr]::Zero -or [string]::IsNullOrWhiteSpace([string]$c.Name)){continue}
     $proc=Get-Process -Id $c.ProcessId -ErrorAction SilentlyContinue
     if(!$proc){continue}
-    $system=$proc.ProcessName -match '^(?i:explorer|shellexperiencehost|startmenuexperiencehost|searchhost|textinputhost)$'
+    $system=($proc.ProcessName -match '^(?i:shellexperiencehost|startmenuexperiencehost|searchhost|textinputhost)$' -or ($proc.ProcessName -ieq 'explorer' -and [string]$c.Name -match '^(?i:Program Manager)$'))
     $visibility=if($system){'system-ui'}elseif([SkyDesktopNative]::IsIconic($handle)){'minimized'}elseif([SkyDesktopNative]::IsWindowVisible($handle)){'visible'}else{'background'}
     $items+=@{title=[string]$c.Name;processName=[string]$proc.ProcessName;processId=[int]$c.ProcessId;
       focused=($handle -eq $active);visibility=$visibility;windowHandle=[string]$handle}
