@@ -385,12 +385,9 @@ export class CodingAgent implements BaseAgent {
     try {
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const modelActivityId = 'model_round_' + Date.now() + '_' + iteration;
-      // Screenshot pixels are needed for one model decision, not every
-      // subsequent reasoning turn. Keep the small capture metadata in text.
-      for (const message of messages) {
-        if (message.imageDataUrl) delete message.imageDataUrl;
-      }
-
+      // Screenshot pixels must be present for THIS provider call. Clear the
+      // transient attachment only AFTER model inference consumes the image.
+      // Keep the compact screenshot geometry in the text history.
       onActivity?.({
         id: modelActivityId,
         type: 'planning',
@@ -482,6 +479,9 @@ export class CodingAgent implements BaseAgent {
         throw error;
       }
 
+      for (const message of messages) {
+        if (message.imageDataUrl) delete message.imageDataUrl;
+      }
       onActivity?.({
         id: modelActivityId,
         type: 'planning',
