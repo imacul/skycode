@@ -124,23 +124,33 @@ function VerifyText($window,[string]$expectedText){
  }
  return @{verified=$false;reason='Expected text was not found in readable editor content.';editorsChecked=$searched}
 }
-function CaptureForeground {
+function CaptureScreen([string]$scope) {
  # Remove old screenshots created by SkyCode so idle captures do not persist.
  Get-ChildItem -LiteralPath ([System.IO.Path]::GetTempPath()) -Filter 'skycode-window-*.jpg' -File -ErrorAction SilentlyContinue |
   Where-Object { $_.Name -cmatch '^skycode-window-[0-9a-f]{32}\.jpg$' -and $_.LastWriteTimeUtc -lt [DateTime]::UtcNow.AddMinutes(-15) } |
   Remove-Item -Force -ErrorAction SilentlyContinue
+ if($scope -ne 'desktop' -and $scope -ne 'window'){throw 'Screenshot scope must be desktop or window.'}
  $window=Foreground
  CheckSafety $window
  $p=$window.Current
  $handle=[IntPtr]$p.NativeWindowHandle
- if($handle -eq [IntPtr]::Zero -or [SkyDesktopNative]::IsIconic($handle)){throw 'Cannot capture a minimized or invalid window.'}
- $bounds=$p.BoundingRectangle
- if($bounds.IsEmpty -or $bounds.Width -lt 20 -or $bounds.Height -lt 20){throw 'No usable window area to capture.'}
  $screenBounds=[System.Windows.Forms.SystemInformation]::VirtualScreen
- $left=[int][Math]::Max($bounds.Left,$screenBounds.Left)
- $top=[int][Math]::Max($bounds.Top,$screenBounds.Top)
- $right=[int][Math]::Min($bounds.Right,$screenBounds.Right)
- $bottom=[int][Math]::Min($bounds.Bottom,$screenBounds.Bottom)
+ if($scope -eq 'window'){
+  if($handle -eq [IntPtr]::Zero -or [SkyDesktopNative]::IsIconic($handle)){throw 'Cannot capture a minimized or invalid window.'}
+  $bounds=$p.BoundingRectangle
+  if($bounds.IsEmpty -or $bounds.Width -lt 20 -or $bounds.Height -lt 20){throw 'No usable window area to capture.'}
+  $left=[int][Math]::Max($bounds.Left,$screenBounds.Left)
+  $top=[int][Math]::Max($bounds.Top,$screenBounds.Top)
+  $right=[int][Math]::Min($bounds.Right,$screenBounds.Right)
+  $bottom=[int][Math]::Min($bounds.Bottom,$screenBounds.Bottom)
+ }else{
+  # Observe the visible composition of every monitor: wallpaper, desktop icons,
+  # taskbar, windows and overlays, not merely the current foreground app bounds.
+  $left=[int]$screenBounds.Left
+  $top=[int]$screenBounds.Top
+  $right=[int]$screenBounds.Right
+  $bottom=[int]$screenBounds.Bottom
+ }
  $width=$right-$left
  $height=$bottom-$top
  if($width -lt 20 -or $height -lt 20 -or $width -gt 7680 -or $height -gt 4320){throw 'Capture bounds are unavailable or too large.'}
@@ -165,7 +175,7 @@ function CaptureForeground {
    }finally{$params.Dispose()}
   }finally{$g.Dispose();$small.Dispose()}
  }finally{$graphics.Dispose();$bitmap.Dispose()}
- return @{path=$path;title=[string]$p.Name;processId=[int]$p.ProcessId;windowHandle=[string]$handle;left=$left;top=$top;width=$width;height=$height;imageWidth=$outWidth;imageHeight=$outHeight;format='image/jpeg';capturedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
+ return @{path=$path;scope=$scope;title=[string]$p.Name;processId=[int]$p.ProcessId;windowHandle=[string]$handle;left=$left;top=$top;width=$width;height=$height;imageWidth=$outWidth;imageHeight=$outHeight;format='image/jpeg';capturedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
 }
 function FindWindow($selector){
  if(!$selector -or !$selector.title -or !$selector.processId){throw 'Exact window title and process ID required. Enumerate windows first.'}
@@ -290,6 +300,7 @@ function MouseAction($window,$target,[string]$kind){
 function VisualClick($window,$step){
  $snap=$step.snapshot
  if(!$snap -or !$snap.path -or !$snap.windowHandle){throw 'A recent computer_screenshot result is required for visual clicking.'}
+ if($snap.scope -cne 'window'){throw 'Visual click requires a fresh window-scoped screenshot; recapture the target window.'}
  if([string]$snap.title -cne [string]$window.Current.Name -or [int]$snap.processId -ne [int]$window.Current.ProcessId -or [string]$snap.windowHandle -ne [string]$window.Current.NativeWindowHandle){throw 'Screenshot window identity is stale or mismatched.'}
  $filename=[System.IO.Path]::GetFileName([string]$snap.path)
  if($filename -cnotmatch '^skycode-window-[0-9a-f]{32}\.jpg$' -or
@@ -468,7 +479,8 @@ try{
   exit 0
  }
  if($request.action -eq 'capture'){
-  OutJson @{ok=$true;action='capture';capture=(CaptureForeground)}
+  $scope=if($request.scope){[string]$request.scope}else{'desktop'}
+  OutJson @{ok=$true;action='capture';capture=(CaptureScreen $scope)}
   exit 0
  }
  if($request.action -eq 'observe_window'){
