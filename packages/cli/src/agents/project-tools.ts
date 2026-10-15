@@ -2029,6 +2029,21 @@ export async function executeProjectToolCall(
         await ensureDesktopApproval(workspace, call.name, args.title, args.reason, requestApproval,
           focusing ? 'desktop:act' : 'desktop:observe');
         const result = await runComputerCore(focusing ? 'focus_window' : 'observe_window', [], selector);
+        if (focusing && ['openai', 'openrouter', 'chatgpt'].includes(context.provider?.name || '')) {
+          try {
+            const visual = await captureComputerFeedback('desktop');
+            return {
+              call, success: result.ok === true, trust: 'untrusted-data',
+              content: JSON.stringify({ ...result, visualFeedback: {
+                captured: true, capture: visual.capture,
+                note: 'Fresh screen pixels after window focus. Inspect this image for the next action.'
+              } }),
+              imageDataUrl: visual.imageDataUrl,
+            };
+          } catch (error) {
+            agentDebug('computer.focus.visual_feedback_error', { error: String(error) });
+          }
+        }
         return { call, success: result.ok === true, content: JSON.stringify(result), trust: 'untrusted-data' };
       }
       case 'computer_screenshot': {
