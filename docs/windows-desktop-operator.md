@@ -18,6 +18,14 @@ Call `desktop_list_windows` to obtain the exact window title, process ID, and op
 
 After a `type` or `set_value` action, call `computer_verify` with `expectedTitle`, `expectedProcessId`, and `expectedText` (1–1000 characters). This checks text actually exposed by accessible Edit/Document controls, searching up to 3,000 descendants instead of relying on the first 40 nodes returned by `computer_observe`. When the app does not expose readable text, the outcome is `verified:false` (unknown), **not** proof that the action failed or succeeded. Do not use `controlName` as evidence that the expected text was typed.
 
+### GUI-first, efficient desktop execution
+
+For an ordinary visual Windows task, the model should follow a short loop: locate/focus or launch the required application, inspect its accessible controls or screenshot, perform physical mouse/keyboard interaction, then verify the actual resulting state. `run_command` is an allowed general skill but **not** the default means of navigating windows, folders, menus or dialogs. This is a model planning preference shared across all applications, not a hardcoded dictionary of user commands or application names.
+
+To prevent costly no-op behavior, the execution loop now rejects a third consecutive identical passive desktop observation when no other action intervened. A different observation type (such as `computer_screenshot`) or an actual GUI action can still be chosen. The activity panel distinguishes screen inspection from workspace inspection.
+
+This does not prove tasks complete in a fixed number of actions. Results still require a real Windows acceptance test, and a selected model can still fail to choose the optimal action. If so, inspect the actual tool trace rather than treating model activity count as proof of progress.
+
 ### Dynamic task routing and cross-turn references
 
 Automatic SkyCode requests now use **one model-led agent with optional tools**, independent of the user's exact command words. The model receives conversation context and decides whether to answer in chat, inspect the desktop, operate a window, edit source files, or combine tools. `go to VS Code and create a file`, `create a folder in Explorer`, and follow-ups like `open it` no longer need keyword matches to make computer tools available.
