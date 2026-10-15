@@ -13,18 +13,41 @@ public static class SkyCodeWin32 {
 }
 '@
 function Say($result) { [Console]::Out.WriteLine(($result | ConvertTo-Json -Depth 8 -Compress)) }
-function Wait-Window([int]$targetProcessId,[int]$milliseconds=12000) {
+function Find-DocumentWindow([string]$filename, [int]$milliseconds=15000) {
  $end = [DateTime]::UtcNow.AddMilliseconds($milliseconds)
+ $name = [IO.Path]::GetFileName($filename)
+ $stem = [IO.Path]::GetFileNameWithoutExtension($name)
+ $needle = [Regex]::Escape($stem)
  while ([DateTime]::UtcNow -lt $end) {
-  $proc = Get-Process -Id $targetProcessId -ErrorAction SilentlyContinue
-  if (!$proc) { throw "Notepad exited before the window opened." }
-  $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-    [System.Windows.Automation.TreeScope]::Children,
-    ([System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $targetProcessId)))
-  if ($window) { return $window }
-  Start-Sleep -Milliseconds 200
+  $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+   [System.Windows.Automation.TreeScope]::Children,
+   [System.Windows.Automation.Condition]::TrueCondition)
+  foreach ($window in $windows) {
+   try {
+    $processId = [int]$window.Current.ProcessId
+    if ($processId -le 0) {continue}
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if (!$process -or $process.ProcessName -notmatch '^notepad$') {continue}
+    # Modern Windows Notepad can reuse an existing process and show each
+    # document as a tab. The process returned by Start-Process is not reliably
+    # the process hosting the document, and the foreground may be PowerShell.
+    $title = [string]$window.Current.Name
+    $nameMatch = $title -match "(?i)$needle"
+    if (!$nameMatch) {
+     $tabs = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+      [System.Windows.Automation.PropertyCondition]::new(
+       [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+       [System.Windows.Automation.ControlType]::TabItem))
+     foreach ($tab in $tabs) {
+      if ([string]$tab.Current.Name -match "(?i)$needle") { $nameMatch = $true; break }
+     }
+    }
+    if ($nameMatch) {return $window}
+   } catch { continue }
+  }
+  Start-Sleep -Milliseconds 250
  }
- throw "Unable to locate the Notepad window using Windows UI Automation."
+ throw "Could not find a Notepad window or tab matching the requested document. Saved file remains verified on disk."
 }
 function Observe-Window($window, [int]$limit=60) {
  $nodes = @()
@@ -87,7 +110,7 @@ try {
  $proc=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
  Start-Sleep -Milliseconds 800
  try {
-  $window=Wait-Window $proc.Id
+  $window=Find-DocumentWindow $path
   $observed=Observe-Window $window 30
   $visible=Verify-Text $window $content
   Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$true;editorVerified=$visible.verified;editorVerification=$visible.reason;window=$observed};exit 0
