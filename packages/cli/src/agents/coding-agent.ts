@@ -807,12 +807,18 @@ export class CodingAgent implements BaseAgent {
                     ? 'search'
                     : 'inspect';
 
+        const mouseKind = call.name === 'computer_act'
+          ? String((call.args.step as { kind?: string } | undefined)?.kind || '')
+          : '';
+        const isPointerAction = ['move','click','right_click','double_click','drag'].includes(mouseKind);
         onActivity?.({
           id: activityId,
           type: activityType,
           status: 'running',
           title:
-            call.name === 'write_file'
+            isPointerAction
+              ? 'Using Windows mouse: ' + mouseKind
+              : call.name === 'write_file'
               ? 'Writing file'
               : call.name === 'create_directory'
                 ? 'Creating directory'
@@ -858,7 +864,9 @@ export class CodingAgent implements BaseAgent {
           type: activityType,
           status: execution.success ? 'success' : 'error',
           title:
-            call.name === 'write_file'
+            isPointerAction
+              ? (execution.success ? 'Mouse action sent: ' : 'Mouse action failed: ') + mouseKind
+              : call.name === 'write_file'
               ? execution.success
                 ? 'Updated file'
                 : 'File update failed'
