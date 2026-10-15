@@ -43,7 +43,15 @@ export class ChatGPTPlanProvider implements BaseProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify({
-        model, input: request.messages.map(m => ({ role: m.role, content: m.content })),
+        model, input: request.messages.map(m => ({
+          role: m.role,
+          content: m.imageDataUrl && m.role === 'user'
+            ? [
+                { type: 'input_text', text: m.content },
+                { type: 'input_image', image_url: m.imageDataUrl, detail: 'low' },
+              ]
+            : m.content,
+        })),
         store: false, stream: true,
       }),
       signal: AbortSignal.timeout(Number(request.timeout || this.config.timeout || 600000)),
