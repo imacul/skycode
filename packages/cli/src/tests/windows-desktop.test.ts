@@ -426,3 +426,28 @@ describe('GUI-first autonomous computer workflow', () => {
     expect(agent).toContain("'visual_click'");
   });
 });
+
+describe('real screenshot handoff and resilient foreground actions', () => {
+  test('screenshot pixels are kept through the provider call rather than cleared beforehand', () => {
+    const code = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
+    const afterStart = code.indexOf('for (let iteration = 0; iteration < maxIterations;');
+    const sent = code.indexOf('response = await this.context.provider.chat({', afterStart);
+    const cleared = code.indexOf('if (message.imageDataUrl) delete message.imageDataUrl;', afterStart);
+    expect(sent).toBeGreaterThan(afterStart);
+    expect(cleared).toBeGreaterThan(sent);
+    expect(code.slice(afterStart, sent)).not.toContain('delete message.imageDataUrl');
+  });
+  test('semantic GUI steps can refocus their exact window, but visual click refuses stale screenshots', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    const runStep = script.slice(script.indexOf('function RunStep('), script.indexOf('\ntry{\n $request=', script.indexOf('function RunStep(')));
+    expect(runStep).toContain('$candidate=FindWindow');
+    expect(runStep).toContain('$window=FocusWindow $candidate');
+    expect(runStep).toContain("if($kind -eq 'visual_click'){throw 'Foreground changed since screenshot");
+  });
+  test('autonomous task will not open the same app more than once', () => {
+    const code = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
+    expect(code).toContain('const launchedApplicationTargets = new Set<string>()');
+    expect(code).toContain('if (launchedApplicationTargets.has(target))');
+    expect(code).toContain('Enumerate existing windows and focus the target instead of launching another instance.');
+  });
+});
