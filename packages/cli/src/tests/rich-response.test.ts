@@ -62,3 +62,34 @@ describe('rich response rendering', () => {
     ]);
   });
 });
+
+
+describe('rich inline text and terminal charts', () => {
+  it('turns bold, italic, code, and safe web links into styled spans', async () => {
+    const { parseInlineMarkdown } = await import('../utils/rich-format');
+    const tokens = parseInlineMarkdown('**Build features** with *care*, `bun test`, and [Docs](https://example.com).');
+    expect(tokens.some(token => token.type === 'bold' && token.text === 'Build features')).toBe(true);
+    expect(tokens.some(token => token.type === 'italic' && token.text === 'care')).toBe(true);
+    expect(tokens.some(token => token.type === 'code' && token.text === 'bun test')).toBe(true);
+    expect(tokens.some(token => token.type === 'link' && token.url === 'https://example.com')).toBe(true);
+  });
+
+  it('parses a bounded chart from a chart fence', () => {
+    const blocks = parseRichResponse([
+      '```chart',
+      JSON.stringify({ type: 'bar', title: 'Builds', unit: 'jobs', data: [
+        { label: 'Passed', value: 319 }, { label: 'Failed', value: 18 },
+      ] }),
+      '```',
+    ].join('\n'));
+    const block = blocks.find(block => block.type === 'chart');
+    expect(block?.type).toBe('chart');
+    if (block?.type === 'chart') expect(block.chart.data[0].value).toBe(319);
+  });
+
+  it('does not interpret invalid chart data as executable content', async () => {
+    const { parseTerminalChart } = await import('../utils/rich-format');
+    expect(parseTerminalChart(JSON.stringify({ type: 'bar', data: [{ label: 'Nope', value: '1' }] }))).toBeNull();
+    expect(parseTerminalChart(JSON.stringify({ type: 'bar', data: [{ label: 'Nope', value: -1 }] }))).toBeNull();
+  });
+});

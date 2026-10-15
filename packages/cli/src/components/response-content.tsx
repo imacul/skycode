@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { copyToClipboard } from '../utils/clipboard';
+import { parseInlineMarkdown, parseTerminalChart, renderBarLines, type TerminalChart } from '../utils/rich-format';
 
 export type RichBlock =
   | { type: 'paragraph'; text: string }
@@ -8,7 +9,8 @@ export type RichBlock =
   | { type: 'quote'; text: string }
   | { type: 'divider' }
   | { type: 'code'; language: string; code: string }
-  | { type: 'writing'; text: string };
+  | { type: 'writing'; text: string }
+  | { type: 'chart'; chart: TerminalChart };
 
 type TokenKind = 'plain' | 'keyword' | 'string' | 'number' | 'comment' | 'type';
 
@@ -76,6 +78,10 @@ export function parseRichResponse(content: string): RichBlock[] {
     const code = fenceLines.join('\n').replace(/\s+$/, '');
     if (language === 'writing' || language === 'draft') {
       blocks.push({ type: 'writing', text: code });
+    } else if (language === 'chart') {
+      const chart = parseTerminalChart(code);
+      if (chart) blocks.push({ type: 'chart', chart });
+      else blocks.push({ type: 'code', language, code });
     } else {
       blocks.push({ type: 'code', language, code });
     }
@@ -282,7 +288,40 @@ function WritingBlock({ text }: { text: string }) {
           }}
         >{copied ? 'Copied' : 'Copy'}</text>
       </box>
-      <text fg="white" wordWrap="break-word" width="100%">{text}</text>
+      {text.split('\\n').map((line, index) => (
+        <box key={index} width="100%">
+          <RichText text={line || ' '} />
+        </box>
+      ))}
+    </box>
+  );
+}
+
+function RichText({ text, fg = 'white' }: { text: string; fg?: string }) {
+  const tokens = parseInlineMarkdown(text);
+  return (
+    <text fg={fg} width="100%" wordWrap="break-word">
+      {tokens.map((token, index) => {
+        switch (token.type) {
+          case 'bold': return <strong key={index}>{token.text}</strong>;
+          case 'italic': return <em key={index}>{token.text}</em>;
+          case 'code': return <span key={index} fg="yellow">{token.text}</span>;
+          case 'link': return <span key={index} fg="cyan">{token.text + ' (' + token.url + ')'}</span>;
+          default: return <span key={index}>{token.text}</span>;
+        }
+      })}
+    </text>
+  );
+}
+
+function TerminalBarChart({ chart }: { chart: TerminalChart }) {
+  return (
+    <box width="100%" flexDirection="column" backgroundColor="#101820" border={['left']} borderColor="cyan" paddingX={2} paddingY={1} gap={1}>
+      <text fg="cyan"><strong>{chart.title}</strong></text>
+      {renderBarLines(chart, 20).map((line, index) => (
+        <text key={index} fg="white">{line}</text>
+      ))}
+      <text fg="gray">{'Bar length is proportional to the maximum value.'}</text>
     </box>
   );
 }
@@ -308,14 +347,14 @@ export function ResponseContent({
                 attributes={{ bold: true }}
                 wordWrap="break-word"
                 width="100%"
-              >{block.text}</text>
+              ><strong>{block.text}</strong></text>
             );
 
           case 'bullet':
             return (
               <box key={index} width="100%" flexDirection="row">
                 <text fg="cyan">{block.ordered ? String(block.index || 1) + '. ' : '• '}</text>
-                <text fg="white" wordWrap="break-word" width="100%">{block.text}</text>
+                <RichText text={block.text} />
               </box>
             );
 
@@ -329,9 +368,7 @@ export function ResponseContent({
                 borderColor="gray"
                 paddingX={1}
               >
-                <text fg="gray" attributes={{ dim: true }} wordWrap="break-word" width="100%">
-                  {block.text}
-                </text>
+                <RichText text={block.text} fg="gray" />
               </box>
             );
 
@@ -344,12 +381,13 @@ export function ResponseContent({
           case 'writing':
             return <WritingBlock key={index} text={block.text} />;
 
+          case 'chart':
+            return <TerminalBarChart key={index} chart={block.chart} />;
+
           case 'paragraph':
           default:
             return (
-              <text key={index} fg="white" wordWrap="break-word" width="100%">
-                {block.text}
-              </text>
+              <box key={index} width="100%"><RichText text={block.text} /></box>
             );
         }
       })}

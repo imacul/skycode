@@ -1,5 +1,7 @@
 import { createCliRenderer, type ScrollBoxRenderable } from '@opentui/core';
 import { createRoot } from '@opentui/react';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
@@ -35,6 +37,8 @@ import { createOpenRouterProvider } from './providers/openrouter';
 import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
+import { createChatGPTPlanProvider } from './providers/chatgpt';
+import { runChatGPTCommand, hasChatGPTPlan } from './auth/chatgpt';
 import { createAgentOrchestrator } from './agents';
 import {
   describeRunningProcesses,
@@ -93,6 +97,10 @@ if (STARTUP_COMMAND === 'update') {
   process.exit(exitCode);
 }
 
+if (STARTUP_COMMAND === 'chatgpt') {
+  process.exit(await runChatGPTCommand(CLI_ARGS.slice(1)));
+}
+
 if (STARTUP_COMMAND === 'eval') {
   const exitCode = await runEvalCommand(CLI_ARGS.slice(1));
   process.exit(exitCode);
@@ -109,6 +117,8 @@ function createProvider(provider: string): BaseProvider | null {
       return createAnthropicProvider();
     case 'openai':
       return createOpenAIProvider();
+    case 'chatgpt':
+      return createChatGPTPlanProvider();
     default:
       return null;
   }
@@ -160,6 +170,47 @@ function App() {
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
   const messagesScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  // Temporary opt-in geometry probe. Records layout numbers only, never messages
+  // or provider tokens. Enable via SKYCODE_LAYOUT_DEBUG=1.
+  useEffect(() => {
+    if (process.env.SKYCODE_LAYOUT_DEBUG !== '1') return;
+    const file = join(process.cwd(), 'skycode-layout-debug.json');
+    const sample = () => {
+      const scroll = messagesScrollRef.current;
+      if (!scroll) return;
+      const view = scroll.viewport;
+      const content = scroll.content;
+      const children = (content as unknown as { children?: unknown }).children;
+      const parts = Array.isArray(children) ? children : [];
+      const geometry = (node: unknown) => {
+        if (!node || typeof node !== 'object') return null;
+        const n = node as Record<string, unknown>;
+        return { x: n.x, y: n.y, width: n.width, height: n.height, flexGrow: n.flexGrow, flexShrink: n.flexShrink };
+      };
+      try {
+        writeFileSync(file, JSON.stringify({
+          timestamp: new Date().toISOString(),
+          terminal: { columns: process.stdout.columns, rows: process.stdout.rows },
+          scroll: geometry(scroll),
+          viewport: geometry(view),
+          wrapper: geometry(scroll.wrapper),
+          verticalScrollbar: geometry(scroll.verticalScrollBar),
+          content: geometry(content),
+          scrollTop: scroll.scrollTop,
+          scrollHeight: scroll.scrollHeight,
+          expectedBottom: Math.max(0, scroll.scrollHeight - scroll.viewport.height),
+          remainingToBottom: Math.max(0, scroll.scrollHeight - scroll.viewport.height - scroll.scrollTop),
+          childrenCount: parts.length,
+          firstChild: geometry(parts[0]),
+          lastChild: geometry(parts[parts.length - 1]),
+          recentChildren: parts.slice(-4).map(geometry),
+        }, null, 2));
+      } catch { /* Diagnostics must never interfere with the UI. */ }
+    };
+    const timer = setInterval(sample, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const orchestratorRef = useRef<ReturnType<typeof createAgentOrchestrator> | null>(null);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const approvalResolverRef = useRef<
@@ -185,7 +236,52 @@ function App() {
   } = useSettingsStore();
   const pendingOwnerEnableRef = useRef(false);
 
-  const visibleMessages = getVisibleConversationMessages(currentMessages);
+  // System-command output belongs to temporary notices, not permanent chat history.
+  const visibleMessages = getVisibleConversationMessages(currentMessages).filter(
+    (message) => message.role !== 'system'
+  );
+  const [systemNotice, setSystemNotice] = useState<{ id: string; content: string } | null>(null);
+  const [dismissedNoticeId, setDismissedNoticeId] = useState<string | null>(null);
+  const initialSystemMessageRef = useRef<string | null | undefined>(undefined);
+  const latestSystemMessage = [...currentMessages].reverse().find(message =>
+    message.role === 'system' && !message.metadata?.visibility
+  );
+  const latestSystemId = latestSystemMessage?.id || null;
+  const hasConversationContent = visibleMessages.some(message =>
+    message.role === 'user' || message.role === 'assistant'
+  );
+
+  useEffect(() => {
+    // Previously persisted notices should not pop back up when SkyCode starts.
+    if (initialSystemMessageRef.current === undefined) {
+      initialSystemMessageRef.current = latestSystemId;
+      return;
+    }
+    if (!latestSystemMessage || latestSystemId === initialSystemMessageRef.current) return;
+    initialSystemMessageRef.current = latestSystemId;
+    setDismissedNoticeId(null);
+    setSystemNotice({ id: latestSystemMessage.id, content: latestSystemMessage.content });
+  }, [latestSystemId]);
+
+  useEffect(() => {
+    if (!systemNotice) return;
+    const timer = setTimeout(() => setSystemNotice(current =>
+      current?.id === systemNotice.id ? null : current
+    ), 8000);
+    return () => clearTimeout(timer);
+  }, [systemNotice?.id]);
+
+  useEffect(() => {
+    if (!updateNotice) return;
+    const timer = setTimeout(() => setUpdateNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [updateNotice]);
+
+  useEffect(() => {
+    if (!historyView) return;
+    const timer = setTimeout(() => setHistoryView(null), 12000);
+    return () => clearTimeout(timer);
+  }, [historyView]);
 
   useEffect(() => {
     activeChatScroll = messagesScrollRef.current;
@@ -208,7 +304,7 @@ function App() {
       if (!current) return;
 
       try {
-        current.scrollTo({ x: 0, y: current.scrollHeight });
+        current.scrollTo({ x: 0, y: Math.max(0, current.scrollHeight - current.viewport.height) });
       } catch {
         current.scrollTop = current.scrollHeight;
       }
@@ -352,6 +448,12 @@ function App() {
         
         // Resolve a model that actually belongs to the selected provider.
         let defaultModel = modelSettings.defaultModel || 'meta-llama/llama-3.1-70b-instruct';
+        if (providerName === 'chatgpt') {
+          const planModels = await providerInstance.listModels();
+          defaultModel = planModels.find(m => m.id === modelSettings.defaultModel)?.id || planModels[0]?.id || '';
+          if (!defaultModel) throw new Error('No ChatGPT plan models returned for this account.');
+          if (defaultModel !== modelSettings.defaultModel) updateModelSettings({ defaultModel });
+        }
         if (providerName === 'local') {
           const localModels = await providerInstance.listModels();
           const persistedLocalModel = localModels.find(
@@ -773,11 +875,22 @@ function App() {
       }
     }
 
+    if (hasChatGPTPlan()) {
+      const chatgpt = createChatGPTPlanProvider();
+      await chatgpt.initialize({});
+      try {
+        const models = await chatgpt.listModels();
+        entries.push(...models.map(item => ({
+          provider: 'chatgpt' as const, model: item, free: false, local: false,
+        })));
+      } finally { await chatgpt.close(); }
+    }
+
     return entries;
   }, []);
 
   const activateCatalogModel = useCallback(async (
-    providerName: 'openrouter' | 'local',
+    providerName: 'openrouter' | 'local' | 'chatgpt',
     modelId: string
   ) => {
     const nextProvider = createProvider(providerName);
@@ -785,7 +898,10 @@ function App() {
       throw new Error('Provider is not supported: ' + providerName);
     }
 
-    if (providerName === 'openrouter') {
+    if (providerName === 'chatgpt') {
+      if (!hasChatGPTPlan()) throw new Error('Run skycode chatgpt login first.');
+      await nextProvider.initialize({ model: modelId });
+    } else if (providerName === 'openrouter') {
       const apiKey = getProviderApiKey('openrouter');
       if (!apiKey) {
         throw new Error('OpenRouter is not configured. Set OPENROUTER_API_KEY or run /openroute.');
@@ -955,6 +1071,7 @@ function App() {
         const catalog = await loadUnifiedModelCatalog();
         const openRouterModels = catalog.filter((entry) => entry.provider === 'openrouter');
         const localModels = catalog.filter((entry) => entry.provider === 'local');
+        const chatgptModels = catalog.filter((entry) => entry.provider === 'chatgpt');
 
         const freeCount = openRouterModels.filter((entry) => entry.free).length;
         const paidCount = openRouterModels.length - freeCount;
@@ -984,8 +1101,14 @@ function App() {
               })
             ),
             '',
+            '',
+            chatgptModels.length > 0
+              ? 'CHATGPT PLAN — ' + chatgptModels.length + ' models from your connected subscription'
+              : 'CHATGPT PLAN — run skycode chatgpt login to connect',
+            ...chatgptModels.map(entry => formatCatalogLine(entry, { provider: provider?.name || '', model })),
+            '',
             'Labels: [FREE] = zero OpenRouter prompt/completion price; [PAID] shows current per-million-token prices; [LOCAL · FREE] runs on your own machine.',
-            'Switch with: /model openrouter:<model-id> or /model local:<model-id>',
+            'Switch with: /model openrouter:<id>, /model local:<id>, or /model chatgpt:<id>',
             'Search everything with: /model search <query>',
           ].join('\n')
         );
@@ -1030,7 +1153,7 @@ function App() {
                 '',
                 'Switch with the exact selector shown above.',
               ].join('\n')
-            : 'No OpenRouter or running local models matched "' + query + '".'
+            : 'No matching models found "' + query + '".'
         );
       } catch (modelError) {
         addMessage(
@@ -1046,13 +1169,13 @@ function App() {
       const explicitModel = separator > 0 ? selector.slice(separator + 1) : selector;
 
       try {
-        if (explicitProvider === 'openrouter' || explicitProvider === 'local') {
+        if (explicitProvider === 'openrouter' || explicitProvider === 'local' || explicitProvider === 'chatgpt') {
           await activateCatalogModel(explicitProvider, explicitModel);
           addMessage(
             'system',
             'Switched to ' + explicitProvider + ' model: ' + explicitModel
           );
-        } else if (provider?.name === 'openrouter' || provider?.name === 'local') {
+        } else if (provider?.name === 'openrouter' || provider?.name === 'local' || provider?.name === 'chatgpt') {
           await activateCatalogModel(provider.name, selector);
           addMessage(
             'system',
@@ -1303,9 +1426,11 @@ Current provider: ${provider?.name || 'none'}
       overflow="hidden"
       gap={0}
     >
-      <box flexShrink={0} width="100%" alignItems="center">
-        <Header />
-      </box>
+      {!hasConversationContent && (
+        <box flexShrink={0} width="100%" alignItems="center">
+          <Header />
+        </box>
+      )}
             <box flexShrink={0} width="96%" paddingX={2} flexDirection="row" gap={2}>
         <text
           fg="cyan"
@@ -1426,8 +1551,20 @@ Current provider: ${provider?.name || 'none'}
       )}
 
       {updateNotice && !showWelcome && (
-        <box width="96%" paddingX={2}>
+        <box width="96%" paddingX={2} flexDirection="row" gap={2} flexShrink={0}>
           <text fg="cyan">{updateNotice}</text>
+          <text fg="gray" onMouseDown={() => setUpdateNotice(null)}>[x]</text>
+        </box>
+      )}
+      {systemNotice && dismissedNoticeId !== systemNotice.id && (
+        <box width="96%" paddingX={2} flexDirection="row" gap={2} flexShrink={0}>
+          <box flexGrow={1} flexShrink={1} minWidth={0}>
+            <text fg="yellow">{systemNotice.content}</text>
+          </box>
+          <text fg="gray" onMouseDown={() => {
+            setDismissedNoticeId(systemNotice.id);
+            setSystemNotice(null);
+          }}>[x]</text>
         </box>
       )}
 
@@ -1440,23 +1577,33 @@ Current provider: ${provider?.name || 'none'}
         </box>
       )}
 
-      {/* Messages display */}
+      {historyView && !showHistoryPanel && (
+        <box width="96%" paddingX={2} flexDirection="row" gap={2} flexShrink={0}>
+          <box flexGrow={1} flexShrink={1} minWidth={0}>
+            <text fg="yellow">{historyView}</text>
+          </box>
+          <text fg="gray" onMouseDown={() => setHistoryView(null)}>[x]</text>
+        </box>
+      )}
+
+      {/* The ScrollBox itself owns clipping and the remaining vertical space.
+          An extra overflow-hidden wrapper caused a second, misplaced clipping edge. */}
       <scrollbox
         ref={messagesScrollRef}
         width="96%"
         paddingX={2}
-        flexDirection="column"
         gap={1}
         flexGrow={1}
         flexShrink={1}
+        flexBasis={0}
         minHeight={1}
         overflow="hidden"
         stickyScroll={true}
         stickyStart="bottom"
       >
-        {/* Spacer consumes unused transcript height so short conversations sit
-            next to the input instead of being stranded at the top. */}
-        <box width="100%" flexGrow={1} flexShrink={1} minHeight={0} />
+        {/* Let ScrollBox measure its content's natural height.
+            A 100%-minimum flex-end content container creates trailing blank
+            scrollable space on long conversations. */}
 
         {visibleMessages.length > 0 ? (
           visibleMessages.map((msg) => (
@@ -1537,23 +1684,10 @@ Current provider: ${provider?.name || 'none'}
             <text attributes={{ blink: true }}>Thinking...</text>
           </box>
         )}
-        {historyView && (
-          <box
-            width="100%"
-            paddingY={1}
-            border={['top']}
-            borderColor="gray"
-            flexShrink={0}
-          >
-            <text fg="yellow" wordWrap="break-word" width="100%">
-              {historyView}
-            </text>
-          </box>
-        )}
       </scrollbox>
 
       {/* Input bar: keep it directly beneath the flexible chat viewport. */}
-      <box width="96%" paddingX={2} flexShrink={0} marginTop={0}>
+      <box width="96%" paddingX={2} flexShrink={0} marginTop={0} overflow="hidden">
         <InputBar 
           onSubmit={handleSubmit}
           disabled={!isInitialized || showWelcome}
@@ -1631,7 +1765,7 @@ renderer.keyInput.on('keypress', (key) => {
   }
 
   if (key.ctrl && key.name === 'end' && activeChatScroll) {
-    activeChatScroll.scrollTo(Number.MAX_SAFE_INTEGER);
+    activeChatScroll.scrollTo({ x: 0, y: Math.max(0, activeChatScroll.scrollHeight - activeChatScroll.viewport.height) });
     key.preventDefault();
     key.stopPropagation();
     return;

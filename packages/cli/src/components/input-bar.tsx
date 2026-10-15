@@ -384,8 +384,8 @@ export function InputBar({
                     <text fg={selected ? 'cyan' : 'white'} attributes={{ bold: selected }}>
                       {String(item.name)}
                     </text>
-                    <text fg={item.current ? 'green' : item.local || item.free ? 'green' : 'gray'}>
-                      {item.current ? 'CURRENT' : item.local ? 'LOCAL' : item.free ? 'FREE' : 'PAID'}
+                    <text fg={item.current || item.providerLabel === 'CHATGPT' || item.local || item.free ? 'green' : 'gray'}>
+                      {item.current ? 'CURRENT' : item.providerLabel === 'CHATGPT' ? 'PLAN' : item.local ? 'LOCAL' : item.free ? 'FREE' : 'PAID'}
                     </text>
                   </box>
                   <text fg="gray" attributes={{ dim: true }}>
