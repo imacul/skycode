@@ -13,14 +13,14 @@ public static class SkyCodeWin32 {
 }
 '@
 function Say($result) { [Console]::Out.WriteLine(($result | ConvertTo-Json -Depth 8 -Compress)) }
-function Wait-Window([int]$pid,[int]$milliseconds=12000) {
+function Wait-Window([int]$targetProcessId,[int]$milliseconds=12000) {
  $end = [DateTime]::UtcNow.AddMilliseconds($milliseconds)
  while ([DateTime]::UtcNow -lt $end) {
-  $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+  $proc = Get-Process -Id $targetProcessId -ErrorAction SilentlyContinue
   if (!$proc) { throw "Notepad exited before the window opened." }
   $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
     [System.Windows.Automation.TreeScope]::Children,
-    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $pid)))
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $targetProcessId)))
   if ($window) { return $window }
   Start-Sleep -Milliseconds 200
  }
