@@ -80,6 +80,27 @@ export async function runWindowsDesktop(request: WindowsDesktopRequest): Promise
   });
 }
 
+export type ComputerVerification = {
+  expectedTitle: string;
+  expectedProcessId: number;
+  controlName?: string;
+};
+
+export function verifyComputerObservation(
+  observation: Record<string, unknown>,
+  expected: ComputerVerification
+): { verified: boolean; reason: string } {
+  const window = observation.window as { title?: string; processId?: number; nodes?: Array<{ name?: string }> } | undefined;
+  if (!window) return { verified: false, reason: 'No foreground window data returned.' };
+  if (window.title !== expected.expectedTitle || window.processId !== expected.expectedProcessId) {
+    return { verified: false, reason: 'Foreground identity does not match expected window.' };
+  }
+  if (expected.controlName && !window.nodes?.some(node => node.name === expected.controlName)) {
+    return { verified: false, reason: 'Expected accessible control was not found in the bounded observation.' };
+  }
+  return { verified: true, reason: 'Foreground identity' + (expected.controlName ? ' and control' : '') + ' matched observed UIA state.' };
+}
+
 export type ComputerStep = {
   kind: 'focus' | 'invoke' | 'set_value' | 'keypress';
   expectedTitle: string;
