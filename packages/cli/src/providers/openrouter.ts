@@ -281,18 +281,25 @@ export class OpenRouterProvider implements BaseProvider {
         }
       }
 
-      // Images must remain attached to the same message as their tool result.
-      // Do not merge multimodal messages into text-only adjacent user turns.
-      if (msg.imageDataUrl && role === 'user') {
-        normalized.push({ role, content: [
-          { type: 'text', text: content },
-          { type: 'image_url', image_url: { url: msg.imageDataUrl } },
-        ] });
-        continue;
-      }
+      // Merge consecutive user turns while preserving screenshot pixels as
+      // structured image parts for upstream providers requiring role alternation.
       const previous = normalized[normalized.length - 1];
-      if (previous && previous.role === role && typeof previous.content === 'string') {
-        previous.content += '\n\n' + content;
+      const image = msg.imageDataUrl && role === 'user'
+        ? { type: 'image_url' as const, image_url: { url: msg.imageDataUrl } }
+        : undefined;
+      if (previous && previous.role === role) {
+        if (image || Array.isArray(previous.content)) {
+          const parts = typeof previous.content === 'string'
+            ? [{ type: 'text' as const, text: previous.content }]
+            : previous.content;
+          parts.push({ type: 'text', text: content });
+          if (image) parts.push(image);
+          previous.content = parts;
+        } else {
+          previous.content += '\n\n' + content;
+        }
+      } else if (image) {
+        normalized.push({ role, content: [{ type: 'text', text: content }, image] });
       } else {
         normalized.push({ role, content });
       }
