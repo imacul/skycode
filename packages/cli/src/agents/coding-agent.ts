@@ -35,7 +35,6 @@ import {
   recoverImpliedToolCall,
   responseLooksLikePendingWork,
   setProcessLogListener,
-  selectDesktopObservation,
   stripProjectToolCalls,
   type ProjectToolCall,
   type ProjectToolExecution,
@@ -260,56 +259,6 @@ export class CodingAgent implements BaseAgent {
     // Model-driven tools only: SkyCode never hardcodes the user's intent into a
     // forced open_url / browser play. The model must choose tools (or say that
     // no suitable capability exists).
-    const desktopObservation = selectDesktopObservation(request.input);
-    if (desktopObservation) {
-      // Read-only desktop observations need one approved tool call, not a
-      // forty-round model session attempting arbitrary shell commands.
-      const execution = await executeProjectToolCall(
-        desktopObservation, this.context, request.onApproval
-      );
-      onToolExecution?.(execution);
-      if (!execution.success) {
-        return { content: 'Could not list windows: ' + execution.content, finishReason: 'tool_error', tokensUsed: 0 };
-      }
-      try {
-        const data = JSON.parse(execution.content) as {
-          windows?: Array<{ title: string; processName: string; focused: boolean; visibility?: string }>;
-          backgroundProcessCandidates?: Array<{ processName: string; processId: number }>;
-          note?: string;
-        };
-        const windows = data.windows || [];
-        const groups = [
-          ['Visible windows', 'visible'],
-          ['Minimized windows', 'minimized'],
-          ['Background/hidden windows', 'background'],
-          ['Windows system UI', 'system-ui'],
-        ] as const;
-        const lines: string[] = [];
-        for (const [label, state] of groups) {
-          const matching = windows.filter(window => (window.visibility || 'visible') === state);
-          if (!matching.length) continue;
-          lines.push(label + ' (' + matching.length + '):');
-          lines.push(...matching.slice(0, 25).map(window =>
-            '- ' + window.processName + ' — ' + window.title + (window.focused ? ' (FOREGROUND)' : '')
-          ));
-          if (matching.length > 25) lines.push('… ' + (matching.length - 25) + ' more');
-        }
-        const background = data.backgroundProcessCandidates || [];
-        if (background.length) {
-          lines.push('Background process candidates (' + background.length + ', sample):');
-          lines.push(...background.slice(0, 12).map(process =>
-            '- ' + process.processName + ' (PID ' + process.processId + ')'
-          ));
-        }
-        lines.push('Note: Visible means not minimized or hidden; it does not prove the window is unobscured.');
-        return {
-          content: lines.length > 1 ? lines.join('\n') : 'No accessible application windows were returned.',
-          finishReason: 'stop', tokensUsed: 0,
-        };
-      } catch {
-        return { content: 'Window discovery returned an invalid result.', finishReason: 'tool_error', tokensUsed: 0 };
-      }
-    }
     // Tool availability never depends on the exact words in the request.
     // The model chooses whether to inspect the workspace or operate the desktop.
     const loopMode = 'reach' as const;
