@@ -2011,7 +2011,7 @@ export async function executeProjectToolCall(
         const result = await runComputerCore('capture');
         const capture = result.capture as Record<string, unknown> | undefined;
         const path = String(capture?.path || '');
-        if (!/^skycode-window-[0-9a-f]{32}\.jpg$/.test(basename(path)) || !path.startsWith(requireTempDirectory())) {
+        if (!/^skycode-window-[0-9a-f]{32}\.jpg$/.test(basename(path)) || !resolve(path).toLowerCase().startsWith(requireTempDirectory().toLowerCase())) {
           throw new Error('Computer screenshot returned an invalid temporary path.');
         }
         const data = await readFile(path);
