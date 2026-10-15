@@ -137,23 +137,23 @@ function CaptureForeground {
  $width=$right-$left
  $height=$bottom-$top
  if($width -lt 20 -or $height -lt 20 -or $width -gt 7680 -or $height -gt 4320){throw 'Capture bounds are unavailable or too large.'}
- $bitmap=New-Object System.Drawing.Bitmap($width,$height)
+ $bitmap=[System.Drawing.Bitmap]::new($width,$height)
  $graphics=[System.Drawing.Graphics]::FromImage($bitmap)
  try{
   $graphics.CopyFromScreen($left,$top,0,0,[System.Drawing.Size]::new($width,$height))
   $scale=[Math]::Min(1.0,[Math]::Min(1280.0/$width,900.0/$height))
   $outWidth=[int][Math]::Max(1,[Math]::Round($width*$scale))
   $outHeight=[int][Math]::Max(1,[Math]::Round($height*$scale))
-  $small=New-Object System.Drawing.Bitmap($outWidth,$outHeight)
+  $small=[System.Drawing.Bitmap]::new($outWidth,$outHeight)
   $g=[System.Drawing.Graphics]::FromImage($small)
   try {
    $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
    $g.DrawImage($bitmap,0,0,$outWidth,$outHeight)
    $path=Join-Path ([System.IO.Path]::GetTempPath()) ("skycode-window-"+[guid]::NewGuid().ToString('N')+".jpg")
    $codec=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object {$_.MimeType -eq 'image/jpeg'} | Select-Object -First 1
-   $params=New-Object System.Drawing.Imaging.EncoderParameters(1)
+   $params=[System.Drawing.Imaging.EncoderParameters]::new(1)
    try {
-    $params.Param[0]=New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality,[long]65)
+    $params.Param[0]=[System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality,[long]65)
     $small.Save($path,$codec,$params)
    }finally{$params.Dispose()}
   }finally{$g.Dispose();$small.Dispose()}
