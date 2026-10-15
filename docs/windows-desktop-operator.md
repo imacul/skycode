@@ -24,6 +24,12 @@ Targeted computer actions may identify controls by exact `name`, `automationId`,
 
 This improves generic targeting, but does not guarantee that every Windows application exposes unique accessibility identities. A screenshot/vision fallback remains future work.
 
+### Real Windows cursor input
+
+Mouse actions are distinct from UI Automation invocation or shell commands. For natural-language requests involving actual mouse movement or clicking, SkyCode should choose `computer_act` with `move`, `click`, `right_click`, `double_click`, or `drag`. It will resolve a unique accessible control, hit-test the endpoint, verify the foreground identity, visibly move the real cursor, and send Windows mouse events as appropriate. The action result includes a pointer location, event count, and `outcomeVerified:false`; use a separate observation to verify whether the UI responded.
+
+Mouse actions currently require a named accessible control. They cannot click an arbitrary screenshot coordinate or interact with controls hidden from accessibility. The skill is not yet independently live-tested across multiple applications.
+
 ### Mouse and keyboard controls (experimental)
 
 The existing `computer_act` and `computer_batch` tools now accept these UI-targeted operations:
