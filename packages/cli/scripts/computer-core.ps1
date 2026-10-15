@@ -377,11 +377,20 @@ function RunStep($step){
  $window=Foreground
  CheckSafety $window
  if(!$step.expectedTitle -or !$step.expectedProcessId){throw 'Expected window identity required.'}
+ $kind=[string]$step.kind
  if($window.Current.Name -cne [string]$step.expectedTitle -or
     $window.Current.ProcessId -ne [int]$step.expectedProcessId){
-  throw 'Foreground window identity changed; action stopped.'
+  # A different application may have taken focus between model/tool rounds.
+  # Recover only for semantic actions and only when an exact target window still exists.
+  # Pixel actions are NOT refocused: their screenshot may already be stale.
+  if($kind -eq 'visual_click'){throw 'Foreground changed since screenshot; capture another image before clicking.'}
+  $candidate=FindWindow ([pscustomobject]@{title=$step.expectedTitle;processId=$step.expectedProcessId;windowHandle=$step.windowHandle})
+  $window=FocusWindow $candidate
+  if($window.Current.Name -cne [string]$step.expectedTitle -or
+     $window.Current.ProcessId -ne [int]$step.expectedProcessId){
+   throw 'Target window identity changed after safe refocus; action stopped.'
+  }
  }
- $kind=[string]$step.kind
  if($kind -eq 'visual_click'){
   $visualResult=VisualClick $window $step
   Start-Sleep -Milliseconds 150
