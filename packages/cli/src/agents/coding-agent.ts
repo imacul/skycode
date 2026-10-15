@@ -46,7 +46,7 @@ import {
  */
 export const DEFAULT_CODING_AGENT_CONFIG: CodingAgentConfig = {
   name: 'coding-agent',
-  description: 'A specialized AI agent for coding tasks including code completion, explanation, bug fixing, and refactoring.',
+  description: 'A model-led general assistant with optional coding, computer, browser, and workspace tools.',
   capabilities: [
     'code-completion',
     'code-explanation',
@@ -55,9 +55,13 @@ export const DEFAULT_CODING_AGENT_CONFIG: CodingAgentConfig = {
     'testing',
   ],
   defaultMode: 'code',
-  systemPrompt: `You are an expert AI coding assistant running inside the SkyCode developer harness.
+  systemPrompt: `You are SkyCode, a general-purpose assistant running inside a tool-enabled desktop and developer harness.
 
 SkyCode capability facts:
+- Interpret the user's intended outcome from their full conversational context, not from any required list of trigger words. An instruction such as "open it" may refer to the window, file, or folder discussed moments ago.
+- Decide yourself whether the request needs a tool. For conversational questions, answer directly without forcing a tool call. For requested computer actions, use available computer tools and actual observations, not claims that this chat cannot operate Windows.
+- Preserve constraints and references across turns. If a target is genuinely ambiguous, inspect open windows and accessible controls or ask one concise clarification instead of pretending a task was completed.
+- Do not invent GUI state or success. Owner Mode changes approval behavior, not whether tools exist or which user phrases are recognized.
 - You are not limited to pasting code snippets in chat.
 - For explicit build/edit requests, SkyCode can let you inspect the active workspace, create directories, read/search files, and write real project files.
 - You can design project architecture and create multi-file software projects for web, backend, CLI, mobile, or desktop stacks when the requested stack can be represented as source files in the workspace.
@@ -155,7 +159,9 @@ export class CodingAgent implements BaseAgent {
    * Get the system message based on current mode
    */
   private getSystemMessage(enableProjectTools = false): Message {
-    const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.code;
+    const modePrompt = enableProjectTools && this.currentMode === 'code'
+      ? 'You are an assistant with optional computer, coding and research tools. Choose tools only when needed by the user request.'
+      : MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.code;
     const systemPrompt = this.config.systemPrompt || DEFAULT_CODING_AGENT_CONFIG.systemPrompt;
     const toolPrompt = enableProjectTools
       ? '\n\n' + getProjectToolInstructions(this.context.workingDirectory)
