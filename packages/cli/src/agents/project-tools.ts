@@ -44,6 +44,22 @@ function requireTempDirectory(): string {
   return resolve(process.env.TEMP || process.env.TMP || homedir()) + (process.platform === 'win32' ? '\\' : '/');
 }
 
+/** Attach fresh screen pixels after GUI actions, not just semantic UIA data. */
+async function captureComputerFeedback(scope: 'desktop' | 'window' = 'desktop'): Promise<{
+  imageDataUrl: string; capture: Record<string, unknown>;
+}> {
+  const result = await runComputerCore('capture', [], undefined, undefined, scope);
+  const capture = result.capture as Record<string, unknown> | undefined;
+  const path = String(capture?.path || '');
+  if (!/^skycode-window-[0-9a-f]{32}\.jpg$/.test(basename(path)) ||
+      !resolve(path).toLowerCase().startsWith(requireTempDirectory().toLowerCase())) {
+    throw new Error('Invalid desktop screenshot path.');
+  }
+  const data = await readFile(path);
+  if (data.length === 0 || data.length > 2000000) throw new Error('Captured image exceeds 2MB limit.');
+  return { imageDataUrl: 'data:image/jpeg;base64,' + data.toString('base64'), capture: capture! };
+}
+
 export const PROJECT_TOOL_NAMES = [
   'list_files',
   'read_file',
@@ -2026,18 +2042,11 @@ export async function executeProjectToolCall(
           throw new Error('Screenshot scope must be desktop or window.');
         }
         await ensureDesktopApproval(workspace, 'computer_screenshot', 'capture visible ' + scope + ' pixels', args.reason, requestApproval, 'desktop:observe');
-        const result = await runComputerCore('capture', [], undefined, undefined, scope);
-        const capture = result.capture as Record<string, unknown> | undefined;
-        const path = String(capture?.path || '');
-        if (!/^skycode-window-[0-9a-f]{32}\.jpg$/.test(basename(path)) || !resolve(path).toLowerCase().startsWith(requireTempDirectory().toLowerCase())) {
-          throw new Error('Computer screenshot returned an invalid temporary path.');
-        }
-        const data = await readFile(path);
-        if (!data.length || data.length > 2000000) throw new Error('Computer screenshot exceeds the 2MB image budget.');
+        const visual = await captureComputerFeedback(scope);
         return {
           call, success: true, trust: 'untrusted-data',
-          content: JSON.stringify({ ok: true, action: 'capture', capture }),
-          imageDataUrl: 'data:image/jpeg;base64,' + data.toString('base64'),
+          content: JSON.stringify({ ok: true, action: 'capture', capture: visual.capture }),
+          imageDataUrl: visual.imageDataUrl,
         };
       }
       case 'computer_observe': {
@@ -2080,7 +2089,23 @@ export async function executeProjectToolCall(
         ).join(' | ').slice(0, 900);
         await ensureDesktopApproval(workspace, call.name, stepSummary, args.reason, requestApproval, 'desktop:act');
         const result = await runComputerCore(call.name === 'computer_act' ? 'act' : 'batch', steps as ComputerStep[]);
-        return { call, success: result.ok === true, content: JSON.stringify(result), trust: 'untrusted-data' };
+        // New pixels automatically follow each GUI action; the model should
+        // inspect them before planning its next action, without extra tool calls.
+        let visual: Awaited<ReturnType<typeof captureComputerFeedback>> | undefined;
+        let visualError: string | undefined;
+        try { visual = await captureComputerFeedback('desktop'); }
+        catch (error) { visualError = String(error); }
+        return {
+          call, success: result.ok === true, trust: 'untrusted-data',
+          content: JSON.stringify({
+            ...result,
+            visualFeedback: visual
+              ? { captured: true, scope: 'desktop', capture: visual.capture,
+                  note: 'This image shows the desktop AFTER the action. Inspect it before taking another action or claiming completion.' }
+              : { captured: false, error: visualError || 'Screenshot unavailable' },
+          }),
+          imageDataUrl: visual?.imageDataUrl,
+        };
       }
       case 'desktop_list_windows': {
         await ensureDesktopApproval(workspace, 'desktop_list_windows', 'enumerate visible windows', args.reason, requestApproval, 'desktop:observe');
