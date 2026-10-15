@@ -375,3 +375,29 @@ describe('model-led general task routing', () => {
     expect(agent).not.toContain('const loopMode = classifyToolLoopMode(request.input)');
   });
 });
+
+describe('dynamic prerequisite discovery and GUI completion', () => {
+  test('the common model plan handles missing windows without application-specific routing', () => {
+    const instructions = getProjectToolInstructions(process.cwd());
+    expect(instructions).toContain('infer prerequisite actions');
+    expect(instructions).toContain('open_app when necessary');
+    expect(instructions).toContain('A screenshot taken from the wrong application cannot verify');
+    expect(instructions).toContain('Continue the original objective without asking the user to restate it');
+    const agent = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
+    expect(agent).toContain('plan and execute any reasonable prerequisites');
+    expect(agent).toContain('When a screenshot shows a different app');
+    expect(agent).toContain('Never claim that an action or menu state succeeded without current tool evidence');
+  });
+  test('desktop tasks are tool-capable regardless of how the user phrases prerequisites', () => {
+    const router = new SkyCodeAgentOrchestrator();
+    const samples = [
+      'Look at the actual screenshot of my File Explorer window. Identify the View button using what you see, click it with the mouse, and tell me which options appear. Do not modify any files.',
+      'Look at it, then do the thing I asked in the application.',
+      'Bring up the editor if needed and put my note there.',
+      'Go to the app and finish the task, even if it is not running.',
+    ];
+    for (const input of samples) {
+      expect(router.explainRoute({ input } as any).agentName).toBe('coding-agent');
+    }
+  });
+});
