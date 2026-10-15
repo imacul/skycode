@@ -775,7 +775,8 @@ export class CodingAgent implements BaseAgent {
         const mouseKind = call.name === 'computer_act'
           ? String((call.args.step as { kind?: string } | undefined)?.kind || '')
           : '';
-        const isPointerAction = ['move','click','right_click','double_click','drag'].includes(mouseKind);
+        const isPointerAction = ['move','click','right_click','double_click','drag','visual_click'].includes(mouseKind);
+        const isComputerActivity = call.name.startsWith('computer_') || call.name.startsWith('desktop_');
         onActivity?.({
           id: activityId,
           type: activityType,
@@ -799,7 +800,9 @@ export class CodingAgent implements BaseAgent {
                           ? 'Stopping app'
                           : call.name === 'read_file'
                       ? 'Reading file'
-                      : 'Inspecting workspace',
+                      : isComputerActivity
+                        ? call.name === 'computer_screenshot' ? 'Looking at Windows screen' : 'Inspecting Windows interface'
+                        : 'Inspecting workspace',
           path:
             (call.name === 'run_command' || call.name === 'start_process') &&
             typeof call.args.command === 'string'
@@ -863,9 +866,11 @@ export class CodingAgent implements BaseAgent {
                       ? execution.success
                         ? 'Read file'
                         : 'Read failed'
-                      : execution.success
-                        ? 'Workspace inspected'
-                        : 'Inspection failed',
+                      : isComputerActivity
+                        ? execution.success ? 'Windows interface inspected' : 'Windows interaction failed'
+                        : execution.success
+                          ? 'Workspace inspected'
+                          : 'Inspection failed',
           path:
             (call.name === 'run_command' || call.name === 'start_process') &&
             typeof call.args.command === 'string'
