@@ -291,16 +291,38 @@ export class CodingAgent implements BaseAgent {
         return { content: 'Could not list windows: ' + execution.content, finishReason: 'tool_error', tokensUsed: 0 };
       }
       try {
-        const data = JSON.parse(execution.content) as { windows?: Array<{ title: string; processName: string; focused: boolean }> };
+        const data = JSON.parse(execution.content) as {
+          windows?: Array<{ title: string; processName: string; focused: boolean; visibility?: string }>;
+          backgroundProcessCandidates?: Array<{ processName: string; processId: number }>;
+          note?: string;
+        };
         const windows = data.windows || [];
-        const display = windows.slice(0, 35).map((window, index) =>
-          String(index + 1) + '. ' + window.processName + ' — ' + window.title +
-          (window.focused ? ' (active)' : '')
-        );
+        const groups = [
+          ['Visible windows', 'visible'],
+          ['Minimized windows', 'minimized'],
+          ['Background/hidden windows', 'background'],
+          ['Windows system UI', 'system-ui'],
+        ] as const;
+        const lines: string[] = [];
+        for (const [label, state] of groups) {
+          const matching = windows.filter(window => (window.visibility || 'visible') === state);
+          if (!matching.length) continue;
+          lines.push(label + ' (' + matching.length + '):');
+          lines.push(...matching.slice(0, 25).map(window =>
+            '- ' + window.processName + ' — ' + window.title + (window.focused ? ' (FOREGROUND)' : '')
+          ));
+          if (matching.length > 25) lines.push('… ' + (matching.length - 25) + ' more');
+        }
+        const background = data.backgroundProcessCandidates || [];
+        if (background.length) {
+          lines.push('Background process candidates (' + background.length + ', sample):');
+          lines.push(...background.slice(0, 12).map(process =>
+            '- ' + process.processName + ' (PID ' + process.processId + ')'
+          ));
+        }
+        lines.push('Note: Visible means not minimized or hidden; it does not prove the window is unobscured.');
         return {
-          content: windows.length
-            ? 'Open application windows (' + windows.length + '):\\n' + display.join('\\n')
-            : 'No accessible application windows were returned.',
+          content: lines.length > 1 ? lines.join('\n') : 'No accessible application windows were returned.',
           finishReason: 'stop', tokensUsed: 0,
         };
       } catch {
