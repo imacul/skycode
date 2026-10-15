@@ -83,6 +83,42 @@ function Find-Edit($window) {
  }
  return $null
 }
+function Get-DocumentTab($window,[string]$filename) {
+ $stem=[IO.Path]::GetFileNameWithoutExtension($filename)
+ $tabs=$window.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+  [System.Windows.Automation.PropertyCondition]::new(
+   [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+   [System.Windows.Automation.ControlType]::TabItem))
+ foreach($tab in $tabs) {
+  $name=[string]$tab.Current.Name
+  if ($name -ieq $stem -or $name -ieq [IO.Path]::GetFileName($filename)) {return $tab}
+ }
+ return $null
+}
+function Select-DocumentTab($window,[string]$filename) {
+ $tab=Get-DocumentTab $window $filename
+ if ($tab) {
+  try {
+   $selection=$tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+   $selection.Select()
+   Start-Sleep -Milliseconds 250
+   if (!$selection.Current.IsSelected) {throw "Document tab selection failed."}
+   return
+  } catch {throw "Cannot select the exact Notepad document tab safely: $($_.Exception.Message)"}
+ }
+ # Older Notepad exposes one document per window, rather than tabs.
+ $title=[string]$window.Current.Name
+ $stem=[IO.Path]::GetFileNameWithoutExtension($filename)
+ if ($title -notmatch [Regex]::Escape($stem)) {throw "Cannot prove this window contains the requested document."}
+}
+function Close-DocumentTab($window,[string]$filename) {
+ Select-DocumentTab $window $filename
+ Assert-SafeForeground $window
+ # Ctrl+W closes the selected tab, not the entire multi-tab Notepad process.
+ [System.Windows.Forms.SendKeys]::SendWait('^w')
+ Start-Sleep -Milliseconds 450
+ # The caller must not assume the close succeeded merely because keys were sent.
+}
 function Verify-Text($window,$expected) {
  $edit=Find-Edit $window
  if (!$edit) {return @{verified=$false;reason="Notepad edit element not exposed by UI Automation."}}
@@ -118,16 +154,41 @@ try {
  [IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
  $onDisk=[IO.File]::ReadAllText($path)
  if ($onDisk -cne $content) {throw "Disk read-back does not match."}
- $proc=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
- Start-Sleep -Milliseconds 800
+ # Close/reopen is a deliberate verification stage, not an optional model inference.
+ # Never close an unrelated window: match and select the exact document tab.
+ $launch=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
+ $opened=$false; $editorVerified=$false; $closed=$false; $reopened=$false
+ $reopenVerified=$false; $notes=@(); $observed=$null
  try {
   $window=Find-DocumentWindow $path
+  Select-DocumentTab $window $path
+  $opened=$true
   $observed=Observe-Window $window 30
-  $visible=Verify-Text $window $content
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$true;editorVerified=$visible.verified;editorVerification=$visible.reason;window=$observed};exit 0
+  $first=Verify-Text $window $content
+  $editorVerified=[bool]$first.verified
+  if (!$editorVerified) { $notes+=([string]$first.reason) }
+  # Only close if we proved the document tab identity and it is the intended tab.
+  Close-DocumentTab $window $path
+  $closed=$true
+  # Modern Notepad may keep a saved-document tab in a background process.
+  # Reopening is safe and must be accompanied by another disk/content check.
+  $reopenLaunch=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
+  $again=Find-DocumentWindow $path
+  Select-DocumentTab $again $path
+  $reopened=$true
+  $check=Verify-Text $again $content
+  $reopenVerified=[bool]$check.verified
+  if (!$reopenVerified) {$notes+=([string]$check.reason)}
  } catch {
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$false;editorVerified=$false;windowError=$_.Exception.Message};exit 0
+  $notes+=($_.Exception.Message)
  }
+ $verifiedDiskAfter=[IO.File]::Exists($path) -and ([IO.File]::ReadAllText($path) -ceq $content)
+ Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$verifiedDiskAfter;
+  notepadOpened=$opened;editorVerified=$editorVerified;documentCloseAttempted=$closed;
+  documentReopened=$reopened;reopenEditorVerified=$reopenVerified;
+  verified=$verifiedDiskAfter -and $opened -and $editorVerified -and $closed -and $reopened -and $reopenVerified;
+  notes=$notes;window=$observed}
+ exit 0
 } catch {
  Say @{ok=$false;error=$_.Exception.Message}
  exit 1
