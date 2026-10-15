@@ -212,6 +212,31 @@ function MouseAction($window,$target,[string]$kind){
  }
  return $point
 }
+function DragBetweenControls($window,$source,$destination){
+ if($source -eq $destination){throw 'Drag source and destination must be different controls.'}
+ # Resolve and hit-test both endpoints before pressing a mouse button.
+ $from=GetSafePoint $window $source
+ $to=GetSafePoint $window $destination
+ $handle=[IntPtr]$window.Current.NativeWindowHandle
+ if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Focus changed before drag.'}
+ if(![SkyDesktopNative]::SetCursorPos([int]$from.x,[int]$from.y)){throw 'Windows rejected drag start position.'}
+ $pressed=$false
+ try {
+  [SkyDesktopNative]::mouse_event([SkyMouseFlags]::LEFT_DOWN,0,0,0,[UIntPtr]::Zero)
+  $pressed=$true
+  Start-Sleep -Milliseconds 120
+  for($i=1;$i -le 12;$i++){
+   if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Window focus changed during drag; releasing mouse.'}
+   $x=[int][Math]::Round($from.x+($to.x-$from.x)*$i/12)
+   $y=[int][Math]::Round($from.y+($to.y-$from.y)*$i/12)
+   if(![SkyDesktopNative]::SetCursorPos($x,$y)){throw 'Windows rejected drag movement.'}
+   Start-Sleep -Milliseconds 22
+  }
+ }finally{
+  if($pressed){[SkyDesktopNative]::mouse_event([SkyMouseFlags]::LEFT_UP,0,0,0,[UIntPtr]::Zero)}
+ }
+ return @{source=$from;destination=$to;released=$true}
+}
 function SendLiteralText([string]$value,$window){
  if($value.Length -gt 1000){throw 'Text exceeds per-action typing budget.'}
  $handle=[IntPtr]$window.Current.NativeWindowHandle
@@ -240,7 +265,11 @@ function RunStep($step){
   [System.Windows.Forms.SendKeys]::SendWait([string]$step.keys)
  }else{
   $target=FindTarget $window $step
-  if($kind -eq 'move' -or $kind -eq 'click' -or $kind -eq 'right_click' -or $kind -eq 'double_click'){
+  if($kind -eq 'drag'){
+   if(!$step.targetName -and !$step.targetAutomationId){throw 'Drag destination requires exact accessible control name or automationId.'}
+   $destination=FindTarget $window ([pscustomobject]@{name=$step.targetName;automationId=$step.targetAutomationId})
+   $dragResult=DragBetweenControls $window $target $destination
+  }elseif($kind -eq 'move' -or $kind -eq 'click' -or $kind -eq 'right_click' -or $kind -eq 'double_click'){
    $position=MouseAction $window $target $kind
   }elseif($kind -eq 'type'){
    $role=$target.Current.ControlType
@@ -278,6 +307,7 @@ function RunStep($step){
  Start-Sleep -Milliseconds 100
  $after=Foreground
  CheckSafety $after
+ if($kind -eq 'drag'){return @{kind=$kind;after=Observe $after 12;drag=$dragResult;postObserved=$true;outcomeVerified=$false}}
  if($kind -eq 'type'){return @{kind=$kind;after=Observe $after 12;input=$typeEvidence}}
  return @{kind=$kind;after=Observe $after 12}
 }
