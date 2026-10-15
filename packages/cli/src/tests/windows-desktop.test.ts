@@ -19,6 +19,7 @@ describe('Windows desktop operator milestone', () => {
   });
   test('registers desktop tools and routes computer requests', () => {
     expect(PROJECT_TOOL_NAMES).toContain('desktop_snapshot');
+    expect(PROJECT_TOOL_NAMES).toContain('desktop_list_windows');
     expect(PROJECT_TOOL_NAMES).toContain('desktop_close_document');
     expect(needsReachTools('close the file')).toBe(true);
     expect(needsReachTools('close the document')).toBe(true);
@@ -28,6 +29,7 @@ describe('Windows desktop operator milestone', () => {
     const prompt = getProjectToolInstructions(process.cwd());
     expect(prompt).toContain('desktop_notepad_document');
     expect(prompt).toContain('desktop_close_document');
+    expect(prompt).toContain('desktop_list_windows');
     expect(prompt).toContain('requires approval');
     expect(parseProjectToolCalls('<tool_call>{"name":"desktop_notepad_document","args":{"filename":"demo.txt","content":"hello","reason":"demo"}}</tool_call>')).toHaveLength(1);
   });
