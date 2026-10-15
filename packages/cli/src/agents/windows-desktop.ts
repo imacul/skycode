@@ -80,6 +80,20 @@ export async function runWindowsDesktop(request: WindowsDesktopRequest): Promise
   });
 }
 
+export type ComputerWindowSelector = {
+  title: string;
+  processId: number;
+  windowHandle?: string;
+};
+
+export function validateComputerWindowSelector(selector: ComputerWindowSelector): void {
+  if (!selector || typeof selector.title !== 'string' || !selector.title.trim() || selector.title.length > 500 ||
+      !Number.isSafeInteger(selector.processId) || selector.processId <= 0 ||
+      (selector.windowHandle !== undefined && !/^[0-9]+$/.test(selector.windowHandle))) {
+    throw new Error('Provide exact window title, process ID, and optional decimal handle from desktop discovery.');
+  }
+}
+
 export type ComputerVerification = {
   expectedTitle: string;
   expectedProcessId: number;
@@ -122,14 +136,18 @@ export function validateComputerStep(step: ComputerStep): void {
   if (step.kind === 'scroll' && !['up','down'].includes(step.direction || '')) throw new Error('Scroll direction must be up or down.');
 }
 
-export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch', steps: ComputerStep[] = []): Promise<Record<string, unknown>> {
+export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch' | 'observe_window' | 'focus_window', steps: ComputerStep[] = [], selector?: ComputerWindowSelector): Promise<Record<string, unknown>> {
   if (process.platform !== 'win32') throw new Error('Windows only.');
   if (action === 'act' && steps.length !== 1) throw new Error('Act requires exactly one step.');
   if (action === 'batch' && (!steps.length || steps.length > 8)) throw new Error('Batch requires 1–8 steps.');
   for (const step of steps) validateComputerStep(step);
+  if (action === 'observe_window' || action === 'focus_window') {
+    if (!selector) throw new Error('A window selector is required.');
+    validateComputerWindowSelector(selector);
+  }
   const script = resolve(import.meta.dir, '../../scripts/computer-core.ps1');
   if (!existsSync(script)) throw new Error('Computer adapter missing.');
-  const request = action === 'act' ? { action, step: steps[0] } : { action, steps };
+  const request = action === 'act' ? { action, step: steps[0] } : { action, steps, selector };
   return await new Promise<Record<string, unknown>>((done, reject) => {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', script], {
       windowsHide: true, stdio: ['pipe','pipe','pipe'],
