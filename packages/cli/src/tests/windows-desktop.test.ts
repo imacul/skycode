@@ -64,10 +64,12 @@ describe('Windows desktop PowerShell adapter syntax', () => {
   test('parses the entire script before any desktop action is run', () => {
     if (process.platform !== 'win32') return;
     const script = resolve(import.meta.dir, '../../scripts/windows-desktop.ps1');
+    const escapedPath = script.replace(/'/g, "''");
+    const check = '$tokens=$null; $parseErrors=$null; ' +
+      "[System.Management.Automation.Language.Parser]::ParseFile('" + escapedPath + "',[ref]$tokens,[ref]$parseErrors) | Out-Null; " +
+      'if($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Output $_.ToString() }; exit 1 }';
     const parse = spawnSync('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-Command',
-      '$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$tokens,[ref]$errors) | Out-Null; if($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.ToString() }; exit 1 }',
-      script,
+      '-NoProfile', '-NonInteractive', '-Command', check,
     ], { encoding: 'utf8', timeout: 15000 });
     expect(parse.error).toBeUndefined();
     expect(parse.status).toBe(0);
