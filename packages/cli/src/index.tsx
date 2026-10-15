@@ -1543,8 +1543,8 @@ Current provider: ${provider?.name || 'none'}
         </box>
       )}
 
-      {/* Clip the chat viewport independently of the fixed bottom input. */}
-      <box width="100%" flexGrow={1} flexShrink={1} minHeight={0} overflow="hidden">
+      {/* The ScrollBox itself owns clipping and the remaining vertical space.
+          An extra overflow-hidden wrapper caused a second, misplaced clipping edge. */}
       <scrollbox
         ref={messagesScrollRef}
         width="96%"
@@ -1553,12 +1553,14 @@ Current provider: ${provider?.name || 'none'}
         gap={1}
         flexGrow={1}
         flexShrink={1}
+        flexBasis={0}
         minHeight={1}
         overflow="hidden"
         stickyScroll={true}
         stickyStart="bottom"
+        contentOptions={{ minHeight: '100%', justifyContent: 'flex-end' }}
       >
-        {/* Conversation fills the available viewport; never reserve blank space above it. */}
+        {/* Short chats sit immediately above the input; longer chats scroll inside this viewport. */}
 
         {visibleMessages.length > 0 ? (
           visibleMessages.map((msg) => (
@@ -1640,7 +1642,6 @@ Current provider: ${provider?.name || 'none'}
           </box>
         )}
       </scrollbox>
-      </box>
 
       {/* Input bar: keep it directly beneath the flexible chat viewport. */}
       <box width="96%" paddingX={2} flexShrink={0} marginTop={0} overflow="hidden">
