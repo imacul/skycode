@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { SkyCodeAgentOrchestrator } from '../agents/orchestrator';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -347,5 +348,30 @@ describe('screenshot vision computer fallback', () => {
     expect(chatgpt).toContain("type: 'input_image'");
     expect(tools).toContain('imageDataUrl: executions.find');
     expect(tools).toContain("data:image/jpeg;base64,");
+  });
+});
+
+describe('model-led general task routing', () => {
+  const router = new SkyCodeAgentOrchestrator();
+  const route = (input: string) => router.explainRoute({ input } as any).agentName;
+  test('does not require a command verb or hardcoded application name', () => {
+    expect(route('Go to vscode and create a file named learn')).toBe('coding-agent');
+    expect(route('Go to the opened file explorer and creat a folder called own and stop there')).toBe('coding-agent');
+    expect(route('Open it and goand click on "This PC"')).toBe('coding-agent');
+    expect(route('open it')).toBe('coding-agent');
+    expect(route('Move my mouse to the View button in File Explorer and click it.')).toBe('coding-agent');
+    expect(route('Bring up the thing we just discussed')).toBe('coding-agent');
+  });
+  test('keeps conversation possible and preserves explicitly chosen specialist agents', () => {
+    expect(route('Good evening. How are you?')).toBe('coding-agent');
+    expect(router.explainRoute({ input: 'Price this product', mode: 'business' } as any).agentName).toBe('business-agent');
+    expect(router.explainRoute({ input: 'Hi', context: { agent: 'chat-agent' } } as any).agentName).toBe('chat-agent');
+  });
+  test('never uses keyword gates to decide whether tools are available', () => {
+    const agent = readFileSync(resolve(import.meta.dir,'../agents/coding-agent.ts'),'utf8');
+    expect(agent).toContain('private shouldRunProjectTools(_request: AgentRequest): boolean');
+    expect(agent).toContain('return true;');
+    expect(agent).toContain("const loopMode = 'reach' as const");
+    expect(agent).not.toContain('const loopMode = classifyToolLoopMode(request.input)');
   });
 });
