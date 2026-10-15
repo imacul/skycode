@@ -163,11 +163,21 @@ function FindTarget($window,$step){
    $c=$item.Current
    if(!$c.IsEnabled -or $c.IsOffscreen -or $c.IsPassword){continue}
    if([string]$c.Name -match '(?i)\b(password|passcode|pin|otp|authenticator|secret|token|sign.in)\b'){continue}
-   if($step.automationId -and $c.AutomationId -ceq [string]$step.automationId){$matches+=,$item}
-   elseif($step.name -and $c.Name -ceq [string]$step.name){$matches+=,$item}
+   # Discriminators are conjunctive: a supplied automationId, name, or
+   # control role must ALL match. Never fall back from a nonmatching ID to name.
+   if($step.automationId -and $c.AutomationId -cne [string]$step.automationId){continue}
+   if($step.name -and $c.Name -cne [string]$step.name){continue}
+   if($step.role -and $c.ControlType.ProgrammaticName -cne [string]$step.role){continue}
+   $matches+=,$item
   }catch{continue}
  }
- if($matches.Count -ne 1){throw "Target must match exactly one accessible element; matches: $($matches.Count)."}
+ if($matches.Count -ne 1){
+  $sample=@($matches | Select-Object -First 6 | ForEach-Object {
+    $c=$_.Current
+    @{name=[string]$c.Name;automationId=[string]$c.AutomationId;role=[string]$c.ControlType.ProgrammaticName}
+  })
+  throw ("Target must match exactly one accessible element; matches: " + $matches.Count + "; candidates: " + ($sample | ConvertTo-Json -Compress -Depth 3) + ". Narrow by exact automationId plus name and/or role; do not repeat an ambiguous action.")
+ }
  return $matches[0]
 }
 function GetSafePoint($window,$target){
