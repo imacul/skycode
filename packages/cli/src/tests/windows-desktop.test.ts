@@ -197,3 +197,17 @@ describe('editor-content verification regression', () => {
     expect(script).toContain('No readable editor text was exposed');
   });
 });
+
+describe('computer task failure reporting regression', () => {
+  test('failure fuse never labels a successful observation as the last error', () => {
+    const agent = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
+    expect(agent).toContain('tail.every(item => !item.success)');
+    expect(agent).toContain('failed.call.name');
+    expect(agent).not.toContain('recentFailures[recentFailures.length - 1]?.content');
+  });
+  test('guides natural-language requests through action before text verification', () => {
+    const tools = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
+    expect(tools).toContain('THEN verify expectedText');
+    expect(tools).toContain('Never call computer_verify expectedText before the write');
+  });
+});
