@@ -14,6 +14,10 @@ These tools belong to the existing SkyCode task loop; they are not separate Note
 
 Call `desktop_list_windows` to obtain the exact window title, process ID, and optional handle. Use `computer_observe_window` to inspect an app without changing focus, or `computer_focus_window` to activate it. Then call `computer_observe` to obtain the foreground controls. Pass those identities into `computer_act` or `computer_batch`; the adapter refuses to act when focus changes. Use `computer_verify` after changing a control. The `postObserved` field means that another UIA snapshot was captured after an action; it is **not** proof that the user's overall task succeeded.
 
+### Verifying typed editor content
+
+After a `type` or `set_value` action, call `computer_verify` with `expectedTitle`, `expectedProcessId`, and `expectedText` (1–1000 characters). This checks text actually exposed by accessible Edit/Document controls, searching up to 3,000 descendants instead of relying on the first 40 nodes returned by `computer_observe`. When the app does not expose readable text, the outcome is `verified:false` (unknown), **not** proof that the action failed or succeeded. Do not use `controlName` as evidence that the expected text was typed.
+
 ### Mouse and keyboard controls (experimental)
 
 The existing `computer_act` and `computer_batch` tools now accept these UI-targeted operations:
