@@ -1,3 +1,37 @@
+## Shared computer-control skills (experimental)
+
+These tools belong to the existing SkyCode task loop; they are not separate Notepad, Chrome, or video-production agents.
+
+| Skill | Capability |
+| --- | --- |
+| `computer_observe` | Read the foreground window identity and a bounded semantic UIA control snapshot |
+| `computer_act` | Execute one UIA focus, invoke, value assignment, scroll, or approved shortcut |
+| `computer_batch` | Execute 1–8 actions in the same local Windows adapter without additional model calls; stop on failure |
+| `computer_verify` | Compare the current foreground window and optionally an accessible control against explicitly expected values |
+| `desktop_list_windows` | Categorize top-level windows without inspecting pixel screenshots |
+
+Call `computer_observe` to obtain the exact window title, process ID and control name or automation ID. Pass those identities into `computer_act` or `computer_batch`; the adapter refuses to act when focus changes. Use `computer_verify` after changing a control. The `postObserved` field means that another UIA snapshot was captured after an action; it is **not** proof that the user's overall task succeeded.
+
+### Bounds
+
+- Windows interactive session only, running with current user's permissions.
+- No UAC, credential or secure-desktop bypass.
+- Exact-match UIA targets, no coordinate guessing. Batch limited to eight steps.
+- Keyboard shortcuts limited to a small allowlist; `set_value` limited to 3,000 characters per action.
+- Owner Mode may auto-approve tools, but does not override UIA protections or the emergency stop.
+- Accessiblity snapshots are deliberately bounded; use another observation if the desired control isn't present.
+- Some software does not expose enough UI Automation information. Screenshot understanding, generic mouse targeting, recording, and phone/video calls remain future work.
+
+### Test the two adapters
+
+```powershell
+bun test packages/cli/src/tests/windows-desktop.test.ts
+bun packages/cli/src/index.tsx
+```
+
+Then ask SkyCode to list open windows and inspect the current foreground window. Test a harmless control in Notepad (such as focus) before attempting a batch. The PowerShell parser test checks **both** the legacy Notepad adapter and the new computer-control adapter.
+
+
 # Windows desktop operator (experimental milestone)
 
 This feature is a bounded foundation for SkyCode's future observe → reason → act → verify computer engine. It is **not** unrestricted desktop control yet.
