@@ -21,7 +21,7 @@ import {
 import { recordOwnerAction } from '../security/owner-audit';
 import { useSettingsStore } from '../store/settings';
 import { openOnDesktop } from './desktop-tools';
-import { runWindowsDesktop, validateNotepadTarget } from './windows-desktop';
+import { runWindowsDesktop, validateNotepadTarget, runComputerCore, type ComputerStep } from './windows-desktop';
 import {
   braveIsRunning,
   openInBrave,
@@ -56,6 +56,9 @@ export const PROJECT_TOOL_NAMES = [
   'web_fetch_local',
   'open_url',
   'open_app',
+  'computer_observe',
+  'computer_act',
+  'computer_batch',
   'desktop_list_windows',
   'desktop_snapshot',
   'desktop_close_document',
@@ -89,7 +92,7 @@ export function projectToolResultTrust(
 ): 'trusted-control' | 'untrusted-data' {
   return [
     'read_file', 'list_files', 'search_files', 'run_command', 'start_process',
-    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call', 'desktop_snapshot', 'desktop_list_windows',
+    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call', 'desktop_snapshot', 'desktop_list_windows', 'computer_observe',
   ].includes(name) ? 'untrusted-data' : 'trusted-control';
 }
 
@@ -1662,6 +1665,9 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- web_fetch_local: {"url":"http://localhost:3000/","reason":"Inspect the locally running app"} — requires approval for a separately scoped local-network capability.',
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
+    '- computer_observe: {"reason":"Inspect the foreground Windows application"} — return a bounded UI Automation snapshot of up to 40 visible non-credential controls. Prefer this to screenshots for routine targeting.',
+    '- computer_act: {"step":{"kind":"invoke","expectedTitle":"Window title","expectedProcessId":123,"name":"Button label"},"reason":"Perform the requested UI action"} — approved guarded focus/invoke/set_value/keypress action. Must use window identity from a fresh observation, then verify result.',
+    '- computer_batch: {"steps":[{"kind":"focus","expectedTitle":"Window title","expectedProcessId":123,"name":"Text field"}],"reason":"Execute a short authorized sequence"} — up to 8 guarded steps locally, stopping immediately on first failure. Never invent window identity or controls.',
     '- desktop_list_windows: {"reason":"Find the available Windows apps and document windows"} — list top-level windows by visible, minimized, hidden/background, and Windows system-UI state; identify the foreground window and include a bounded sample of GUI processes without an observed window. This is not a complete process inventory and visible does not mean unobscured. Use this before choosing a GUI target, instead of guessing which app is focused. Requires approval except in auto-approved Owner Mode.',
     '- desktop_snapshot: {"reason":"Inspect the current foreground Windows app"} — reads a bounded UI Automation accessibility tree (requires approval). Never claim to see pixels; this is semantic-only.',
     '- desktop_close_document: {"filename":"dog-definition.txt","reason":"Close the document that was just created"} — closes only the named open Notepad document, never the whole application or other tabs. Requires approval, verifies the document disappeared, and reports failure otherwise. For follow-ups like "close the file", infer the exact filename from the recent task result and use this tool; do not claim inability unless the target is genuinely unknown.',
@@ -1955,6 +1961,19 @@ export async function executeProjectToolCall(
           displayPath: args.url,
           trust: 'untrusted-data',
         };
+      }
+      case 'computer_observe': {
+        await ensureDesktopApproval(workspace, 'computer_observe', 'current foreground window', args.reason, requestApproval, 'desktop:observe');
+        const result = await runComputerCore('observe');
+        return { call, success: true, content: JSON.stringify(result), trust: 'untrusted-data' };
+      }
+      case 'computer_act':
+      case 'computer_batch': {
+        const steps = call.name === 'computer_act' ? [args.step] : args.steps;
+        if (!Array.isArray(steps) || !steps.length || steps.length > 8) throw new Error('Provide 1–8 computer steps.');
+        await ensureDesktopApproval(workspace, call.name, 'computer interaction (' + steps.length + ' step(s))', args.reason, requestApproval, 'desktop:act');
+        const result = await runComputerCore(call.name === 'computer_act' ? 'act' : 'batch', steps as ComputerStep[]);
+        return { call, success: result.ok === true, content: JSON.stringify(result), trust: 'trusted-control' };
       }
       case 'desktop_list_windows': {
         await ensureDesktopApproval(workspace, 'desktop_list_windows', 'enumerate visible windows', args.reason, requestApproval, 'desktop:observe');
