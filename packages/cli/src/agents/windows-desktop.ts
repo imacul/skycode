@@ -4,12 +4,16 @@ import { basename, isAbsolute, relative, resolve } from 'node:path';
 
 export type WindowsDesktopRequest =
   | { action: 'snapshot' }
+  | { action: 'close_document'; filename: string }
   | { action: 'notepad_document'; path: string; content: string };
 
 export interface WindowsDesktopResult {
   ok: boolean;
   action?: string;
   path?: string;
+  filename?: string;
+  targetWindow?: string;
+  closed?: boolean;
   diskVerified?: boolean;
   notepadOpened?: boolean;
   editorVerified?: boolean;
