@@ -208,7 +208,15 @@ function FocusWindow($window){
   [SkyDesktopNative]::SetForegroundWindow($handle) | Out-Null
   Start-Sleep -Milliseconds 350
  }
- if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Windows declined foreground activation. No keys or UI actions were sent.'}
+ if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){
+  # Some foreground transitions are denied to background PowerShell processes.
+  # UIA focus is an alternative semantic focus path; it does not issue a shell command.
+  try {$window.SetFocus(); Start-Sleep -Milliseconds 180} catch {}
+ }
+ if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){
+  # Never click an unrelated window. Return an actionable, bounded failure.
+  throw 'Target window is not foreground after SetForegroundWindow and UIA focus. No input was sent; refresh desktop observation or request user activation.'
+ }
  return (Foreground)
 }
 function FindTarget($window,$step){
