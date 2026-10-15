@@ -137,7 +137,7 @@ try{
  }
  if($request.action -eq 'act'){
   $out=RunStep $request.step
-  OutJson @{ok=$true;action='act';result=$out;verified=$true}
+  OutJson @{ok=$true;action='act';result=$out;postObserved=$true}
   exit 0
  }
  if($request.action -eq 'batch'){
@@ -146,7 +146,7 @@ try{
   foreach($step in $request.steps){
    $results+=,(RunStep $step)
   }
-  OutJson @{ok=$true;action='batch';stepsCompleted=$results.Count;results=$results;verified=$true}
+  OutJson @{ok=$true;action='batch';stepsCompleted=$results.Count;results=$results;postObserved=$true}
   exit 0
  }
  throw 'Unsupported computer request.'
