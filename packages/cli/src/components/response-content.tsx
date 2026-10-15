@@ -288,7 +288,11 @@ function WritingBlock({ text }: { text: string }) {
           }}
         >{copied ? 'Copied' : 'Copy'}</text>
       </box>
-      <text fg="white" wordWrap="break-word" width="100%">{text}</text>
+      {text.split('\\n').map((line, index) => (
+        <box key={index} width="100%">
+          <RichText text={line || ' '} />
+        </box>
+      ))}
     </box>
   );
 }
