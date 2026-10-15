@@ -12,6 +12,17 @@ public static class SkyDesktopNative {
  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr handle);
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+ [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+ [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+ [DllImport("user32.dll")] public static extern bool GetCursorPos(out SkyPoint point);
+}
+[StructLayout(LayoutKind.Sequential)]
+public struct SkyPoint { public int X; public int Y; }
+public static class SkyMouseFlags {
+ public const uint LEFT_DOWN = 0x0002;
+ public const uint LEFT_UP = 0x0004;
+ public const uint RIGHT_DOWN = 0x0008;
+ public const uint RIGHT_UP = 0x0010;
 }
 '@
 function OutJson($value){[Console]::Out.WriteLine(($value | ConvertTo-Json -Compress -Depth 9))}
@@ -100,6 +111,64 @@ function FindTarget($window,$step){
  if($matches.Count -ne 1){throw "Target must match exactly one accessible element; matches: $($matches.Count)."}
  return $matches[0]
 }
+function GetSafePoint($window,$target){
+ CheckSafety $window
+ $bounds=$target.Current.BoundingRectangle
+ $windowBounds=$window.Current.BoundingRectangle
+ if($bounds.IsEmpty -or $windowBounds.IsEmpty -or $bounds.Width -lt 2 -or $bounds.Height -lt 2){throw 'Target has no usable screen bounds.'}
+ $x=[int][Math]::Floor($bounds.Left+$bounds.Width/2)
+ $y=[int][Math]::Floor($bounds.Top+$bounds.Height/2)
+ if($x -lt $windowBounds.Left -or $x -gt $windowBounds.Right -or
+    $y -lt $windowBounds.Top -or $y -gt $windowBounds.Bottom){throw 'Control center lies outside the selected window.'}
+ $screen=[System.Windows.Forms.Screen]::AllScreens | Where-Object {$_.Bounds.Contains([System.Drawing.Point]::new($x,$y))} | Select-Object -First 1
+ if(!$screen){throw 'Control center is outside all connected monitors.'}
+ $topAtPoint=[System.Windows.Automation.AutomationElement]::FromPoint([System.Windows.Point]::new($x,$y))
+ if(!$topAtPoint){throw 'Cannot inspect the intended click position.'}
+ # Reject points occupied by another application's window or an overlay.
+ $cursorElement=$topAtPoint
+ $belongs=$false
+ for($j=0;$j -lt 35 -and $cursorElement;$j++){
+  if($cursorElement -eq $target -or $cursorElement -eq $window){$belongs=$true;break}
+  $cursorElement=[System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($cursorElement)
+ }
+ if(!$belongs){throw 'Another element covers the target center; refusing pointer action.'}
+ return @{x=$x;y=$y}
+}
+function MouseAction($window,$target,[string]$kind){
+ $point=GetSafePoint $window $target
+ if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Focus changed before pointer operation.'}
+ if(![SkyDesktopNative]::SetCursorPos([int]$point.x,[int]$point.y)){throw 'Windows rejected pointer positioning.'}
+ if($kind -eq 'move'){return $point}
+ $down=if($kind -eq 'right_click'){[SkyMouseFlags]::RIGHT_DOWN}else{[SkyMouseFlags]::LEFT_DOWN}
+ $up=if($kind -eq 'right_click'){[SkyMouseFlags]::RIGHT_UP}else{[SkyMouseFlags]::LEFT_UP}
+ $times=if($kind -eq 'double_click'){2}else{1}
+ for($k=0;$k -lt $times;$k++){
+  if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Foreground changed before pointer click.'}
+  [SkyDesktopNative]::mouse_event($down,0,0,0,[UIntPtr]::Zero)
+  [SkyDesktopNative]::mouse_event($up,0,0,0,[UIntPtr]::Zero)
+  if($k -eq 0 -and $times -eq 2){Start-Sleep -Milliseconds 75}
+ }
+ return $point
+}
+function SendLiteralText([string]$value){
+ if($value.Length -gt 1000){throw 'Text exceeds per-action typing budget.'}
+ # Windows Forms SendKeys treats these as control characters. Escape each one.
+ foreach($char in $value.ToCharArray()){
+  $ch=[string]$char
+  if($ch -eq [string][char]13){continue}
+  if($ch -eq [string][char]10){$ch='{ENTER}'}
+  elseif($ch -eq [string][char]9){$ch='{TAB}'}
+  elseif($ch -eq '{'){$ch='{{}'}
+  elseif($ch -eq '}'){$ch='{}}'}
+  elseif($ch -eq '+'){$ch='{+}'}
+  elseif($ch -eq '^'){$ch='{^}'}
+  elseif($ch -eq '%'){$ch='{%}'}
+  elseif($ch -eq '~'){$ch='{~}'}
+  elseif($ch -eq '('){$ch='{(}'}
+  elseif($ch -eq ')'){$ch='{)}'}
+  [System.Windows.Forms.SendKeys]::SendWait($ch)
+ }
+}
 function RunStep($step){
  $window=Foreground
  CheckSafety $window
@@ -110,12 +179,18 @@ function RunStep($step){
  }
  $kind=[string]$step.kind
  if($kind -eq 'keypress'){
-  $allowed=@('^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}')
+  $allowed=@('^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}','{BACKSPACE}','{DELETE}','{HOME}','{END}')
   if($allowed -cnotcontains [string]$step.keys){throw 'Shortcut is outside the approved keyboard allowlist.'}
   [System.Windows.Forms.SendKeys]::SendWait([string]$step.keys)
  }else{
   $target=FindTarget $window $step
-  if($kind -eq 'invoke'){
+  if($kind -eq 'move' -or $kind -eq 'click' -or $kind -eq 'right_click' -or $kind -eq 'double_click'){
+   $position=MouseAction $window $target $kind
+  }elseif($kind -eq 'type'){
+   $target.SetFocus()
+   if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Focus changed before typing.'}
+   SendLiteralText ([string]$step.value)
+  }elseif($kind -eq 'invoke'){
    $pattern=$target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
    $pattern.Invoke()
   }elseif($kind -eq 'focus'){
