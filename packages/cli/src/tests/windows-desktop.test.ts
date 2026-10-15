@@ -211,3 +211,25 @@ describe('computer task failure reporting regression', () => {
     expect(tools).toContain('Never call computer_verify expectedText before the write');
   });
 });
+
+describe('semantic drag and mouse release', () => {
+  const window = { expectedTitle: 'Untitled - Notepad', expectedProcessId: 101 };
+  test('drag requires named and different source/destination controls', () => {
+    expect(() => validateComputerStep({ ...window, kind: 'drag', name: 'A', targetName: 'B' })).not.toThrow();
+    expect(() => validateComputerStep({ ...window, kind: 'drag', name: 'A' })).toThrow(/destination/);
+    expect(() => validateComputerStep({ ...window, kind: 'drag', name: 'A', targetName: 'A' })).toThrow(/different/);
+    expect(() => validateComputerStep({ ...window, kind: 'drag', targetName: 'B' })).toThrow(/Specify/);
+  });
+  test('both endpoints are hit tested and left mouse is released on interruption', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    const start = script.indexOf('function DragBetweenControls(');
+    const end = script.indexOf('function SendLiteralText(', start);
+    const drag = script.slice(start, end);
+    expect(drag).toContain('GetSafePoint $window $source');
+    expect(drag).toContain('GetSafePoint $window $destination');
+    expect(drag).toContain('GetForegroundWindow() -ne $handle');
+    expect(drag).toContain('}finally{');
+    expect(drag).toContain('[SkyMouseFlags]::LEFT_UP');
+    expect(script).toContain('outcomeVerified=$false');
+  });
+});
