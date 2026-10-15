@@ -2088,7 +2088,14 @@ export async function executeProjectToolCall(
           String(step?.name || step?.automationId || 'keyboard')
         ).join(' | ').slice(0, 900);
         await ensureDesktopApproval(workspace, call.name, stepSummary, args.reason, requestApproval, 'desktop:act');
-        const result = await runComputerCore(call.name === 'computer_act' ? 'act' : 'batch', steps as ComputerStep[]);
+        let result: Record<string, unknown>;
+        let actionError: string | undefined;
+        try {
+          result = await runComputerCore(call.name === 'computer_act' ? 'act' : 'batch', steps as ComputerStep[]);
+        } catch (error) {
+          actionError = error instanceof Error ? error.message : String(error);
+          result = { ok: false, error: actionError };
+        }
         // New pixels automatically follow each GUI action; the model should
         // inspect them before planning its next action, without extra tool calls.
         let visual: Awaited<ReturnType<typeof captureComputerFeedback>> | undefined;
@@ -2101,7 +2108,7 @@ export async function executeProjectToolCall(
             ...result,
             visualFeedback: visual
               ? { captured: true, scope: 'desktop', capture: visual.capture,
-                  note: 'This image shows the desktop AFTER the action. Inspect it before taking another action or claiming completion.' }
+                  note: 'Fresh pixels after the attempted action (whether success or failure). On failure identify the actual foreground window, then safely refocus or ask the user if Windows blocks activation.' }
               : { captured: false, error: visualError || 'Screenshot unavailable' },
           }),
           imageDataUrl: visual?.imageDataUrl,
