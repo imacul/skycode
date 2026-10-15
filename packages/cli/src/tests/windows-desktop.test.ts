@@ -280,6 +280,8 @@ describe('natural-language mouse task routing', () => {
     expect(needsReachTools('Drag the selected item in File Explorer')).toBe(true);
     expect(needsReachTools('Scroll down in the current Windows application')).toBe(true);
     expect(needsReachTools('Move the pointer to the Chrome search field')).toBe(true);
+    expect(needsReachTools('Take a screenshot of my Windows screen')).toBe(true);
+    expect(needsReachTools('Capture the current computer window')).toBe(true);
   });
   test('leaves explanatory questions in ordinary chat', () => {
     expect(needsReachTools('How do I click the View button in File Explorer?')).toBe(false);
@@ -326,6 +328,9 @@ describe('screenshot vision computer fallback', () => {
     const tools=readFileSync(resolve(import.meta.dir,'../agents/project-tools.ts'),'utf8');
     expect(openrouter).toContain('msg.imageDataUrl');
     expect(openai).toContain('msg.imageDataUrl');
+    const chatgpt=readFileSync(resolve(import.meta.dir,'../providers/chatgpt.ts'),'utf8');
+    expect(chatgpt).toContain('m.imageDataUrl');
+    expect(chatgpt).toContain("type: 'input_image'");
     expect(tools).toContain('imageDataUrl: executions.find');
     expect(tools).toContain("data:image/jpeg;base64,");
   });
