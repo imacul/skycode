@@ -250,3 +250,25 @@ describe('cross-application UI control disambiguation', () => {
     expect(src).toContain('Do not attempt fragile shell commands');
   });
 });
+
+describe('physical Windows mouse interaction', () => {
+  test('pointer action moves visibly, checks location, and reports physical input evidence', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    const mouse = script.slice(script.indexOf('function MouseAction('), script.indexOf('function DragBetweenControls('));
+    expect(mouse).toContain('GetCursorPos([ref]$origin)');
+    expect(mouse).toContain('SetCursorPos($x,$y)');
+    expect(mouse).toContain('Start-Sleep -Milliseconds 18');
+    expect(mouse).toContain('Pointer failed to reach target');
+    expect(mouse).toContain("method='physical-mouse'");
+    expect(mouse).toContain('clicksSent=$sent');
+    expect(mouse).toContain('outcomeVerified=$false');
+    expect(script).toContain('pointer=$position');
+  });
+  test('agent honors literal mouse requests and distinguishes activity from workspace inspection', () => {
+    const tools = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
+    const agent = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
+    expect(tools).toContain('UIA invoke, app launch commands and keyboard shortcuts do NOT count as mouse interaction.');
+    expect(agent).toContain('Using Windows mouse: ');
+    expect(agent).toContain('Mouse action sent: ');
+  });
+});
