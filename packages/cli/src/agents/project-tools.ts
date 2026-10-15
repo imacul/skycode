@@ -56,6 +56,7 @@ export const PROJECT_TOOL_NAMES = [
   'web_fetch_local',
   'open_url',
   'open_app',
+  'desktop_list_windows',
   'desktop_snapshot',
   'desktop_close_document',
   'desktop_notepad_document',
@@ -88,7 +89,7 @@ export function projectToolResultTrust(
 ): 'trusted-control' | 'untrusted-data' {
   return [
     'read_file', 'list_files', 'search_files', 'run_command', 'start_process',
-    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call', 'desktop_snapshot',
+    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call', 'desktop_snapshot', 'desktop_list_windows',
   ].includes(name) ? 'untrusted-data' : 'trusted-control';
 }
 
@@ -1645,6 +1646,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- web_fetch_local: {"url":"http://localhost:3000/","reason":"Inspect the locally running app"} — requires approval for a separately scoped local-network capability.',
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
+    '- desktop_list_windows: {"reason":"Find the available Windows apps and document windows"} — enumerate the currently open windows (up to 60, excluding recognized credential surfaces); use this before choosing a GUI target, instead of guessing which app is focused. Requires approval except in auto-approved Owner Mode.',
     '- desktop_snapshot: {"reason":"Inspect the current foreground Windows app"} — reads a bounded UI Automation accessibility tree (requires approval). Never claim to see pixels; this is semantic-only.',
     '- desktop_close_document: {"filename":"dog-definition.txt","reason":"Close the document that was just created"} — closes only the named open Notepad document, never the whole application or other tabs. Requires approval, verifies the document disappeared, and reports failure otherwise. For follow-ups like "close the file", infer the exact filename from the recent task result and use this tool; do not claim inability unless the target is genuinely unknown.',
     '- desktop_notepad_document: {"filename":"skycode-demo.txt","content":"Hello from SkyCode","reason":"Create and inspect the requested Notepad note"} — creates one new .txt in the active workspace, verifies it on disk, opens and inspects it in Notepad, then safely closes only its document tab, reopens it, and verifies the editor text again. Reports each stage separately. Requires approval. This milestone writes the file using the filesystem; it does NOT yet type into Notepad through the GUI.',
@@ -1937,6 +1939,11 @@ export async function executeProjectToolCall(
           displayPath: args.url,
           trust: 'untrusted-data',
         };
+      }
+      case 'desktop_list_windows': {
+        await ensureDesktopApproval(workspace, 'desktop_list_windows', 'enumerate visible windows', args.reason, requestApproval, 'desktop:observe');
+        const result = await runWindowsDesktop({ action: 'list_windows' });
+        return { call, success: true, content: JSON.stringify(result), trust: 'untrusted-data' };
       }
       case 'desktop_snapshot': {
         await ensureDesktopApproval(workspace, 'desktop_snapshot', 'current foreground window', args.reason, requestApproval, 'desktop:observe');
