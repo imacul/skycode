@@ -220,36 +220,14 @@ export class CodingAgent implements BaseAgent {
         return `TEST MODE: Please write tests for this code:\n\n${input}`;
       case 'code':
       default:
-        // Check if input looks like a request for specific capability
-        const lowerInput = input.toLowerCase();
-        if (lowerInput.includes('fix') || lowerInput.includes('bug')) {
-          return `BUG FIXING: ${input}`;
-        }
-        if (lowerInput.includes('explain') || lowerInput.includes('how does')) {
-          return `CODE EXPLANATION: ${input}`;
-        }
-        if (lowerInput.includes('refactor') || lowerInput.includes('improve')) {
-          return `REFACTORING: ${input}`;
-        }
-        if (lowerInput.includes('test') || lowerInput.includes('testing')) {
-          return `TESTING: ${input}`;
-        }
-        if (lowerInput.includes('complete') || lowerInput.includes('write')) {
-          return `CODE COMPLETION: ${input}`;
-        }
         return input;
     }
   }
 
-  private shouldRunProjectTools(request: AgentRequest): boolean {
-    if (request.taskKind === 'workspace' && request.taskState === 'running') return true;
-    if (shouldUseProjectTools(request.input)) return true;
-
-    const history = [
-      ...(this.context.conversation?.messages || []),
-      ...this.context.messages,
-    ];
-    return shouldContinueProjectTools(request.input, history);
+  private shouldRunProjectTools(_request: AgentRequest): boolean {
+    // Do not gate tool availability on exact words or previous route state.
+    // The selected model decides whether to invoke an exposed tool.
+    return true;
   }
 
   private looksLikeRawModelCapabilityRefusal(content: string): boolean {
@@ -417,7 +395,7 @@ export class CodingAgent implements BaseAgent {
         content:
           'This request does not require workspace file inspection first. ' +
           'Review the SkyCode tools available to you and call the one that fits. ' +
-          'Typical fits: open_url / open_app / browser / web_search / web_fetch / mcp_*. ' +
+          'You may respond conversationally without a tool, or use computer, file, browser and network tools when execution is needed. ' +
           'If none fit, say clearly that SkyCode does not provide that capability yet. ' +
           'Do not invent success and do not start unrelated file edits.',
         timestamp: new Date(),
@@ -599,7 +577,7 @@ export class CodingAgent implements BaseAgent {
       if (calls.length === 0) {
         const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
 
-        if (containsRawToolProtocol || (!hasExecutedTools && iteration < 3) || (requiresWebEvidence && !hasWebEvidence && iteration < 4)) {
+        if (containsRawToolProtocol || (!hasExecutedTools && falseCapabilityRefusal && iteration < 2) || (requiresWebEvidence && !hasWebEvidence && iteration < 4)) {
           messages.push({
             id: 'assistant_invalid_tool_plan_' + Date.now() + '_' + iteration,
             role: 'assistant',
@@ -615,13 +593,13 @@ export class CodingAgent implements BaseAgent {
               (falseCapabilityRefusal
                 ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
                 : '') +
-              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, run_command, start_process, read_process_logs, stop_process, web_search, web_fetch, open_url, open_app, browser, mcp_list, and mcp_call. ' +
+              'SkyCode has computer_observe, computer_focus_window, computer_act, computer_screenshot, file operations, terminal, browser and other tools. Choose the matching one for the user request. ' +
               (containsRawToolProtocol
                 ? 'Your previous response contained tool-call markup that SkyCode could not execute. Do not repeat that syntax. '
                 : '') +
               (requiresWebEvidence
                 ? 'The user asked for current web research. You must call web_search and, where useful, web_fetch before answering. Do not invent URLs, dates, releases, or sources. '
-                : 'The user asked you to modify real project files. ') +
+                : 'Choose the appropriate SkyCode tool only if the user requested an action you can execute. ') +
               'Use the exact ' +
               '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
               'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +
