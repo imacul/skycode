@@ -165,6 +165,20 @@ describe('target-aware Windows selection', () => {
   });
 });
 
+describe('native Windows typing regression', () => {
+  test('uses SendInput Unicode events rather than background PowerShell SendKeys for text', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    const typed = script.slice(script.indexOf('function SendLiteralText('), script.indexOf('function RunStep('));
+    expect(typed).toContain('[SkyKeyboardNative]::SendUnicode');
+    expect(typed).toContain('GetForegroundWindow() -ne $handle');
+    expect(typed).not.toContain('SendKeys');
+    expect(script).toContain('public static extern uint SendInput');
+    expect(script).toContain('Windows SendInput failed');
+    expect(script).toContain('$readback=VerifyText $window');
+    expect(script).toContain('editor content is not verified');
+  });
+});
+
 describe('editor-content verification regression', () => {
   test('requires bounded explicit text and exact window identity', () => {
     expect(() => validateComputerTextVerification({expectedTitle:'Notepad',expectedProcessId:55,expectedText:'Hello from SkyCode'})).not.toThrow();
