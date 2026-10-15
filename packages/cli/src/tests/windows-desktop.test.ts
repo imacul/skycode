@@ -77,6 +77,7 @@ describe('Windows desktop PowerShell adapter syntax', () => {
       '-NoProfile', '-NonInteractive', '-Command', check,
     ], { encoding: 'utf8', timeout: 15000 });
     expect(parse.error).toBeUndefined();
+    if (parse.status !== 0) throw new Error('Legacy PowerShell syntax: ' + parse.stdout + '\n' + parse.stderr);
     expect(parse.status).toBe(0);
     const coreScript = resolve(import.meta.dir, '../../scripts/computer-core.ps1');
     const corePath = coreScript.replace(/'/g, "''");
@@ -85,6 +86,7 @@ describe('Windows desktop PowerShell adapter syntax', () => {
       'if($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Output $_.ToString() }; exit 1 }';
     const coreParse = spawnSync('powershell.exe', ['-NoProfile','-NonInteractive','-Command',checkCore], {encoding:'utf8',timeout:15000});
     expect(coreParse.error).toBeUndefined();
+    if (coreParse.status !== 0) throw new Error('Computer core PowerShell syntax: ' + coreParse.stdout + '\n' + coreParse.stderr);
     expect(coreParse.status).toBe(0);
   });
 });
