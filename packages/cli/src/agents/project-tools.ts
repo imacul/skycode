@@ -1986,7 +1986,14 @@ export async function executeProjectToolCall(
       case 'computer_batch': {
         const steps = call.name === 'computer_act' ? [args.step] : args.steps;
         if (!Array.isArray(steps) || !steps.length || steps.length > 8) throw new Error('Provide 1–8 computer steps.');
-        await ensureDesktopApproval(workspace, call.name, 'computer interaction (' + steps.length + ' step(s))', args.reason, requestApproval, 'desktop:act');
+        // Show exactly which UI operations are being authorized, without
+        // leaking text being typed into the approval description.
+        const stepSummary = (steps as Array<Record<string, unknown>>).map((step, index) =>
+          (index + 1) + ': ' + String(step?.kind || 'unknown') + ' · ' +
+          String(step?.expectedTitle || 'unknown window') + ' · ' +
+          String(step?.name || step?.automationId || 'keyboard')
+        ).join(' | ').slice(0, 900);
+        await ensureDesktopApproval(workspace, call.name, stepSummary, args.reason, requestApproval, 'desktop:act');
         const result = await runComputerCore(call.name === 'computer_act' ? 'act' : 'batch', steps as ComputerStep[]);
         return { call, success: result.ok === true, content: JSON.stringify(result), trust: 'trusted-control' };
       }
