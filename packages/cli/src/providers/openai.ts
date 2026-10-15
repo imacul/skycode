@@ -319,7 +319,12 @@ export class OpenAIProvider implements BaseProvider {
     }
 
     const model = request.model || this.config.model || OPENAI_MODELS[0].id;
-    const messages = request.messages;
+    const messages: OpenAIRequest['messages'] = request.messages.map(msg => ({
+      role: msg.role,
+      content: msg.imageDataUrl && msg.role === 'user'
+        ? [{ type: 'text' as const, text: msg.content }, { type: 'image_url' as const, image_url: { url: msg.imageDataUrl } }]
+        : msg.content,
+    }));
 
     const body: OpenAIRequest = {
       model,
