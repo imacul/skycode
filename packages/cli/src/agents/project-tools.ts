@@ -164,10 +164,10 @@ export function needsReachTools(input: string): boolean {
  */
 export function selectDesktopObservation(input: string): ProjectToolCall | null {
   const text = input.trim().toLowerCase();
-  if (/\\b(?:list|show|enumerate|what are|which)\\b/.test(text) &&
-      /\\b(?:open|running|currently)\\b/.test(text) &&
-      /\\b(?:windows|applications|apps|programs)\\b/.test(text) &&
-      !/\\b(?:close|kill|stop|terminate|delete|edit|change|launch)\\b/.test(text)) {
+  if (/\b(?:list|show|enumerate|what are|which)\b/.test(text) &&
+      /\b(?:open|running|currently)\b/.test(text) &&
+      /\b(?:windows|applications|apps|programs)\b/.test(text) &&
+      !/\b(?:close|kill|stop|terminate|delete|edit|change|launch)\b/.test(text)) {
     return { name: 'desktop_list_windows', args: { reason: 'List currently open Windows application windows' } };
   }
   return null;
@@ -2236,7 +2236,7 @@ export function projectToolResultMessage(
     const maxFeedbackChars = execution.success ? 6000 : 1800;
     const feedback = execution.content.length > maxFeedbackChars
       ? execution.content.slice(0, maxFeedbackChars) +
-        '\\n[tool output truncated; request a narrower inspection if necessary]'
+        '\n[tool output truncated; request a narrower inspection if necessary]'
       : execution.content;
     return JSON.stringify({
       tool: execution.call.name,
