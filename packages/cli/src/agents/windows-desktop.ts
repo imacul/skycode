@@ -102,22 +102,24 @@ export function verifyComputerObservation(
 }
 
 export type ComputerStep = {
-  kind: 'focus' | 'invoke' | 'set_value' | 'keypress';
+  kind: 'focus' | 'invoke' | 'set_value' | 'keypress' | 'scroll';
   expectedTitle: string;
   expectedProcessId: number;
   name?: string;
   automationId?: string;
   keys?: string;
   value?: string;
+  direction?: 'up' | 'down';
 };
 
 export function validateComputerStep(step: ComputerStep): void {
-  if (!step || !['focus','invoke','set_value','keypress'].includes(step.kind)) throw new Error('Invalid computer action.');
+  if (!step || !['focus','invoke','set_value','keypress','scroll'].includes(step.kind)) throw new Error('Invalid computer action.');
   if (!step.expectedTitle || !Number.isSafeInteger(step.expectedProcessId) || step.expectedProcessId <= 0) throw new Error('Exact foreground window identity required.');
   if (step.kind === 'keypress') {
     if (!['^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}'].includes(step.keys || '')) throw new Error('Unsupported keyboard shortcut.');
   } else if (!step.name && !step.automationId) throw new Error('Specify an accessible control name or automationId.');
   if (step.value != null && step.value.length > 3000) throw new Error('Text input too long.');
+  if (step.kind === 'scroll' && !['up','down'].includes(step.direction || '')) throw new Error('Scroll direction must be up or down.');
 }
 
 export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch', steps: ComputerStep[] = []): Promise<Record<string, unknown>> {
