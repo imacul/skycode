@@ -136,6 +136,172 @@ function Verify-Text($window,$expected) {
 }
 try {
  $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
+ if ($request.action -eq 'list_windows') {
+  $items=@()
+  $windows=[System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+   [System.Windows.Automation.TreeScope]::Children,
+   [System.Windows.Automation.Condition]::TrueCondition)
+  foreach ($window in $windows) {
+   if ($items.Count -ge 60) {break}
+   try {
+    $p=$window.Current
+    $title=[string]$p.Name
+    $pidValue=[int]$p.ProcessId
+    if (!$title.Trim() -or $pidValue -le 0 -or $p.IsOffscreen) {continue}
+    $proc=Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+    if (!$proc) {continue}
+    $processName=[string]$proc.ProcessName
+    if ($processName -match '^(?i:logonui|credentialuibroker|consent|1password|bitwarden|keepass|keepassxc|lastpass)
+  $hwnd=[SkyCodeWin32]::GetForegroundWindow()
+  if ($hwnd -eq [IntPtr]::Zero) { throw "No foreground window." }
+  $window=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+  $obs=Observe-Window $window
+  if ([string]$window.Current.Name -match '(?i)password|credential|sign in|log in|authenticator|bank') {throw "Sensitive window blocked."}
+  Say @{ok=$true;action='snapshot';window=$obs}; exit 0
+ }
+ if ($request.action -eq 'close_document') {
+  $name=[string]$request.filename
+  if ($name -notmatch '^[a-zA-Z0-9_][a-zA-Z0-9_ .-]{0,100}\\.txt
+ $path=[IO.Path]::GetFullPath([string]$request.path)
+ $content=[string]$request.content
+ if (!$path.EndsWith('.txt',[StringComparison]::OrdinalIgnoreCase)) {throw "Only .txt files are permitted."}
+ if ([IO.File]::Exists($path)) {throw "File exists; overwrite is not allowed."}
+ [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) | Out-Null
+ # Stage the document via .NET, not by simulating an unverified GUI paste.
+ [IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
+ $onDisk=[IO.File]::ReadAllText($path)
+ if ($onDisk -cne $content) {throw "Disk read-back does not match."}
+ # Close/reopen is a deliberate verification stage, not an optional model inference.
+ # Never close an unrelated window: match and select the exact document tab.
+ $launch=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
+ $opened=$false; $editorVerified=$false; $closed=$false; $reopened=$false
+ $reopenVerified=$false; $notes=@(); $observed=$null
+ try {
+  $window=Find-DocumentWindow $path
+  Select-DocumentTab $window $path
+  $opened=$true
+  $observed=Observe-Window $window 30
+  $first=Verify-Text $window $content
+  $editorVerified=[bool]$first.verified
+  if (!$editorVerified) { $notes+=([string]$first.reason) }
+  # Only close if we proved the document tab identity and it is the intended tab.
+  Close-DocumentTab $window $path
+  # Confirm the exact document no longer appears as an open tab/window.
+  # Failure to prove closure blocks the subsequent reopen verification.
+  try {
+   $stillOpen=Find-DocumentWindow $path 1200
+   throw "The document still appears open after Ctrl+W; refusing to claim it was closed."
+  } catch {
+   if ($_.Exception.Message -notmatch '^Could not find a Notepad window or tab') {throw}
+  }
+  $closed=$true
+  # Modern Notepad may keep a saved-document tab in a background process.
+  # Reopening is safe and must be accompanied by another disk/content check.
+  $reopenLaunch=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
+  $again=Find-DocumentWindow $path
+  Select-DocumentTab $again $path
+  $reopened=$true
+  $check=Verify-Text $again $content
+  $reopenVerified=[bool]$check.verified
+  if (!$reopenVerified) {$notes+=([string]$check.reason)}
+ } catch {
+  $notes+=($_.Exception.Message)
+ }
+ $verifiedDiskAfter=[IO.File]::Exists($path) -and ([IO.File]::ReadAllText($path) -ceq $content)
+ Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$verifiedDiskAfter;
+  notepadOpened=$opened;editorVerified=$editorVerified;documentClosed=$closed;
+  documentReopened=$reopened;reopenEditorVerified=$reopenVerified;
+  verified=$verifiedDiskAfter -and $opened -and $editorVerified -and $closed -and $reopened -and $reopenVerified;
+  notes=$notes;window=$observed}
+ exit 0
+} catch {
+ Say @{ok=$false;error=$_.Exception.Message}
+ exit 1
+}
+ -or $name.Contains('..')) {
+   throw "Use a simple .txt document filename."
+  }
+  $window=Find-DocumentWindow $name 3500
+  Select-DocumentTab $window $name
+  $title=[string]$window.Current.Name
+  Close-DocumentTab $window $name
+  $closed=$false
+  try {
+   $stillOpen=Find-DocumentWindow $name 1200
+  } catch {
+   if ($_.Exception.Message -match '^Could not find a Notepad window or tab') {$closed=$true}
+   else {throw}
+  }
+  Say @{ok=$true;action='close_document';filename=$name;targetWindow=$title;closed=$closed;
+   verified=$closed;notes=@($(if (!$closed) {"Document still appears open after close command."}))}
+  exit 0
+ }
+ if ($request.action -ne 'notepad_document') {throw "Unsupported desktop operation."}
+ $path=[IO.Path]::GetFullPath([string]$request.path)
+ $content=[string]$request.content
+ if (!$path.EndsWith('.txt',[StringComparison]::OrdinalIgnoreCase)) {throw "Only .txt files are permitted."}
+ if ([IO.File]::Exists($path)) {throw "File exists; overwrite is not allowed."}
+ [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) | Out-Null
+ # Stage the document via .NET, not by simulating an unverified GUI paste.
+ [IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
+ $onDisk=[IO.File]::ReadAllText($path)
+ if ($onDisk -cne $content) {throw "Disk read-back does not match."}
+ # Close/reopen is a deliberate verification stage, not an optional model inference.
+ # Never close an unrelated window: match and select the exact document tab.
+ $launch=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
+ $opened=$false; $editorVerified=$false; $closed=$false; $reopened=$false
+ $reopenVerified=$false; $notes=@(); $observed=$null
+ try {
+  $window=Find-DocumentWindow $path
+  Select-DocumentTab $window $path
+  $opened=$true
+  $observed=Observe-Window $window 30
+  $first=Verify-Text $window $content
+  $editorVerified=[bool]$first.verified
+  if (!$editorVerified) { $notes+=([string]$first.reason) }
+  # Only close if we proved the document tab identity and it is the intended tab.
+  Close-DocumentTab $window $path
+  # Confirm the exact document no longer appears as an open tab/window.
+  # Failure to prove closure blocks the subsequent reopen verification.
+  try {
+   $stillOpen=Find-DocumentWindow $path 1200
+   throw "The document still appears open after Ctrl+W; refusing to claim it was closed."
+  } catch {
+   if ($_.Exception.Message -notmatch '^Could not find a Notepad window or tab') {throw}
+  }
+  $closed=$true
+  # Modern Notepad may keep a saved-document tab in a background process.
+  # Reopening is safe and must be accompanied by another disk/content check.
+  $reopenLaunch=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
+  $again=Find-DocumentWindow $path
+  Select-DocumentTab $again $path
+  $reopened=$true
+  $check=Verify-Text $again $content
+  $reopenVerified=[bool]$check.verified
+  if (!$reopenVerified) {$notes+=([string]$check.reason)}
+ } catch {
+  $notes+=($_.Exception.Message)
+ }
+ $verifiedDiskAfter=[IO.File]::Exists($path) -and ([IO.File]::ReadAllText($path) -ceq $content)
+ Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$verifiedDiskAfter;
+  notepadOpened=$opened;editorVerified=$editorVerified;documentClosed=$closed;
+  documentReopened=$reopened;reopenEditorVerified=$reopenVerified;
+  verified=$verifiedDiskAfter -and $opened -and $editorVerified -and $closed -and $reopened -and $reopenVerified;
+  notes=$notes;window=$observed}
+ exit 0
+} catch {
+ Say @{ok=$false;error=$_.Exception.Message}
+ exit 1
+}
+ -or
+        $title -match '(?i)password|passcode|authenticator|sign.in|log.in|recovery phrase|seed phrase') {continue}
+    $items+=@{title=$title;processName=$processName;processId=$pidValue;
+      windowHandle=[string]$p.NativeWindowHandle;focused=($p.NativeWindowHandle -eq [SkyCodeWin32]::GetForegroundWindow())}
+   } catch {continue}
+  }
+  Say @{ok=$true;action='list_windows';windows=$items}
+  exit 0
+ }
  if ($request.action -eq 'snapshot') {
   $hwnd=[SkyCodeWin32]::GetForegroundWindow()
   if ($hwnd -eq [IntPtr]::Zero) { throw "No foreground window." }
