@@ -128,6 +128,9 @@ function GetSafePoint($window,$target){
  $cursorElement=$topAtPoint
  $belongs=$false
  for($j=0;$j -lt 35 -and $cursorElement;$j++){
+  $current=$cursorElement.Current
+  if([int]$current.NativeWindowHandle -eq [int]$window.Current.NativeWindowHandle -and
+     [int]$current.ProcessId -eq [int]$window.Current.ProcessId){$belongs=$true;break}
   if($cursorElement -eq $target -or $cursorElement -eq $window){$belongs=$true;break}
   $cursorElement=[System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($cursorElement)
  }
@@ -187,6 +190,9 @@ function RunStep($step){
   if($kind -eq 'move' -or $kind -eq 'click' -or $kind -eq 'right_click' -or $kind -eq 'double_click'){
    $position=MouseAction $window $target $kind
   }elseif($kind -eq 'type'){
+   $role=$target.Current.ControlType
+   if($role -ne [System.Windows.Automation.ControlType]::Edit -and
+      $role -ne [System.Windows.Automation.ControlType]::Document){throw 'Typing requires an accessible Edit or Document control.'}
    $target.SetFocus()
    if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Focus changed before typing.'}
    SendLiteralText ([string]$step.value)
