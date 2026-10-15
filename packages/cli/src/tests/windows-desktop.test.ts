@@ -116,6 +116,29 @@ describe('generic computer operations', () => {
   });
 });
 
+describe('semantic pointer and keyboard actions', () => {
+  const target = {expectedTitle:'Untitled - Notepad',expectedProcessId:999,name:'Text editor'};
+  test('permits target-aware pointer and text operations', () => {
+    for (const kind of ['move','click','right_click','double_click','focus','type'] as const) {
+      expect(() => validateComputerStep({ ...target, kind, value:kind === 'type' ? 'Hello' : undefined })).not.toThrow();
+    }
+    expect(() => validateComputerStep({...target,kind:'type'})).toThrow(/value required/);
+    expect(() => validateComputerStep({...target,kind:'type',value:'a'.repeat(1001)})).toThrow(/too long/);
+    expect(() => validateComputerStep({...target,kind:'keypress',keys:'{BACKSPACE}'})).not.toThrow();
+    expect(() => validateComputerStep({...target,kind:'keypress',keys:'%{F4}'})).toThrow(/shortcut/);
+  });
+  test('PowerShell adapter uses UIA hit testing, foreground guards, and escaped literal text', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    expect(script).toContain('AutomationElement]::FromPoint');
+    expect(script).toContain('GetSafePoint');
+    expect(script).toContain('SetCursorPos');
+    expect(script).toContain('mouse_event');
+    expect(script).toContain('Typing requires an accessible Edit or Document control.');
+    expect(script).toContain('SendLiteralText');
+    expect(script).toContain("if($kind -eq 'move' -or $kind -eq 'click'");
+  });
+});
+
 describe('deterministic desktop verification', () => {
   test('checks actual foreground identity rather than trusting tool success', () => {
     const window = { title: 'Notepad', processId: 4321, nodes: [{ name: 'Editor' }] };
