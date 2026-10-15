@@ -444,6 +444,13 @@ describe('real screenshot handoff and resilient foreground actions', () => {
     expect(runStep).toContain('$window=FocusWindow $candidate');
     expect(runStep).toContain("if($kind -eq 'visual_click'){throw 'Foreground changed since screenshot");
   });
+  test('existing windows are reused from observed process identity before launching', () => {
+    const tools = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
+    expect(tools).toContain("const inventory = await runComputerCore('list_windows')");
+    expect(tools).toContain("window.processName.toLowerCase() === normalized");
+    expect(tools).toContain("await runComputerCore('focus_window'");
+    expect(tools).toContain('Reused and focused the already open application window');
+  });
   test('autonomous task will not open the same app more than once', () => {
     const code = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
     expect(code).toContain('const launchedApplicationTargets = new Set<string>()');
