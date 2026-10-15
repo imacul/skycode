@@ -290,6 +290,20 @@ describe('natural-language mouse task routing', () => {
   });
 });
 
+describe('transient screenshot tool feedback', () => {
+  test('provides image data to model without embedding it in the text transcript', () => {
+    const dataUrl = 'data:image/jpeg;base64,' + 'A'.repeat(2000);
+    const message = projectToolResultMessage([{
+      call: { name: 'computer_screenshot', args: { reason: 'Inspect window' } },
+      success: true, trust: 'untrusted-data', content: '{"ok":true}',
+      imageDataUrl: dataUrl,
+    }]);
+    expect(message.imageDataUrl).toBe(dataUrl);
+    expect(message.content).not.toContain(dataUrl);
+    expect(message.content).toContain('"computer_screenshot"');
+  });
+});
+
 describe('screenshot vision computer fallback', () => {
   test('registers screenshot tool and warns about provider requirements', () => {
     expect(PROJECT_TOOL_NAMES).toContain('computer_screenshot');
