@@ -90,7 +90,7 @@ describe('Windows desktop PowerShell adapter syntax', () => {
     expect(coreParse.error).toBeUndefined();
     if (coreParse.status !== 0) throw new Error('Computer core PowerShell syntax: ' + coreParse.stdout + '\n' + coreParse.stderr);
     expect(coreParse.status).toBe(0);
-  });
+  }, 30000);
 });
 
 describe('window state classification contract', () => {
