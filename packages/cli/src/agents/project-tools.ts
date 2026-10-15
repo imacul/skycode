@@ -1995,7 +1995,7 @@ export async function executeProjectToolCall(
         ).join(' | ').slice(0, 900);
         await ensureDesktopApproval(workspace, call.name, stepSummary, args.reason, requestApproval, 'desktop:act');
         const result = await runComputerCore(call.name === 'computer_act' ? 'act' : 'batch', steps as ComputerStep[]);
-        return { call, success: result.ok === true, content: JSON.stringify(result), trust: 'trusted-control' };
+        return { call, success: result.ok === true, content: JSON.stringify(result), trust: 'untrusted-data' };
       }
       case 'desktop_list_windows': {
         await ensureDesktopApproval(workspace, 'desktop_list_windows', 'enumerate visible windows', args.reason, requestApproval, 'desktop:observe');
