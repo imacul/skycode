@@ -918,12 +918,15 @@ export class CodingAgent implements BaseAgent {
         untrustedInfluence = true;
       }
 
-      const recentFailures = allExecutions.slice(-6);
-      if (recentFailures.length >= 4 && recentFailures.filter(item => !item.success).length >= 4) {
+      // Stop on an actual run of failures, not four failures interleaved with
+      // successful observations. Report a failed call, never a successful one.
+      const tail = allExecutions.slice(-4);
+      if (tail.length === 4 && tail.every(item => !item.success)) {
+        const failed = tail[tail.length - 1];
         return {
-          content: 'SkyCode stopped after repeated tool failures instead of wasting further model calls. Last error: ' +
-            (recentFailures[recentFailures.length - 1]?.content || 'unknown').slice(0, 900) +
-            '\\nTry a different approach or inspect the tool implementation.',
+          content: 'SkyCode stopped after four consecutive tool failures. Failing tool: ' +
+            failed.call.name + '. Error: ' + (failed.content || 'unknown').slice(0, 900) +
+            '\\nThe task is incomplete. Inspect the tool trace before retrying.',
           finishReason: 'repeated_tool_failure', tokensUsed,
         };
       }
