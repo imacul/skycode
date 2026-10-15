@@ -21,7 +21,7 @@ import {
 import { recordOwnerAction } from '../security/owner-audit';
 import { useSettingsStore } from '../store/settings';
 import { openOnDesktop } from './desktop-tools';
-import { runWindowsDesktop, validateNotepadTarget, runComputerCore, type ComputerStep } from './windows-desktop';
+import { runWindowsDesktop, validateNotepadTarget, runComputerCore, verifyComputerObservation, type ComputerStep } from './windows-desktop';
 import {
   braveIsRunning,
   openInBrave,
@@ -57,6 +57,7 @@ export const PROJECT_TOOL_NAMES = [
   'open_url',
   'open_app',
   'computer_observe',
+  'computer_verify',
   'computer_act',
   'computer_batch',
   'desktop_list_windows',
@@ -1666,6 +1667,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
     '- computer_observe: {"reason":"Inspect the foreground Windows application"} — return a bounded UI Automation snapshot of up to 40 visible non-credential controls. Prefer this to screenshots for routine targeting.',
+    '- computer_verify: {"expectedTitle":"Window title","expectedProcessId":123,"controlName":"Optional exact name","reason":"Verify requested visible state"} — compare a fresh UIA observation with the expected foreground window and optional accessible control; no model call required for verification.',
     '- computer_act: {"step":{"kind":"invoke","expectedTitle":"Window title","expectedProcessId":123,"name":"Button label"},"reason":"Perform the requested UI action"} — approved guarded focus/invoke/set_value/keypress action. Must use window identity from a fresh observation, then verify result.',
     '- computer_batch: {"steps":[{"kind":"focus","expectedTitle":"Window title","expectedProcessId":123,"name":"Text field"}],"reason":"Execute a short authorized sequence"} — up to 8 guarded steps locally, stopping immediately on first failure. Never invent window identity or controls.',
     '- desktop_list_windows: {"reason":"Find the available Windows apps and document windows"} — list top-level windows by visible, minimized, hidden/background, and Windows system-UI state; identify the foreground window and include a bounded sample of GUI processes without an observed window. This is not a complete process inventory and visible does not mean unobscured. Use this before choosing a GUI target, instead of guessing which app is focused. Requires approval except in auto-approved Owner Mode.',
@@ -1967,6 +1969,19 @@ export async function executeProjectToolCall(
         const result = await runComputerCore('observe');
         return { call, success: true, content: JSON.stringify(result), trust: 'untrusted-data' };
       }
+      case 'computer_verify': {
+        if (typeof args.expectedTitle !== 'string' || !Number.isSafeInteger(args.expectedProcessId) || Number(args.expectedProcessId) <= 0) {
+          throw new Error('Expected foreground title and process ID are required.');
+        }
+        await ensureDesktopApproval(workspace, 'computer_verify', 'verify foreground UI state', args.reason, requestApproval, 'desktop:observe');
+        const observation = await runComputerCore('observe');
+        const check = verifyComputerObservation(observation, {
+          expectedTitle: args.expectedTitle,
+          expectedProcessId: args.expectedProcessId as number,
+          controlName: typeof args.controlName === 'string' ? args.controlName : undefined,
+        });
+        return { call, success: check.verified, content: JSON.stringify(check), trust: 'trusted-control' };
+      }
       case 'computer_act':
       case 'computer_batch': {
         const steps = call.name === 'computer_act' ? [args.step] : args.steps;
@@ -2248,6 +2263,16 @@ export function projectToolResultMessage(
 
     if (execution.call.name === 'run_command') {
       delete safeArgs.cwd;
+    }
+    if (execution.call.name === 'computer_act' || execution.call.name === 'computer_batch') {
+      // The model already chose the action. Only send a compact count and
+      // types back, not the full text typed into an editor.
+      const steps = execution.call.name === 'computer_act' ? [safeArgs.step] : safeArgs.steps;
+      safeArgs.step = undefined;
+      safeArgs.steps = undefined;
+      safeArgs.stepSummary = Array.isArray(steps)
+        ? steps.map((value: any) => ({ kind: value?.kind, expectedTitle: value?.expectedTitle }))
+        : [];
     }
 
     // Cap feedback sent into the next model turn, preserving an explicit
