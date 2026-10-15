@@ -289,6 +289,10 @@ export class CodingAgent implements BaseAgent {
     let untrustedInfluence = false;
     const allExecutions: ProjectToolExecution[] = [];
     const failedCallCounts = new Map<string, number>();
+    // Keep a passive observation from becoming an infinite inspection loop.
+    // Reset after any state-changing tool so legitimate re-verification works.
+    let lastPassiveObservation = '';
+    let repeatedPassiveObservations = 0;
 
     if (loopMode === 'build') {
       const initialActivityId = 'planning_' + Date.now();
@@ -581,9 +585,9 @@ export class CodingAgent implements BaseAgent {
             role: 'user',
             content:
               'You stopped before the task was checked. Do not describe the next command and do not summarize yet. ' +
-              'Call a tool now. Use run_command for tests, builds, log files, and localhost probes. ' +
-              'Use start_process for an app or dev server, then read_process_logs, then stop_process when testing is done. ' +
-              'If the last command failed, fix the code and run the check again. ' +
+              'Call the most appropriate available tool now. For computer UI requests, use focused window observations, physical mouse/keyboard actions and screenshots, not shell navigation. ' +
+              'For development tests or logs, use the workspace terminal and process tools when necessary. ' +
+              'If an action failed, inspect the real error and choose a different approach rather than repeating identical observations. ' +
               'Use <tool_call>{"name":"...","args":{...}}</tool_call>.',
             timestamp: new Date(),
           });
@@ -710,6 +714,30 @@ export class CodingAgent implements BaseAgent {
       }
       for (const call of executableCalls.slice(0, Math.min(8, remainingToolBudget))) {
         const signature = call.name + ':' + JSON.stringify(call.args);
+        const isPassiveObservation = [
+          'desktop_list_windows', 'computer_observe', 'computer_observe_window',
+          'computer_verify', 'desktop_snapshot', 'computer_screenshot'
+        ].includes(call.name);
+        if (isPassiveObservation) {
+          repeatedPassiveObservations = signature === lastPassiveObservation
+            ? repeatedPassiveObservations + 1 : 0;
+          lastPassiveObservation = signature;
+          if (repeatedPassiveObservations >= 2) {
+            const blocked: ProjectToolExecution = {
+              call, success: false,
+              content: 'Repeated the same read-only desktop observation without intervening action. Use existing evidence to act, switch to an alternative observation modality such as screenshot, or report an actual blocker. Do not re-inspect the unchanged window.',
+              trust: 'trusted-control',
+            };
+            executions.push(blocked);
+            allExecutions.push(blocked);
+            lastModelToolFailed = true;
+            onToolExecution?.(blocked);
+            continue;
+          }
+        } else {
+          lastPassiveObservation = '';
+          repeatedPassiveObservations = 0;
+        }
         if ((failedCallCounts.get(signature) || 0) >= 2) {
           const blocked: ProjectToolExecution = {
             call, success: false,
