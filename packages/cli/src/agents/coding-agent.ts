@@ -233,14 +233,11 @@ export class CodingAgent implements BaseAgent {
   }
 
   private looksLikeRawModelCapabilityRefusal(content: string): boolean {
+    // Detect inaccurate claims of tool unavailability in a MODEL RESPONSE,
+    // never use this to classify the user's instruction or choose an action.
     const text = content.toLowerCase();
-    return (
-      /\b(i (?:am|['’]m) not able to|i cannot|i can['’]?t|unable to)\b/.test(text) &&
-      /\b(create|build|develop|software|files?|folders?|project|app|application|execute|compile|deploy)\b/.test(text)
-    ) || (
-      /\b(i can only|limited to)\b/.test(text) &&
-      /\b(code snippets?|guidance|examples?|text|source code)\b/.test(text)
-    );
+    return /\b(i (?:am|['’]m) (?:not able to|unable to)|i cannot|i can['’]?t|unable to|i (?:can only|am limited to))\b/.test(text) &&
+      /\b(interact|operate|click|mouse|window|desktop|screen|file|folder|computer|app|application|execute|create|open|control|tool)\b/.test(text);
   }
 
   private async runProjectToolLoop(
@@ -594,7 +591,7 @@ export class CodingAgent implements BaseAgent {
         if (!hasExecutedTools && falseCapabilityRefusal) {
           return {
             content:
-              'SkyCode can create and structure this software in the active workspace, but the selected model did not follow the workspace tool protocol after multiple retries. ' +
+              'SkyCode exposes computer and workspace tools, but the selected model did not follow its tool protocol after corrective prompts. ' +
               'Try the build request again or switch to a stronger coding model; SkyCode will keep the same real file-creation capabilities.',
             finishReason: 'tool_protocol_not_followed',
             tokensUsed,
