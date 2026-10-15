@@ -21,6 +21,7 @@ import {
 import { recordOwnerAction } from '../security/owner-audit';
 import { useSettingsStore } from '../store/settings';
 import { openOnDesktop } from './desktop-tools';
+import { runWindowsDesktop, validateNotepadTarget } from './windows-desktop';
 import {
   braveIsRunning,
   openInBrave,
@@ -55,6 +56,8 @@ export const PROJECT_TOOL_NAMES = [
   'web_fetch_local',
   'open_url',
   'open_app',
+  'desktop_snapshot',
+  'desktop_notepad_document',
   'browser',
   'mcp_list',
   'mcp_call',
@@ -84,7 +87,7 @@ export function projectToolResultTrust(
 ): 'trusted-control' | 'untrusted-data' {
   return [
     'read_file', 'list_files', 'search_files', 'run_command', 'start_process',
-    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call',
+    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call', 'desktop_snapshot',
   ].includes(name) ? 'untrusted-data' : 'trusted-control';
 }
 
@@ -146,6 +149,7 @@ export function needsReachTools(input: string): boolean {
   if (/\b(play|listen to|put on)\b.{0,80}\b(music|song|track|album|youtube|spotify)\b/.test(text)) {
     return true;
   }
+  if (/\b(?:desktop|screen|window|notepad|pc|computer)\b/.test(text) && /\b(?:open|show|inspect|see|save|write|create|control|observe|type|operate)\b/.test(text)) return true;
   if (/\bmcp\b/.test(text)) return true;
   return false;
 }
@@ -1639,6 +1643,8 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- web_fetch_local: {"url":"http://localhost:3000/","reason":"Inspect the locally running app"} — requires approval for a separately scoped local-network capability.',
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
+    '- desktop_snapshot: {"reason":"Inspect the current foreground Windows app"} — reads a bounded UI Automation accessibility tree (requires approval). Never claim to see pixels; this is semantic-only.',
+    '- desktop_notepad_document: {"filename":"skycode-demo.txt","content":"Hello from SkyCode","reason":"Create and inspect the requested Notepad note"} — creates one new .txt in the active workspace, confirms its contents on disk, opens it in Notepad and attempts to compare accessible editor text. Requires approval. This milestone writes the file using the filesystem; it does NOT yet type into Notepad through the GUI.',
     '- browser: {"action":"search","query":"goat","engine":"google","reason":"..."} — opens ONE Brave window/tab to a Google (or duckduckgo) search URL for that query. Use this when the user wants to see a search in Brave.',
     '- browser: {"action":"open","url":"https://...","reason":"..."} — opens one URL in Brave (reuses the existing Brave process when possible).',
     '- browser: {"action":"play","query":"search terms","app":"brave","reason":"..."} — Brave + YouTube Music playback helper when you decide that fits.',
@@ -1927,6 +1933,26 @@ export async function executeProjectToolCall(
           content: await fetchLocalWebPage(args.url),
           displayPath: args.url,
           trust: 'untrusted-data',
+        };
+      }
+      case 'desktop_snapshot': {
+        await ensureDesktopApproval(workspace, 'desktop_snapshot', 'current foreground window', args.reason, requestApproval, 'desktop:observe');
+        const result = await runWindowsDesktop({ action: 'snapshot' });
+        return { call, success: true, content: JSON.stringify(result), trust: 'untrusted-data' };
+      }
+      case 'desktop_notepad_document': {
+        if (typeof args.filename !== 'string' || typeof args.content !== 'string' || !args.filename.trim()) {
+          throw new Error('filename and content are required strings.');
+        }
+        if (args.content.length > 20000) throw new Error('Notepad document exceeds the 20,000 character limit.');
+        const filePath = validateNotepadTarget(args.filename, workspace);
+        await assertNoSymlinkEscape(workspace, filePath);
+        await ensureDesktopApproval(workspace, 'desktop_notepad_document', filePath, args.reason, requestApproval, 'desktop:notepad-create');
+        const result = await runWindowsDesktop({ action: 'notepad_document', path: filePath, content: args.content });
+        return {
+          call, success: result.diskVerified === true, displayPath: filePath,
+          content: 'Notepad document result: ' + JSON.stringify(result),
+          trust: 'trusted-control',
         };
       }
       case 'open_url':
