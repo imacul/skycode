@@ -1,3 +1,4 @@
+import { hasChatGPTPlan } from '../auth/chatgpt';
 // Settings store for user preferences
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
@@ -37,6 +38,8 @@ export interface ProviderSettings {
   anthropic: {
     apiKey: string;
   };
+  // ChatGPT subscription (OAuth credentials are stored separately)
+  chatgpt: { apiKey: string };
   // OpenAI
   openai: {
     apiKey: string;
@@ -120,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
     anthropic: {
       apiKey: '',
     },
+    chatgpt: { apiKey: '' },
     openai: {
       apiKey: '',
       organization: '',
@@ -393,11 +397,12 @@ export const getOpenRouterApiKey = (): string => getProviderApiKey('openrouter')
  * Check if any provider is configured
  */
 export function hasAnyProviderConfigured(): boolean {
-  const providers: (keyof ProviderSettings)[] = ['openrouter', 'local', 'anthropic', 'openai'];
+  const providers: (keyof ProviderSettings)[] = ['openrouter', 'local', 'anthropic', 'openai', 'chatgpt'];
   return providers.some((p) => {
     const key = getProviderApiKey(p);
     // Local provider doesn't need API key
     if (p === 'local') return true;
+    if (p === 'chatgpt') return hasChatGPTPlan();
     return !!key;
   });
 }
@@ -406,9 +411,10 @@ export function hasAnyProviderConfigured(): boolean {
  * Get all configured providers
  */
 export function getConfiguredProviders(): (keyof ProviderSettings)[] {
-  const providers: (keyof ProviderSettings)[] = ['openrouter', 'local', 'anthropic', 'openai'];
+  const providers: (keyof ProviderSettings)[] = ['openrouter', 'local', 'anthropic', 'openai', 'chatgpt'];
   return providers.filter((p) => {
     if (p === 'local') return true; // Local always available
+    if (p === 'chatgpt') return hasChatGPTPlan();
     return !!getProviderApiKey(p);
   });
 }
