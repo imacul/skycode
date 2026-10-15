@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateNotepadTarget, runWindowsDesktop } from '../agents/windows-desktop';
-import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls } from '../agents/project-tools';
+import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls, selectDesktopObservation, projectToolResultMessage } from '../agents/project-tools';
 
 describe('Windows desktop operator milestone', () => {
   test('rejects traversal, absolute paths and non-text documents', () => {
@@ -37,5 +37,23 @@ describe('Windows desktop operator milestone', () => {
     if (process.platform !== 'win32') {
       await expect(runWindowsDesktop({ action: 'snapshot' })).rejects.toThrow(/Windows only/);
     }
+  });
+});
+
+describe('desktop observation fast path and token feedback', () => {
+  test('uses a read-only desktop primitive for explicit window listing', () => {
+    expect(selectDesktopObservation('List the applications and windows currently open on my computer.')?.name).toBe('desktop_list_windows');
+    expect(selectDesktopObservation('Show currently running apps')?.name).toBe('desktop_list_windows');
+    expect(selectDesktopObservation('Close my currently open Notepad window')).toBeNull();
+    expect(selectDesktopObservation('Make an app that lists open windows')).toBeNull();
+  });
+
+  test('caps oversized tool output before sending it back to the model', () => {
+    const result = projectToolResultMessage([{
+      call: { name: 'run_command', args: { command: 'echo example' } },
+      success: false, trust: 'untrusted-data', content: 'F'.repeat(25000),
+    }]);
+    expect(result.content.length).toBeLessThan(4500);
+    expect(result.content).toContain('truncated');
   });
 });
