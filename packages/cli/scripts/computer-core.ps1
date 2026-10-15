@@ -155,7 +155,8 @@ function MouseAction($window,$target,[string]$kind){
 }
 function SendLiteralText([string]$value){
  if($value.Length -gt 1000){throw 'Text exceeds per-action typing budget.'}
- # Windows Forms SendKeys treats these as control characters. Escape each one.
+ # Escape locally and send once to reduce automation latency.
+ $encoded=[System.Text.StringBuilder]::new()
  foreach($char in $value.ToCharArray()){
   $ch=[string]$char
   if($ch -eq [string][char]13){continue}
@@ -169,8 +170,9 @@ function SendLiteralText([string]$value){
   elseif($ch -eq '~'){$ch='{~}'}
   elseif($ch -eq '('){$ch='{(}'}
   elseif($ch -eq ')'){$ch='{)}'}
-  [System.Windows.Forms.SendKeys]::SendWait($ch)
+  $null=$encoded.Append($ch)
  }
+ [System.Windows.Forms.SendKeys]::SendWait($encoded.ToString())
 }
 function RunStep($step){
  $window=Foreground
