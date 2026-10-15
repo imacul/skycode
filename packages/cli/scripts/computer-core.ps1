@@ -61,6 +61,40 @@ function Observe($window,[int]$max=40){
  }
  return @{title=[string]$p.Name;processId=[int]$p.ProcessId;windowHandle=[string]$p.NativeWindowHandle;nodes=$nodes}
 }
+function VerifyText($window,[string]$expectedText){
+ CheckSafety $window
+ if([string]::IsNullOrEmpty($expectedText) -or $expectedText.Length -gt 1000){throw 'Verification text must contain 1 to 1000 characters.'}
+ $all=$window.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+ $searched=0
+ $readable=0
+ for($i=0;$i -lt [Math]::Min($all.Count,3000);$i++){
+  try{
+   $item=$all.Item($i)
+   $c=$item.Current
+   if($c.IsPassword -or !$c.IsEnabled){continue}
+   $name=[string]$c.Name
+   if($name -match '(?i)\b(password|passcode|pin|otp|authenticator|secret|token|sign.in)\b'){continue}
+   if($c.ControlType -ne [System.Windows.Automation.ControlType]::Edit -and
+      $c.ControlType -ne [System.Windows.Automation.ControlType]::Document){continue}
+   $searched++
+   $pattern=$null
+   $observed=$null
+   if($item.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)){
+    $observed=[string]$pattern.Current.Value
+   }elseif($item.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$pattern)){
+    $observed=[string]$pattern.DocumentRange.GetText(12000)
+   }else{continue}
+   $readable++
+   if($observed.Contains($expectedText)){
+    return @{verified=$true;reason='Expected text was found in a readable non-sensitive editor.';editorsChecked=$searched}
+   }
+  }catch{continue}
+ }
+ if($readable -eq 0){
+  return @{verified=$false;reason='No readable editor text was exposed by UI Automation; typing outcome is unverified.';editorsChecked=$searched}
+ }
+ return @{verified=$false;reason='Expected text was not found in readable editor content.';editorsChecked=$searched}
+}
 function FindWindow($selector){
  if(!$selector -or !$selector.title -or !$selector.processId){throw 'Exact window title and process ID required. Enumerate windows first.'}
  $windows=[System.Windows.Automation.AutomationElement]::RootElement.FindAll(
@@ -229,6 +263,15 @@ try{
  if($request.action -eq 'observe'){
   $view=Observe (Foreground) 40
   OutJson @{ok=$true;action='observe';window=$view}
+  exit 0
+ }
+ if($request.action -eq 'verify_text'){
+  $window=Foreground
+  if(!$request.expectedTitle -or !$request.expectedProcessId){throw 'Expected foreground identity required.'}
+  if($window.Current.Name -cne [string]$request.expectedTitle -or
+     $window.Current.ProcessId -ne [int]$request.expectedProcessId){throw 'Foreground identity changed before verification.'}
+  $result=VerifyText $window ([string]$request.expectedText)
+  OutJson @{ok=$true;action='verify_text';result=$result}
   exit 0
  }
  if($request.action -eq 'observe_window'){
