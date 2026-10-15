@@ -8,6 +8,7 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class SkyDesktopNative {
+ [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr handle);
@@ -51,6 +52,8 @@ public static class SkyMouseFlags {
  public const uint RIGHT_UP = 0x0010;
 }
 '@
+# Align UIA physical bounds, screenshots, and cursor coordinates on scaled displays.
+[SkyDesktopNative]::SetProcessDPIAware() | Out-Null
 function OutJson($value){[Console]::Out.WriteLine(($value | ConvertTo-Json -Compress -Depth 9))}
 function Foreground {
  $handle=[SkyDesktopNative]::GetForegroundWindow()
