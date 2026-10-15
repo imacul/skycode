@@ -128,11 +128,19 @@ export async function getChatGPTAccessToken(): Promise<string> {
   return updated.access_token;
 }
 function openBrowser(url: string): void {
-  const cmd = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-  const args = [url];
-  const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
-  child.on('error', () => console.log('Open this link in your browser: ' + url));
-  child.unref();
+  // Always provide the exact one-time authorization URL. Shell association
+  // launches sometimes succeed without displaying any browser on Windows.
+  console.log('If your browser does not open automatically, copy this URL into your browser:');
+  console.log(url);
+  const cmd = process.platform === 'win32' ? 'rundll32.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['url.dll,FileProtocolHandler', url] : [url];
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', () => console.error('Automatic browser opening failed; use the URL shown above.'));
+    child.unref();
+  } catch {
+    console.error('Automatic browser opening failed; use the URL shown above.');
+  }
 }
 
 export async function signInWithChatGPT(): Promise<ChatGPTSession> {
