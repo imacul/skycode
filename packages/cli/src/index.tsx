@@ -1558,9 +1558,10 @@ Current provider: ${provider?.name || 'none'}
         overflow="hidden"
         stickyScroll={true}
         stickyStart="bottom"
-        contentOptions={{ minHeight: '100%', justifyContent: 'flex-end' }}
       >
-        {/* Short chats sit immediately above the input; longer chats scroll inside this viewport. */}
+        {/* Let ScrollBox measure its content's natural height.
+            A 100%-minimum flex-end content container creates trailing blank
+            scrollable space on long conversations. */}
 
         {visibleMessages.length > 0 ? (
           visibleMessages.map((msg) => (
