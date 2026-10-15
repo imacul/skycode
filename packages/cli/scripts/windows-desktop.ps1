@@ -67,9 +67,20 @@ function Assert-SafeForeground($window) {
  if ([SkyCodeWin32]::GetForegroundWindow() -ne $hwnd) { throw "Focus changed; refusing to type." }
 }
 function Find-Edit($window) {
- $condition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)
- $items=$window.FindAll([System.Windows.Automation.TreeScope]::Descendants,$condition)
- foreach($item in $items) {if ($item.Current.IsEnabled -and !$item.Current.IsOffscreen) {return $item}}
+ # Notepad versions expose the editor as either Edit or Document.
+ $items=$window.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+  [System.Windows.Automation.Condition]::TrueCondition)
+ foreach ($item in $items) {
+  try {
+   $role=$item.Current.ControlType
+   if (($role -eq [System.Windows.Automation.ControlType]::Edit -or
+        $role -eq [System.Windows.Automation.ControlType]::Document) -and
+       $item.Current.IsEnabled -and !$item.Current.IsOffscreen) {
+    try {$null=$item.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern);return $item} catch {}
+    try {$null=$item.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern);return $item} catch {}
+   }
+  } catch { continue }
+ }
  return $null
 }
 function Verify-Text($window,$expected) {
