@@ -18,6 +18,31 @@ public static class SkyDesktopNative {
 }
 [StructLayout(LayoutKind.Sequential)]
 public struct SkyPoint { public int X; public int Y; }
+[StructLayout(LayoutKind.Sequential)]
+public struct SkyKeyboardInput {
+ public ushort vk;
+ public ushort scan;
+ public uint flags;
+ public uint time;
+ public UIntPtr extraInfo;
+}
+[StructLayout(LayoutKind.Explicit)]
+public struct SkyInputUnion {
+ [FieldOffset(0)] public SkyKeyboardInput keyboard;
+}
+[StructLayout(LayoutKind.Sequential)]
+public struct SkyInput {
+ public uint type;
+ public SkyInputUnion data;
+}
+public static class SkyKeyboardNative {
+ [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, [In] SkyInput[] inputs, int size);
+ public static uint SendUnicode(char ch) {
+  var down=new SkyInput { type=1, data=new SkyInputUnion { keyboard=new SkyKeyboardInput { scan=ch, flags=0x0004 } } };
+  var up=new SkyInput { type=1, data=new SkyInputUnion { keyboard=new SkyKeyboardInput { scan=ch, flags=0x0004 | 0x0002 } } };
+  return SendInput(2, new [] {down,up}, Marshal.SizeOf(typeof(SkyInput)));
+ }
+}
 public static class SkyMouseFlags {
  public const uint LEFT_DOWN = 0x0002;
  public const uint LEFT_UP = 0x0004;
@@ -187,26 +212,18 @@ function MouseAction($window,$target,[string]$kind){
  }
  return $point
 }
-function SendLiteralText([string]$value){
+function SendLiteralText([string]$value,$window){
  if($value.Length -gt 1000){throw 'Text exceeds per-action typing budget.'}
- # Escape locally and send once to reduce automation latency.
- $encoded=[System.Text.StringBuilder]::new()
+ $handle=[IntPtr]$window.Current.NativeWindowHandle
+ $sent=0
  foreach($char in $value.ToCharArray()){
-  $ch=[string]$char
-  if($ch -eq [string][char]13){continue}
-  if($ch -eq [string][char]10){$ch='{ENTER}'}
-  elseif($ch -eq [string][char]9){$ch='{TAB}'}
-  elseif($ch -eq '{'){$ch='{{}'}
-  elseif($ch -eq '}'){$ch='{}}'}
-  elseif($ch -eq '+'){$ch='{+}'}
-  elseif($ch -eq '^'){$ch='{^}'}
-  elseif($ch -eq '%'){$ch='{%}'}
-  elseif($ch -eq '~'){$ch='{~}'}
-  elseif($ch -eq '('){$ch='{(}'}
-  elseif($ch -eq ')'){$ch='{)}'}
-  $null=$encoded.Append($ch)
+  if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw "Focus changed during typing after $sent characters."}
+  if([SkyKeyboardNative]::SendUnicode($char) -ne 2){
+   throw "Windows SendInput failed after $sent characters (possibly input integrity/UIPI restriction)."
+  }
+  $sent++
  }
- [System.Windows.Forms.SendKeys]::SendWait($encoded.ToString())
+ return $sent
 }
 function RunStep($step){
  $window=Foreground
@@ -231,7 +248,10 @@ function RunStep($step){
       $role -ne [System.Windows.Automation.ControlType]::Document){throw 'Typing requires an accessible Edit or Document control.'}
    $target.SetFocus()
    if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Focus changed before typing.'}
-   SendLiteralText ([string]$step.value)
+   $sent=SendLiteralText ([string]$step.value) $window
+   Start-Sleep -Milliseconds 200
+   $readback=VerifyText $window ([string]$step.value)
+   if(!$readback.verified){throw "Keyboard delivered $sent characters but editor content is not verified: $($readback.reason)"}
   }elseif($kind -eq 'invoke'){
    $pattern=$target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
    $pattern.Invoke()
