@@ -592,7 +592,7 @@ export class CodingAgent implements BaseAgent {
           return {
             content:
               'SkyCode exposes computer and workspace tools, but the selected model did not follow its tool protocol after corrective prompts. ' +
-              'Try the build request again or switch to a stronger coding model; SkyCode will keep the same real file-creation capabilities.',
+              'The operation is incomplete. Retry with the same natural-language request or inspect the tool trace; no task completion is claimed.',
             finishReason: 'tool_protocol_not_followed',
             tokensUsed,
           };
