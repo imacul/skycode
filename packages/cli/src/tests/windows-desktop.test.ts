@@ -287,3 +287,46 @@ describe('natural-language mouse task routing', () => {
     expect(needsReachTools('Explain how to drag files in Windows.')).toBe(false);
   });
 });
+
+describe('screenshot vision computer fallback', () => {
+  test('registers screenshot tool and warns about provider requirements', () => {
+    expect(PROJECT_TOOL_NAMES).toContain('computer_screenshot');
+    const prompt = getProjectToolInstructions(process.cwd());
+    expect(prompt).toContain('computer_screenshot');
+    expect(prompt).toContain('kind visual_click');
+    expect(prompt).toContain('actual attached image');
+  });
+  test('validates exact screenshot-relative click identity and image bounds', () => {
+    const screenshot = {
+      path:'C:\\Temp\\skycode-window-0123456789abcdef0123456789abcdef.jpg',
+      title:'File Explorer',processId:123,windowHandle:'123456',
+      left:10,top:20,width:1400,height:900,imageWidth:1120,imageHeight:720,capturedAt:1234567,
+    };
+    const base = { kind:'visual_click' as const, expectedTitle:'File Explorer',expectedProcessId:123,pointerKind:'click' as const,snapshot:screenshot,x:100,y:100 };
+    expect(() => validateComputerStep(base)).not.toThrow();
+    expect(() => validateComputerStep({...base,x:1120})).toThrow(/Visual click/);
+    expect(() => validateComputerStep({...base,snapshot:{...screenshot,processId:124}})).toThrow(/Visual click/);
+    expect(() => validateComputerStep({...base,pointerKind:'move' as any})).toThrow(/Visual click/);
+  });
+  test('screenshot is bounded and coordinate clicking checks stale identity', () => {
+    const script=readFileSync(resolve(import.meta.dir,'../../scripts/computer-core.ps1'),'utf8');
+    expect(script).toContain('function CaptureForeground');
+    expect(script).toContain("if($request.action -eq 'capture')");
+    expect(script).toContain('CopyFromScreen');
+    expect(script).toContain('1280.0/$width');
+    expect(script).toContain('function VisualClick');
+    expect(script).toContain("if($age -lt 0 -or $age -gt 60000)");
+    expect(script).toContain('Screenshot window identity is stale or mismatched');
+    expect(script).toContain('Sensitive control; coordinate click denied');
+    expect(script).toContain('Remove-Item -LiteralPath');
+  });
+  test('multimodal model providers retain image content alongside tool results', () => {
+    const openrouter=readFileSync(resolve(import.meta.dir,'../providers/openrouter.ts'),'utf8');
+    const openai=readFileSync(resolve(import.meta.dir,'../providers/openai.ts'),'utf8');
+    const tools=readFileSync(resolve(import.meta.dir,'../agents/project-tools.ts'),'utf8');
+    expect(openrouter).toContain('msg.imageDataUrl');
+    expect(openai).toContain('msg.imageDataUrl');
+    expect(tools).toContain('imageDataUrl: executions.find');
+    expect(tools).toContain("data:image/jpeg;base64,");
+  });
+});
