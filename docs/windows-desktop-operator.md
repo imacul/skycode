@@ -14,6 +14,19 @@ These tools belong to the existing SkyCode task loop; they are not separate Note
 
 Call `desktop_list_windows` to obtain the exact window title, process ID, and optional handle. Use `computer_observe_window` to inspect an app without changing focus, or `computer_focus_window` to activate it. Then call `computer_observe` to obtain the foreground controls. Pass those identities into `computer_act` or `computer_batch`; the adapter refuses to act when focus changes. Use `computer_verify` after changing a control. The `postObserved` field means that another UIA snapshot was captured after an action; it is **not** proof that the user's overall task succeeded.
 
+### Mouse and keyboard controls (experimental)
+
+The existing `computer_act` and `computer_batch` tools now accept these UI-targeted operations:
+
+- `move`, `click`, `right_click`, `double_click`: find **exactly one** accessible control by name/automation ID, check its center against the selected window and Windows hit-testing, then move or click. Never supply guessed x/y pixel coordinates.
+- `type`: focus a named `Edit` or `Document` accessibility control and enter literal text (up to 1,000 characters per action). Special SendKeys characters are escaped, but complex Unicode/IME and cross-app behavior still need live testing. Prefer `set_value` when the editor supports ValuePattern.
+- `keypress`: send an explicitly allowlisted shortcut, including navigation, Enter, Escape, Backspace and Delete.
+- `scroll`: use the accessibility control's vertical ScrollPattern.
+
+All actions require the expected foreground window **title and process ID**. First use `desktop_list_windows`, `computer_focus_window` and `computer_observe`. A successful action means Windows accepted the operation and a subsequent observation was collected; independently verify the intended task result with `computer_verify` or another suitable checker.
+
+Current pointer control is semantic and bounded. Raw coordinate moves, freehand drag/drop, screen-based vision targeting, screen recording and high-performance input injection are **not yet implemented**.
+
 ### Bounds
 
 - Windows interactive session only, running with current user's permissions.
