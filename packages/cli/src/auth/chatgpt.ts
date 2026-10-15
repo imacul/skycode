@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, createVerify, randomBytes, randomUUID, verify as verifySignature } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, randomUUID, verify as verifySignature } from 'node:crypto';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -115,12 +115,12 @@ export async function getChatGPTAccessToken(): Promise<string> {
   const tokens = await tokenRequest(new URLSearchParams({
     grant_type: 'refresh_token', client_id: session.client_id, refresh_token: session.refresh_token, resource: RESOURCE,
   }));
-  const scopes = parseScopes(tokens.scope);
+  const scopes = tokens.scope == null ? session.scopes : parseScopes(tokens.scope);
   if (!scopes.includes('chatgpt.tokens.use.direct')) throw new Error('ChatGPT plan permission is no longer granted.');
   // The refresh response may omit identity; retain only previously verified identity.
   const updated: ChatGPTSession = {
     ...session, access_token: tokens.access_token, refresh_token: tokens.refresh_token || session.refresh_token,
-    id_token: tokens.id_token || session.id_token, scopes,
+    id_token: session.id_token, scopes,
     expires_at: Date.now() + Number(tokens.expires_in || 3600) * 1000,
   };
   if (!updated.access_token) throw new Error('OpenAI refresh response contained no access token.');
@@ -128,8 +128,8 @@ export async function getChatGPTAccessToken(): Promise<string> {
   return updated.access_token;
 }
 function openBrowser(url: string): void {
-  const cmd = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
+  const cmd = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const args = [url];
   const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
   child.on('error', () => console.log('Open this link in your browser: ' + url));
   child.unref();
