@@ -57,6 +57,7 @@ export const PROJECT_TOOL_NAMES = [
   'open_url',
   'open_app',
   'desktop_snapshot',
+  'desktop_close_document',
   'desktop_notepad_document',
   'browser',
   'mcp_list',
@@ -150,6 +151,7 @@ export function needsReachTools(input: string): boolean {
     return true;
   }
   if (/\b(?:desktop|screen|window|notepad|pc|computer)\b/.test(text) && /\b(?:open|show|inspect|see|save|write|create|control|observe|type|operate)\b/.test(text)) return true;
+  if (/\b(?:close|dismiss|exit)\b.{0,80}\b(?:file|document|tab|window|app|notepad)\b/.test(text)) return true;
   if (/\bmcp\b/.test(text)) return true;
   return false;
 }
@@ -1644,6 +1646,7 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
     '- desktop_snapshot: {"reason":"Inspect the current foreground Windows app"} — reads a bounded UI Automation accessibility tree (requires approval). Never claim to see pixels; this is semantic-only.',
+    '- desktop_close_document: {"filename":"dog-definition.txt","reason":"Close the document that was just created"} — closes only the named open Notepad document, never the whole application or other tabs. Requires approval, verifies the document disappeared, and reports failure otherwise. For follow-ups like "close the file", infer the exact filename from the recent task result and use this tool; do not claim inability unless the target is genuinely unknown.',
     '- desktop_notepad_document: {"filename":"skycode-demo.txt","content":"Hello from SkyCode","reason":"Create and inspect the requested Notepad note"} — creates one new .txt in the active workspace, verifies it on disk, opens and inspects it in Notepad, then safely closes only its document tab, reopens it, and verifies the editor text again. Reports each stage separately. Requires approval. This milestone writes the file using the filesystem; it does NOT yet type into Notepad through the GUI.',
     '- browser: {"action":"search","query":"goat","engine":"google","reason":"..."} — opens ONE Brave window/tab to a Google (or duckduckgo) search URL for that query. Use this when the user wants to see a search in Brave.',
     '- browser: {"action":"open","url":"https://...","reason":"..."} — opens one URL in Brave (reuses the existing Brave process when possible).',
@@ -1939,6 +1942,19 @@ export async function executeProjectToolCall(
         await ensureDesktopApproval(workspace, 'desktop_snapshot', 'current foreground window', args.reason, requestApproval, 'desktop:observe');
         const result = await runWindowsDesktop({ action: 'snapshot' });
         return { call, success: true, content: JSON.stringify(result), trust: 'untrusted-data' };
+      }
+      case 'desktop_close_document': {
+        if (typeof args.filename !== 'string' || !/^[a-zA-Z0-9_][a-zA-Z0-9_ .-]{0,100}\\.txt$/i.test(args.filename) ||
+            args.filename.includes('..')) {
+          throw new Error('Provide the exact .txt filename to close; do not guess the target.');
+        }
+        await ensureDesktopApproval(workspace, 'desktop_close_document', args.filename, args.reason, requestApproval, 'desktop:close-document');
+        const result = await runWindowsDesktop({ action: 'close_document', filename: args.filename });
+        return {
+          call, success: result.closed === true,
+          content: 'Close document result: ' + JSON.stringify(result),
+          trust: 'trusted-control',
+        };
       }
       case 'desktop_notepad_document': {
         if (typeof args.filename !== 'string' || typeof args.content !== 'string' || !args.filename.trim()) {
