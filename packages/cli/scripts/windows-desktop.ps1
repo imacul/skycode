@@ -110,31 +110,7 @@ try {
  }
  if ($request.action -eq 'close_document') {
   $name = [string]$request.filename
-  if (![regex]::IsMatch($name, '^[A-Za-z0-9_][A-Za-z0-9_ .-]{0,100}[.]txt
- $path=[IO.Path]::GetFullPath([string]$request.path)
- $content=[string]$request.content
- if (!$path.EndsWith('.txt',[StringComparison]::OrdinalIgnoreCase)) {throw "Only .txt files are permitted."}
- if ([IO.File]::Exists($path)) {throw "File exists; overwrite is not allowed."}
- [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) | Out-Null
- # Stage the document via .NET, not by simulating an unverified GUI paste.
- [IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
- $onDisk=[IO.File]::ReadAllText($path)
- if ($onDisk -cne $content) {throw "Disk read-back does not match."}
- $proc=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
- Start-Sleep -Milliseconds 800
- try {
-  $window=Find-DocumentWindow $path
-  $observed=Observe-Window $window 30
-  $visible=Verify-Text $window $content
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$true;editorVerified=$visible.verified;editorVerification=$visible.reason;window=$observed};exit 0
- } catch {
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$false;editorVerified=$false;windowError=$_.Exception.Message};exit 0
- }
-} catch {
- Say @{ok=$false;error=$_.Exception.Message}
- exit 1
-}
-) -or $name.Contains('..')) {throw 'Invalid file name.'}
+  if (![regex]::IsMatch($name, '^[A-Za-z0-9_][A-Za-z0-9_ .-]{0,100}[.]txt$') -or $name.Contains('..')) {throw 'Invalid file name.'}
   $window = Find-DocumentWindow $name 3500
   Assert-SafeForeground $window
   [System.Windows.Forms.SendKeys]::SendWait('^w')
