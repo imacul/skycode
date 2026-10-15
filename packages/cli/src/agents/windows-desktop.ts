@@ -94,6 +94,16 @@ export function validateComputerWindowSelector(selector: ComputerWindowSelector)
   }
 }
 
+export type ComputerTextVerification = { expectedTitle: string; expectedProcessId: number; expectedText: string };
+
+export function validateComputerTextVerification(input: ComputerTextVerification): void {
+  if (!input || typeof input.expectedTitle !== 'string' || !input.expectedTitle.trim() ||
+      !Number.isSafeInteger(input.expectedProcessId) || input.expectedProcessId <= 0 ||
+      typeof input.expectedText !== 'string' || input.expectedText.length === 0 || input.expectedText.length > 1000) {
+    throw new Error('Text verification requires exact foreground identity and 1–1000 characters of expected text.');
+  }
+}
+
 export type ComputerVerification = {
   expectedTitle: string;
   expectedProcessId: number;
@@ -137,7 +147,7 @@ export function validateComputerStep(step: ComputerStep): void {
   if (step.kind === 'scroll' && !['up','down'].includes(step.direction || '')) throw new Error('Scroll direction must be up or down.');
 }
 
-export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch' | 'observe_window' | 'focus_window', steps: ComputerStep[] = [], selector?: ComputerWindowSelector): Promise<Record<string, unknown>> {
+export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch' | 'observe_window' | 'focus_window' | 'verify_text', steps: ComputerStep[] = [], selector?: ComputerWindowSelector, textVerification?: ComputerTextVerification): Promise<Record<string, unknown>> {
   if (process.platform !== 'win32') throw new Error('Windows only.');
   if (action === 'act' && steps.length !== 1) throw new Error('Act requires exactly one step.');
   if (action === 'batch' && (!steps.length || steps.length > 8)) throw new Error('Batch requires 1–8 steps.');
@@ -146,9 +156,10 @@ export async function runComputerCore(action: 'observe' | 'list_windows' | 'act'
     if (!selector) throw new Error('A window selector is required.');
     validateComputerWindowSelector(selector);
   }
+  if (action === 'verify_text') validateComputerTextVerification(textVerification as ComputerTextVerification);
   const script = resolve(import.meta.dir, '../../scripts/computer-core.ps1');
   if (!existsSync(script)) throw new Error('Computer adapter missing.');
-  const request = action === 'act' ? { action, step: steps[0] } : { action, steps, selector };
+  const request = action === 'act' ? { action, step: steps[0] } : { action, steps, selector, ...(action === 'verify_text' ? textVerification : {}) };
   return await new Promise<Record<string, unknown>>((done, reject) => {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', script], {
       windowsHide: true, stdio: ['pipe','pipe','pipe'],
