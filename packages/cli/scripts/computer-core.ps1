@@ -90,6 +90,14 @@ function RunStep($step){
    $pattern=$target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
    if($pattern.Current.IsReadOnly){throw 'Read-only field.'}
    $pattern.SetValue($value)
+  }elseif($kind -eq 'scroll'){
+   $direction=[string]$step.direction
+   if($direction -ne 'up' -and $direction -ne 'down'){throw 'Scroll direction must be up or down.'}
+   $pattern=$target.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
+   if(!$pattern.Current.VerticallyScrollable){throw 'Element does not support vertical scrolling.'}
+   $amount=[System.Windows.Automation.ScrollAmount]::SmallIncrement
+   if($direction -eq 'up'){$amount=[System.Windows.Automation.ScrollAmount]::SmallDecrement}
+   $pattern.ScrollVertical($amount)
   }else{throw 'Unsupported desktop action.'}
  }
  Start-Sleep -Milliseconds 100
