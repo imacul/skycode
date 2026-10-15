@@ -401,3 +401,28 @@ describe('dynamic prerequisite discovery and GUI completion', () => {
     }
   });
 });
+
+describe('GUI-first autonomous computer workflow', () => {
+  test('general computer instructions prioritize human-like operation over shell commands', () => {
+    const instructions = getProjectToolInstructions(process.cwd());
+    expect(instructions).toContain('Desktop operation strategy (for any application');
+    expect(instructions).toContain('operate it like a human');
+    expect(instructions).toContain('A command shell is NOT the default method of desktop navigation');
+    expect(instructions).toContain('use a fresh computer_screenshot and visual_click');
+    expect(instructions).toContain('Avoid redundant observations');
+  });
+  test('tool loop prevents repeated passive desktop inspections without actions', () => {
+    const agent = readFileSync(resolve(import.meta.dir,'../agents/coding-agent.ts'),'utf8');
+    expect(agent).toContain('let lastPassiveObservation');
+    expect(agent).toContain('repeatedPassiveObservations >= 2');
+    expect(agent).toContain('Repeated the same read-only desktop observation');
+    expect(agent).toContain('physical mouse/keyboard actions and screenshots, not shell navigation');
+  });
+  test('activity log shows computer operations instead of misleading workspace messages', () => {
+    const agent = readFileSync(resolve(import.meta.dir,'../agents/coding-agent.ts'),'utf8');
+    expect(agent).toContain("call.name.startsWith('computer_')");
+    expect(agent).toContain("'Looking at Windows screen'");
+    expect(agent).toContain("'Windows interface inspected'");
+    expect(agent).toContain("'visual_click'");
+  });
+});
