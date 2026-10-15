@@ -1,5 +1,7 @@
 import { createCliRenderer, type ScrollBoxRenderable } from '@opentui/core';
 import { createRoot } from '@opentui/react';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/header';
 import { InputBar } from './components/input-bar';
@@ -168,6 +170,43 @@ function App() {
   const startupCommandHandled = useRef(false);
   const updateCheckHandled = useRef(false);
   const messagesScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  // Temporary opt-in geometry probe. Records layout numbers only, never messages
+  // or provider tokens. Enable via SKYCODE_LAYOUT_DEBUG=1.
+  useEffect(() => {
+    if (process.env.SKYCODE_LAYOUT_DEBUG !== '1') return;
+    const file = join(process.cwd(), 'skycode-layout-debug.json');
+    const sample = () => {
+      const scroll = messagesScrollRef.current;
+      if (!scroll) return;
+      const view = scroll.viewport;
+      const content = scroll.content;
+      const children = (content as unknown as { children?: unknown }).children;
+      const parts = Array.isArray(children) ? children : [];
+      const geometry = (node: unknown) => {
+        if (!node || typeof node !== 'object') return null;
+        const n = node as Record<string, unknown>;
+        return { x: n.x, y: n.y, width: n.width, height: n.height, flexGrow: n.flexGrow, flexShrink: n.flexShrink };
+      };
+      try {
+        writeFileSync(file, JSON.stringify({
+          timestamp: new Date().toISOString(),
+          terminal: { columns: process.stdout.columns, rows: process.stdout.rows },
+          scroll: geometry(scroll),
+          viewport: geometry(view),
+          content: geometry(content),
+          scrollTop: scroll.scrollTop,
+          scrollHeight: scroll.scrollHeight,
+          childrenCount: parts.length,
+          firstChild: geometry(parts[0]),
+          lastChild: geometry(parts[parts.length - 1]),
+          recentChildren: parts.slice(-4).map(geometry),
+        }, null, 2));
+      } catch { /* Diagnostics must never interfere with the UI. */ }
+    };
+    const timer = setInterval(sample, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const orchestratorRef = useRef<ReturnType<typeof createAgentOrchestrator> | null>(null);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const approvalResolverRef = useRef<
