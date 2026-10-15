@@ -122,6 +122,10 @@ function VerifyText($window,[string]$expectedText){
  return @{verified=$false;reason='Expected text was not found in readable editor content.';editorsChecked=$searched}
 }
 function CaptureForeground {
+ # Remove old screenshots created by SkyCode so idle captures do not persist.
+ Get-ChildItem -LiteralPath ([System.IO.Path]::GetTempPath()) -Filter 'skycode-window-*.jpg' -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -cmatch '^skycode-window-[0-9a-f]{32}\.jpg$' -and $_.LastWriteTimeUtc -lt [DateTime]::UtcNow.AddMinutes(-15) } |
+  Remove-Item -Force -ErrorAction SilentlyContinue
  $window=Foreground
  CheckSafety $window
  $p=$window.Current
