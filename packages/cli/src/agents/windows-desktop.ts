@@ -126,22 +126,26 @@ export function verifyComputerObservation(
 }
 
 export type ComputerStep = {
-  kind: 'focus' | 'invoke' | 'set_value' | 'keypress' | 'scroll' | 'move' | 'click' | 'right_click' | 'double_click' | 'type';
+  kind: 'focus' | 'invoke' | 'set_value' | 'keypress' | 'scroll' | 'move' | 'click' | 'right_click' | 'double_click' | 'type' | 'drag';
   expectedTitle: string;
   expectedProcessId: number;
   name?: string;
   automationId?: string;
+  targetName?: string;
+  targetAutomationId?: string;
   keys?: string;
   value?: string;
   direction?: 'up' | 'down';
 };
 
 export function validateComputerStep(step: ComputerStep): void {
-  if (!step || !['focus','invoke','set_value','keypress','scroll','move','click','right_click','double_click','type'].includes(step.kind)) throw new Error('Invalid computer action.');
+  if (!step || !['focus','invoke','set_value','keypress','scroll','move','click','right_click','double_click','type','drag'].includes(step.kind)) throw new Error('Invalid computer action.');
   if (!step.expectedTitle || !Number.isSafeInteger(step.expectedProcessId) || step.expectedProcessId <= 0) throw new Error('Exact foreground window identity required.');
   if (step.kind === 'keypress') {
     if (!['^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}','{BACKSPACE}','{DELETE}','{HOME}','{END}'].includes(step.keys || '')) throw new Error('Unsupported keyboard shortcut.');
   } else if (!step.name && !step.automationId) throw new Error('Specify an accessible control name or automationId.');
+  if (step.kind === 'drag' && (!step.targetName && !step.targetAutomationId)) throw new Error('Drag requires an exact destination control name or automationId.');
+  if (step.kind === 'drag' && step.name === step.targetName && step.name !== undefined && !step.automationId && !step.targetAutomationId) throw new Error('Drag source and destination must be different.');
   if (step.value != null && step.value.length > (step.kind === 'type' ? 1000 : 3000)) throw new Error('Text input too long.');
   if ((step.kind === 'type' || step.kind === 'set_value') && typeof step.value !== 'string') throw new Error('Text input value required.');
   if (step.kind === 'scroll' && !['up','down'].includes(step.direction || '')) throw new Error('Scroll direction must be up or down.');
