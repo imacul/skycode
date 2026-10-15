@@ -193,7 +193,46 @@ function App() {
   } = useSettingsStore();
   const pendingOwnerEnableRef = useRef(false);
 
-  const visibleMessages = getVisibleConversationMessages(currentMessages);
+  // System-command output belongs to temporary notices, not permanent chat history.
+  const visibleMessages = getVisibleConversationMessages(currentMessages).filter(
+    (message) => message.role !== 'system'
+  );
+  const [systemNotice, setSystemNotice] = useState<{ id: string; content: string } | null>(null);
+  const [dismissedNoticeId, setDismissedNoticeId] = useState<string | null>(null);
+  const initialSystemMessageRef = useRef<string | null | undefined>(undefined);
+  const latestSystemMessage = [...currentMessages].reverse().find(message =>
+    message.role === 'system' && !message.metadata?.visibility
+  );
+  const latestSystemId = latestSystemMessage?.id || null;
+  const hasConversationContent = visibleMessages.some(message =>
+    message.role === 'user' || message.role === 'assistant'
+  );
+
+  useEffect(() => {
+    // Previously persisted notices should not pop back up when SkyCode starts.
+    if (initialSystemMessageRef.current === undefined) {
+      initialSystemMessageRef.current = latestSystemId;
+      return;
+    }
+    if (!latestSystemMessage || latestSystemId === initialSystemMessageRef.current) return;
+    initialSystemMessageRef.current = latestSystemId;
+    setDismissedNoticeId(null);
+    setSystemNotice({ id: latestSystemMessage.id, content: latestSystemMessage.content });
+  }, [latestSystemId]);
+
+  useEffect(() => {
+    if (!systemNotice) return;
+    const timer = setTimeout(() => setSystemNotice(current =>
+      current?.id === systemNotice.id ? null : current
+    ), 8000);
+    return () => clearTimeout(timer);
+  }, [systemNotice?.id]);
+
+  useEffect(() => {
+    if (!updateNotice) return;
+    const timer = setTimeout(() => setUpdateNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [updateNotice]);
 
   useEffect(() => {
     activeChatScroll = messagesScrollRef.current;
@@ -1338,9 +1377,11 @@ Current provider: ${provider?.name || 'none'}
       overflow="hidden"
       gap={0}
     >
-      <box flexShrink={0} width="100%" alignItems="center">
-        <Header />
-      </box>
+      {!hasConversationContent && (
+        <box flexShrink={0} width="100%" alignItems="center">
+          <Header />
+        </box>
+      )}
             <box flexShrink={0} width="96%" paddingX={2} flexDirection="row" gap={2}>
         <text
           fg="cyan"
@@ -1461,8 +1502,20 @@ Current provider: ${provider?.name || 'none'}
       )}
 
       {updateNotice && !showWelcome && (
-        <box width="96%" paddingX={2}>
+        <box width="96%" paddingX={2} flexDirection="row" gap={2} flexShrink={0}>
           <text fg="cyan">{updateNotice}</text>
+          <text fg="gray" onMouseDown={() => setUpdateNotice(null)}>[x]</text>
+        </box>
+      )}
+      {systemNotice && dismissedNoticeId !== systemNotice.id && (
+        <box width="96%" paddingX={2} flexDirection="row" gap={2} flexShrink={0}>
+          <box flexGrow={1} flexShrink={1} minWidth={0}>
+            <text fg="yellow">{systemNotice.content}</text>
+          </box>
+          <text fg="gray" onMouseDown={() => {
+            setDismissedNoticeId(systemNotice.id);
+            setSystemNotice(null);
+          }}>[x]</text>
         </box>
       )}
 
@@ -1475,7 +1528,8 @@ Current provider: ${provider?.name || 'none'}
         </box>
       )}
 
-      {/* Messages display */}
+      {/* Clip the chat viewport independently of the fixed bottom input. */}
+      <box width="100%" flexGrow={1} flexShrink={1} minHeight={0} overflow="hidden">
       <scrollbox
         ref={messagesScrollRef}
         width="96%"
@@ -1489,9 +1543,7 @@ Current provider: ${provider?.name || 'none'}
         stickyScroll={true}
         stickyStart="bottom"
       >
-        {/* Spacer consumes unused transcript height so short conversations sit
-            next to the input instead of being stranded at the top. */}
-        <box width="100%" flexGrow={1} flexShrink={1} minHeight={0} />
+        {/* Conversation fills the available viewport; never reserve blank space above it. */}
 
         {visibleMessages.length > 0 ? (
           visibleMessages.map((msg) => (
@@ -1586,9 +1638,10 @@ Current provider: ${provider?.name || 'none'}
           </box>
         )}
       </scrollbox>
+      </box>
 
       {/* Input bar: keep it directly beneath the flexible chat viewport. */}
-      <box width="96%" paddingX={2} flexShrink={0} marginTop={0}>
+      <box width="96%" paddingX={2} flexShrink={0} marginTop={0} overflow="hidden">
         <InputBar 
           onSubmit={handleSubmit}
           disabled={!isInitialized || showWelcome}
