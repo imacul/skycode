@@ -56,6 +56,8 @@ export const PROJECT_TOOL_NAMES = [
   'web_fetch_local',
   'open_url',
   'open_app',
+  'computer_observe_window',
+  'computer_focus_window',
   'computer_observe',
   'computer_verify',
   'computer_act',
@@ -93,7 +95,7 @@ export function projectToolResultTrust(
 ): 'trusted-control' | 'untrusted-data' {
   return [
     'read_file', 'list_files', 'search_files', 'run_command', 'start_process',
-    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call', 'desktop_snapshot', 'desktop_list_windows', 'computer_observe',
+    'read_process_logs', 'web_search', 'web_fetch', 'web_fetch_local', 'mcp_list', 'mcp_call', 'desktop_snapshot', 'desktop_list_windows', 'computer_observe', 'computer_observe_window',
   ].includes(name) ? 'untrusted-data' : 'trusted-control';
 }
 
@@ -1666,6 +1668,8 @@ export function getProjectToolInstructions(workingDirectory: string): string {
     '- web_fetch_local: {"url":"http://localhost:3000/","reason":"Inspect the locally running app"} — requires approval for a separately scoped local-network capability.',
     '- open_url: {"url":"https://example.com","reason":"Open the page so the user can see it"} — opens the default system browser. Asks the user once.',
     '- open_app: {"name":"figma","reason":"Open Figma so the design can be checked"} — opens chrome, msedge, firefox, brave, code, figma, explorer, or notepad. For Brave specifically, prefer browser tools below so SkyCode reuses one window.',
+    '- computer_observe_window: {"title":"Exact window title","processId":123,"windowHandle":"123456","reason":"Inspect an open app without bringing it to foreground"} — observe one explicitly selected top-level window using UI Automation. Use title and PID from desktop_list_windows, with optional decimal window handle to disambiguate.',
+    '- computer_focus_window: {"title":"Exact window title","processId":123,"windowHandle":"123456","reason":"Switch to the chosen open application"} — bring a uniquely matched accessible window to foreground and verify focus before interacting. Windows can refuse focus, in which case the tool reports failure.',
     '- computer_observe: {"reason":"Inspect the foreground Windows application"} — return a bounded UI Automation snapshot of up to 40 visible non-credential controls. Prefer this to screenshots for routine targeting.',
     '- computer_verify: {"expectedTitle":"Window title","expectedProcessId":123,"controlName":"Optional exact name","reason":"Verify requested visible state"} — compare a fresh UIA observation with the expected foreground window and optional accessible control; no model call required for verification.',
     '- computer_act: {"step":{"kind":"invoke","expectedTitle":"Window title","expectedProcessId":123,"name":"Button label"},"reason":"Perform the requested UI action"} — approved guarded focus/invoke/set_value/keypress/scroll action (UIA, not coordinate guessing). For scroll, supply direction: up or down and a scrollable control name. Must use window identity from a fresh observation, then verify result.',
@@ -1963,6 +1967,22 @@ export async function executeProjectToolCall(
           displayPath: args.url,
           trust: 'untrusted-data',
         };
+      }
+      case 'computer_observe_window':
+      case 'computer_focus_window': {
+        if (typeof args.title !== 'string' || !Number.isSafeInteger(args.processId) || Number(args.processId) <= 0) {
+          throw new Error('Exact window title and process ID are required; use desktop_list_windows first.');
+        }
+        const selector = {
+          title: args.title,
+          processId: args.processId as number,
+          windowHandle: typeof args.windowHandle === 'string' ? args.windowHandle : undefined,
+        };
+        const focusing = call.name === 'computer_focus_window';
+        await ensureDesktopApproval(workspace, call.name, args.title, args.reason, requestApproval,
+          focusing ? 'desktop:act' : 'desktop:observe');
+        const result = await runComputerCore(focusing ? 'focus_window' : 'observe_window', [], selector);
+        return { call, success: result.ok === true, content: JSON.stringify(result), trust: 'untrusted-data' };
       }
       case 'computer_observe': {
         await ensureDesktopApproval(workspace, 'computer_observe', 'current foreground window', args.reason, requestApproval, 'desktop:observe');
