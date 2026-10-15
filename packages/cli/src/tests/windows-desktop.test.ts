@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateNotepadTarget, runWindowsDesktop } from '../agents/windows-desktop';
+import { validateNotepadTarget, runWindowsDesktop, validateComputerStep } from '../agents/windows-desktop';
 import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls, selectDesktopObservation, projectToolResultMessage } from '../agents/project-tools';
 
 describe('Windows desktop operator milestone', () => {
@@ -20,6 +20,9 @@ describe('Windows desktop operator milestone', () => {
     } finally { rmSync(workspace, { recursive: true, force: true }); }
   });
   test('registers desktop tools and routes computer requests', () => {
+    expect(PROJECT_TOOL_NAMES).toContain('computer_observe');
+    expect(PROJECT_TOOL_NAMES).toContain('computer_act');
+    expect(PROJECT_TOOL_NAMES).toContain('computer_batch');
     expect(PROJECT_TOOL_NAMES).toContain('desktop_snapshot');
     expect(PROJECT_TOOL_NAMES).toContain('desktop_list_windows');
     expect(PROJECT_TOOL_NAMES).toContain('desktop_close_document');
@@ -32,6 +35,7 @@ describe('Windows desktop operator milestone', () => {
     expect(prompt).toContain('desktop_notepad_document');
     expect(prompt).toContain('desktop_close_document');
     expect(prompt).toContain('desktop_list_windows');
+    expect(prompt).toContain('computer_batch');
     expect(prompt).toContain('requires approval');
     expect(parseProjectToolCalls('<tool_call>{"name":"desktop_notepad_document","args":{"filename":"demo.txt","content":"hello","reason":"demo"}}</tool_call>')).toHaveLength(1);
   });
@@ -73,12 +77,20 @@ describe('Windows desktop PowerShell adapter syntax', () => {
     ], { encoding: 'utf8', timeout: 15000 });
     expect(parse.error).toBeUndefined();
     expect(parse.status).toBe(0);
+    const coreScript = resolve(import.meta.dir, '../../scripts/computer-core.ps1');
+    const corePath = coreScript.replace(/'/g, "''");
+    const checkCore = '$tokens=$null; $parseErrors=$null; ' +
+      "[System.Management.Automation.Language.Parser]::ParseFile('" + corePath + "',[ref]$tokens,[ref]$parseErrors) | Out-Null; " +
+      'if($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Output $_.ToString() }; exit 1 }';
+    const coreParse = spawnSync('powershell.exe', ['-NoProfile','-NonInteractive','-Command',checkCore], {encoding:'utf8',timeout:15000});
+    expect(coreParse.error).toBeUndefined();
+    expect(coreParse.status).toBe(0);
   });
 });
 
 describe('window state classification contract', () => {
   test('adapter distinguishes minimized from visible and separates shell UI', () => {
-    const file = resolve(import.meta.dir, '../../scripts/windows-desktop.ps1');
+    const file = resolve(import.meta.dir, '../../scripts/computer-core.ps1');
     const script = readFileSync(file, 'utf8');
     expect(script).toContain('IsIconic');
     expect(script).toContain('IsWindowVisible');
@@ -88,5 +100,15 @@ describe('window state classification contract', () => {
     expect(script).toContain("'background-process'");
     expect(script).toContain('backgroundProcessCandidates');
     expect(script).toContain('GetForegroundWindow');
+  });
+});
+
+describe('generic computer operations', () => {
+  const window = {expectedTitle:'Untitled - Notepad',expectedProcessId:123};
+  test('requires target identity and restricts unsupported shortcuts', () => {
+    expect(() => validateComputerStep({kind:'invoke',...window,name:'Save'})).not.toThrow();
+    expect(() => validateComputerStep({kind:'invoke',...window})).toThrow(/Specify/);
+    expect(() => validateComputerStep({kind:'keypress',...window,keys:'%{F4}'})).toThrow(/shortcut/);
+    expect(() => validateComputerStep({kind:'set_value',...window,name:'Text',value:'x'.repeat(3001)})).toThrow(/long/);
   });
 });
