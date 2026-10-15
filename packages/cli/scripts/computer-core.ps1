@@ -10,6 +10,8 @@ public static class SkyDesktopNative {
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr handle);
+ [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
 }
 '@
 function OutJson($value){[Console]::Out.WriteLine(($value | ConvertTo-Json -Compress -Depth 9))}
@@ -47,6 +49,40 @@ function Observe($window,[int]$max=40){
   }catch{continue}
  }
  return @{title=[string]$p.Name;processId=[int]$p.ProcessId;windowHandle=[string]$p.NativeWindowHandle;nodes=$nodes}
+}
+function FindWindow($selector){
+ if(!$selector -or !$selector.title -or !$selector.processId){throw 'Exact window title and process ID required. Enumerate windows first.'}
+ $windows=[System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+  [System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
+ $matches=@()
+ foreach($window in $windows){
+  try{
+   CheckSafety $window
+   $c=$window.Current
+   if([string]$c.Name -cne [string]$selector.title -or [int]$c.ProcessId -ne [int]$selector.processId){continue}
+   $handle=[IntPtr]$c.NativeWindowHandle
+   if($handle -eq [IntPtr]::Zero){continue}
+   if($selector.windowHandle -and [string]$handle -ne [string]$selector.windowHandle){continue}
+   $matches+=,$window
+  }catch{continue}
+ }
+ if($matches.Count -ne 1){throw "Window selector must match one accessible, permitted window; matches: $($matches.Count)."}
+ return $matches[0]
+}
+function FocusWindow($window){
+ CheckSafety $window
+ $handle=[IntPtr]$window.Current.NativeWindowHandle
+ if($handle -eq [IntPtr]::Zero){throw 'Window lacks a native handle.'}
+ if([SkyDesktopNative]::IsIconic($handle)){
+  [SkyDesktopNative]::ShowWindow($handle,9) | Out-Null
+  Start-Sleep -Milliseconds 250
+ }
+ if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){
+  [SkyDesktopNative]::SetForegroundWindow($handle) | Out-Null
+  Start-Sleep -Milliseconds 350
+ }
+ if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Windows declined foreground activation. No keys or UI actions were sent.'}
+ return (Foreground)
 }
 function FindTarget($window,$step){
  $all=$window.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
@@ -112,6 +148,17 @@ try{
   OutJson @{ok=$true;action='observe';window=$view}
   exit 0
  }
+ if($request.action -eq 'observe_window'){
+  $target=FindWindow $request.selector
+  OutJson @{ok=$true;action='observe_window';window=(Observe $target 40)}
+  exit 0
+ }
+ if($request.action -eq 'focus_window'){
+  $target=FindWindow $request.selector
+  $foreground=FocusWindow $target
+  OutJson @{ok=$true;action='focus_window';focused=$true;window=(Observe $foreground 24)}
+  exit 0
+ }
  if($request.action -eq 'list_windows'){
   $items=@()
   $all=[System.Windows.Automation.AutomationElement]::RootElement.FindAll(
@@ -129,7 +176,7 @@ try{
     $system=$proc.ProcessName -match '^(?i:explorer|shellexperiencehost|startmenuexperiencehost|searchhost|textinputhost)$'
     $visibility=if($system){'system-ui'}elseif([SkyDesktopNative]::IsIconic($handle)){'minimized'}elseif([SkyDesktopNative]::IsWindowVisible($handle)){'visible'}else{'background'}
     $items+=@{title=[string]$c.Name;processName=[string]$proc.ProcessName;processId=[int]$c.ProcessId;
-      focused=($handle -eq $active);visibility=$visibility}
+      focused=($handle -eq $active);visibility=$visibility;windowHandle=[string]$handle}
    }catch{continue}
   }
   OutJson @{ok=$true;action='list_windows';windows=$items;complete=$false}
