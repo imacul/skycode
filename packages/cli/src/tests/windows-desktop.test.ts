@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,5 +57,19 @@ describe('desktop observation fast path and token feedback', () => {
     }]);
     expect(result.content.length).toBeLessThan(4500);
     expect(result.content).toContain('truncated');
+  });
+});
+
+describe('Windows desktop PowerShell adapter syntax', () => {
+  test('parses the entire script before any desktop action is run', () => {
+    if (process.platform !== 'win32') return;
+    const script = resolve(import.meta.dir, '../../scripts/windows-desktop.ps1');
+    const parse = spawnSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      '$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$tokens,[ref]$errors) | Out-Null; if($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.ToString() }; exit 1 }',
+      script,
+    ], { encoding: 'utf8', timeout: 15000 });
+    expect(parse.error).toBeUndefined();
+    expect(parse.status).toBe(0);
   });
 });
