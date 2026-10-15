@@ -316,6 +316,7 @@ describe('screenshot vision computer fallback', () => {
   test('validates exact screenshot-relative click identity and image bounds', () => {
     const screenshot = {
       path:'C:\\Temp\\skycode-window-0123456789abcdef0123456789abcdef.jpg',
+      scope:'window' as const,
       title:'File Explorer',processId:123,windowHandle:'123456',
       left:10,top:20,width:1400,height:900,imageWidth:1120,imageHeight:720,capturedAt:1234567,
     };
@@ -327,7 +328,7 @@ describe('screenshot vision computer fallback', () => {
   });
   test('screenshot is bounded and coordinate clicking checks stale identity', () => {
     const script=readFileSync(resolve(import.meta.dir,'../../scripts/computer-core.ps1'),'utf8');
-    expect(script).toContain('function CaptureForeground');
+    expect(script).toContain('function CaptureScreen');
     expect(script).toContain("if($request.action -eq 'capture')");
     expect(script).toContain('CopyFromScreen');
     expect(script).toContain('1280.0/$width');
@@ -456,5 +457,36 @@ describe('real screenshot handoff and resilient foreground actions', () => {
     expect(code).toContain('const launchedApplicationTargets = new Set<string>()');
     expect(code).toContain('if (launchedApplicationTargets.has(target))');
     expect(code).toContain('Enumerate existing windows and focus the target instead of launching another instance.');
+  });
+});
+
+describe('whole-desktop visual observation', () => {
+  test('captures the virtual screen instead of just floating foreground widgets', () => {
+    const script=readFileSync(resolve(import.meta.dir,'../../scripts/computer-core.ps1'),'utf8');
+    expect(script).toContain('function CaptureScreen([string]$scope)');
+    expect(script).toContain("if($scope -eq 'window')");
+    expect(script).toContain('$left=[int]$screenBounds.Left');
+    expect(script).toContain('$right=[int]$screenBounds.Right');
+    expect(script).toContain('CaptureScreen $scope');
+    expect(script).toContain("else{'desktop'}");
+  });
+  test('defaults to desktop while preserving explicit window-only scope', () => {
+    const code=readFileSync(resolve(import.meta.dir,'../agents/project-tools.ts'),'utf8');
+    expect(code).toContain("const scope = args.scope == null ? 'desktop' : args.scope");
+    expect(code).toContain("runComputerCore('capture', [], undefined, undefined, scope)");
+    expect(code).toContain('including wallpaper, icons, taskbar and overlays');
+  });
+  test('rejects desktop-scoped screenshots for window-coordinate actions', () => {
+    const capture={
+      path:'C:\\Temp\\skycode-window-0123456789abcdef0123456789abcdef.jpg',
+      scope:'desktop' as const,title:'Desktop',processId:111,windowHandle:'7654',
+      left:0,top:0,width:1920,height:1080,imageWidth:1280,imageHeight:720,capturedAt:10000
+    };
+    expect(() => validateComputerStep({
+      kind:'visual_click',expectedTitle:'Desktop',expectedProcessId:111,
+      snapshot:capture,x:50,y:50,pointerKind:'click'
+    })).toThrow(/Visual click/);
+    const script=readFileSync(resolve(import.meta.dir,'../../scripts/computer-core.ps1'),'utf8');
+    expect(script).toContain("if($snap.scope -cne 'window')");
   });
 });
