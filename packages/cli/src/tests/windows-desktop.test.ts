@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateNotepadTarget, runWindowsDesktop, validateComputerStep, verifyComputerObservation } from '../agents/windows-desktop';
+import { validateNotepadTarget, runWindowsDesktop, validateComputerStep, verifyComputerObservation, validateComputerWindowSelector } from '../agents/windows-desktop';
 import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls, selectDesktopObservation, projectToolResultMessage } from '../agents/project-tools';
 
 describe('Windows desktop operator milestone', () => {
@@ -21,6 +21,8 @@ describe('Windows desktop operator milestone', () => {
   });
   test('registers desktop tools and routes computer requests', () => {
     expect(PROJECT_TOOL_NAMES).toContain('computer_observe');
+    expect(PROJECT_TOOL_NAMES).toContain('computer_observe_window');
+    expect(PROJECT_TOOL_NAMES).toContain('computer_focus_window');
     expect(PROJECT_TOOL_NAMES).toContain('computer_act');
     expect(PROJECT_TOOL_NAMES).toContain('computer_batch');
     expect(PROJECT_TOOL_NAMES).toContain('computer_verify');
@@ -120,5 +122,22 @@ describe('deterministic desktop verification', () => {
     expect(verifyComputerObservation({ window }, { expectedTitle: 'Notepad', expectedProcessId: 4321, controlName: 'Editor' }).verified).toBe(true);
     expect(verifyComputerObservation({ window }, { expectedTitle: 'PowerShell', expectedProcessId: 4321 }).verified).toBe(false);
     expect(verifyComputerObservation({ window }, { expectedTitle: 'Notepad', expectedProcessId: 4321, controlName: 'Save' }).verified).toBe(false);
+  });
+});
+
+describe('target-aware Windows selection', () => {
+  test('rejects ambiguous or invalid window identities before PowerShell execution', () => {
+    expect(() => validateComputerWindowSelector({title: 'Untitled - Notepad',processId: 4242,windowHandle:'123456'})).not.toThrow();
+    expect(() => validateComputerWindowSelector({title: '',processId: 4242})).toThrow();
+    expect(() => validateComputerWindowSelector({title: 'Notepad',processId: 0})).toThrow();
+    expect(() => validateComputerWindowSelector({title: 'Notepad',processId: 4242,windowHandle:'0x10'})).toThrow();
+  });
+  test('exposes targeted observation and focus only through exact UIA identity matching', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    expect(script).toContain('function FindWindow($selector)');
+    expect(script).toContain('Window selector must match one');
+    expect(script).toContain("if($request.action -eq 'observe_window')");
+    expect(script).toContain("if($request.action -eq 'focus_window')");
+    expect(script).toContain('GetForegroundWindow() -ne $handle');
   });
 });
