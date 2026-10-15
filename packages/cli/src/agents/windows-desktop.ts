@@ -14,7 +14,10 @@ export interface WindowsDesktopResult {
   path?: string;
   filename?: string;
   targetWindow?: string;
-  windows?: Array<{ title: string; processName: string; processId: number; windowHandle: string; focused: boolean }>;
+  windows?: Array<{ title: string; processName: string; processId: number; windowHandle: string; focused: boolean; visibility: 'visible' | 'minimized' | 'background' | 'system-ui' }>;
+  backgroundProcessCandidates?: Array<{ processName: string; processId: number; visibility: 'background-process' }>;
+  complete?: boolean;
+  note?: string;
   closed?: boolean;
   diskVerified?: boolean;
   notepadOpened?: boolean;
