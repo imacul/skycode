@@ -35,9 +35,6 @@ import {
   recoverImpliedToolCall,
   responseLooksLikePendingWork,
   setProcessLogListener,
-  shouldContinueProjectTools,
-  shouldUseProjectTools,
-  classifyToolLoopMode,
   selectDesktopObservation,
   stripProjectToolCalls,
   type ProjectToolCall,
@@ -307,7 +304,9 @@ export class CodingAgent implements BaseAgent {
         return { content: 'Window discovery returned an invalid result.', finishReason: 'tool_error', tokensUsed: 0 };
       }
     }
-    const loopMode = classifyToolLoopMode(request.input);
+    // Tool availability never depends on the exact words in the request.
+    // The model chooses whether to inspect the workspace or operate the desktop.
+    const loopMode = 'reach' as const;
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
     const traceId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -393,7 +392,7 @@ export class CodingAgent implements BaseAgent {
         id: 'reach_hint_' + Date.now(),
         role: 'user',
         content:
-          'This request does not require workspace file inspection first. ' +
+          'The model decides whether tools are needed; do not require trigger phrases. ' +
           'Review the SkyCode tools available to you and call the one that fits. ' +
           'You may respond conversationally without a tool, or use computer, file, browser and network tools when execution is needed. ' +
           'If none fit, say clearly that SkyCode does not provide that capability yet. ' +
