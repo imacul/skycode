@@ -193,6 +193,8 @@ function App() {
           terminal: { columns: process.stdout.columns, rows: process.stdout.rows },
           scroll: geometry(scroll),
           viewport: geometry(view),
+          wrapper: geometry(scroll.wrapper),
+          verticalScrollbar: geometry(scroll.verticalScrollBar),
           content: geometry(content),
           scrollTop: scroll.scrollTop,
           scrollHeight: scroll.scrollHeight,
@@ -1590,7 +1592,6 @@ Current provider: ${provider?.name || 'none'}
         ref={messagesScrollRef}
         width="96%"
         paddingX={2}
-        flexDirection="column"
         gap={1}
         flexGrow={1}
         flexShrink={1}
