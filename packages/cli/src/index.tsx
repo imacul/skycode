@@ -196,6 +196,8 @@ function App() {
           content: geometry(content),
           scrollTop: scroll.scrollTop,
           scrollHeight: scroll.scrollHeight,
+          expectedBottom: Math.max(0, scroll.scrollHeight - scroll.viewport.height),
+          remainingToBottom: Math.max(0, scroll.scrollHeight - scroll.viewport.height - scroll.scrollTop),
           childrenCount: parts.length,
           firstChild: geometry(parts[0]),
           lastChild: geometry(parts[parts.length - 1]),
@@ -300,7 +302,7 @@ function App() {
       if (!current) return;
 
       try {
-        current.scrollTo({ x: 0, y: current.scrollHeight });
+        current.scrollTo({ x: 0, y: Math.max(0, current.scrollHeight - current.viewport.height) });
       } catch {
         current.scrollTop = current.scrollHeight;
       }
@@ -1762,7 +1764,7 @@ renderer.keyInput.on('keypress', (key) => {
   }
 
   if (key.ctrl && key.name === 'end' && activeChatScroll) {
-    activeChatScroll.scrollTo(Number.MAX_SAFE_INTEGER);
+    activeChatScroll.scrollTo({ x: 0, y: Math.max(0, activeChatScroll.scrollHeight - activeChatScroll.viewport.height) });
     key.preventDefault();
     key.stopPropagation();
     return;
