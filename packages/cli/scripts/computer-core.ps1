@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -119,6 +120,45 @@ function VerifyText($window,[string]$expectedText){
   return @{verified=$false;reason='No readable editor text was exposed by UI Automation; typing outcome is unverified.';editorsChecked=$searched}
  }
  return @{verified=$false;reason='Expected text was not found in readable editor content.';editorsChecked=$searched}
+}
+function CaptureForeground {
+ $window=Foreground
+ CheckSafety $window
+ $p=$window.Current
+ $handle=[IntPtr]$p.NativeWindowHandle
+ if($handle -eq [IntPtr]::Zero -or [SkyDesktopNative]::IsIconic($handle)){throw 'Cannot capture a minimized or invalid window.'}
+ $bounds=$p.BoundingRectangle
+ if($bounds.IsEmpty -or $bounds.Width -lt 20 -or $bounds.Height -lt 20){throw 'No usable window area to capture.'}
+ $screenBounds=[System.Windows.Forms.SystemInformation]::VirtualScreen
+ $left=[int][Math]::Max($bounds.Left,$screenBounds.Left)
+ $top=[int][Math]::Max($bounds.Top,$screenBounds.Top)
+ $right=[int][Math]::Min($bounds.Right,$screenBounds.Right)
+ $bottom=[int][Math]::Min($bounds.Bottom,$screenBounds.Bottom)
+ $width=$right-$left
+ $height=$bottom-$top
+ if($width -lt 20 -or $height -lt 20 -or $width -gt 7680 -or $height -gt 4320){throw 'Capture bounds are unavailable or too large.'}
+ $bitmap=New-Object System.Drawing.Bitmap($width,$height)
+ $graphics=[System.Drawing.Graphics]::FromImage($bitmap)
+ try{
+  $graphics.CopyFromScreen($left,$top,0,0,[System.Drawing.Size]::new($width,$height))
+  $scale=[Math]::Min(1.0,[Math]::Min(1280.0/$width,900.0/$height))
+  $outWidth=[int][Math]::Max(1,[Math]::Round($width*$scale))
+  $outHeight=[int][Math]::Max(1,[Math]::Round($height*$scale))
+  $small=New-Object System.Drawing.Bitmap($outWidth,$outHeight)
+  $g=[System.Drawing.Graphics]::FromImage($small)
+  try {
+   $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+   $g.DrawImage($bitmap,0,0,$outWidth,$outHeight)
+   $path=Join-Path ([System.IO.Path]::GetTempPath()) ("skycode-window-"+[guid]::NewGuid().ToString('N')+".jpg")
+   $codec=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object {$_.MimeType -eq 'image/jpeg'} | Select-Object -First 1
+   $params=New-Object System.Drawing.Imaging.EncoderParameters(1)
+   try {
+    $params.Param[0]=New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality,[long]65)
+    $small.Save($path,$codec,$params)
+   }finally{$params.Dispose()}
+  }finally{$g.Dispose();$small.Dispose()}
+ }finally{$graphics.Dispose();$bitmap.Dispose()}
+ return @{path=$path;title=[string]$p.Name;processId=[int]$p.ProcessId;windowHandle=[string]$handle;left=$left;top=$top;width=$width;height=$height;imageWidth=$outWidth;imageHeight=$outHeight;format='image/jpeg';capturedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
 }
 function FindWindow($selector){
  if(!$selector -or !$selector.title -or !$selector.processId){throw 'Exact window title and process ID required. Enumerate windows first.'}
@@ -356,6 +396,10 @@ try{
      $window.Current.ProcessId -ne [int]$request.expectedProcessId){throw 'Foreground identity changed before verification.'}
   $result=VerifyText $window ([string]$request.expectedText)
   OutJson @{ok=$true;action='verify_text';result=$result}
+  exit 0
+ }
+ if($request.action -eq 'capture'){
+  OutJson @{ok=$true;action='capture';capture=(CaptureForeground)}
   exit 0
  }
  if($request.action -eq 'observe_window'){
