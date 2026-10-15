@@ -280,6 +280,54 @@ function MouseAction($window,$target,[string]$kind){
  }
  return @{x=$cursor.X;y=$cursor.Y;method='physical-mouse';clicksSent=$sent;outcomeVerified=$false}
 }
+function VisualClick($window,$step){
+ $snap=$step.snapshot
+ if(!$snap -or !$snap.path -or !$snap.windowHandle){throw 'A recent computer_screenshot result is required for visual clicking.'}
+ if([string]$snap.title -cne [string]$window.Current.Name -or [int]$snap.processId -ne [int]$window.Current.ProcessId -or [string]$snap.windowHandle -ne [string]$window.Current.NativeWindowHandle){throw 'Screenshot window identity is stale or mismatched.'}
+ $filename=[System.IO.Path]::GetFileName([string]$snap.path)
+ if($filename -cnotmatch '^skycode-window-[0-9a-f]{32}\.jpg$' -or
+    [System.IO.Path]::GetFullPath([string]$snap.path) -cne [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(),$filename)){
+  throw 'Invalid screenshot token path.'
+ }
+ if(!(Test-Path -LiteralPath ([string]$snap.path) -PathType Leaf)){throw 'Screenshot token is missing.'}
+ $age=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()-[long]$snap.capturedAt
+ if($age -lt 0 -or $age -gt 60000){throw 'Screenshot expired; capture another image.'}
+ if([int]$snap.imageWidth -lt 20 -or [int]$snap.imageHeight -lt 20){throw 'Invalid screenshot dimensions.'}
+ $ix=[int]$step.x; $iy=[int]$step.y
+ if($ix -lt 0 -or $iy -lt 0 -or $ix -ge [int]$snap.imageWidth -or $iy -ge [int]$snap.imageHeight){throw 'Click coordinates are outside screenshot bounds.'}
+ $x=[int][Math]::Floor([double]$snap.left+($ix+0.5)*[double]$snap.width/[double]$snap.imageWidth)
+ $y=[int][Math]::Floor([double]$snap.top+($iy+0.5)*[double]$snap.height/[double]$snap.imageHeight)
+ $rect=$window.Current.BoundingRectangle
+ if($x -lt $rect.Left+2 -or $y -lt $rect.Top+2 -or $x -ge $rect.Right-2 -or $y -ge $rect.Bottom-2){throw 'Click is outside the target window.'}
+ $element=[System.Windows.Automation.AutomationElement]::FromPoint([System.Windows.Point]::new($x,$y))
+ if(!$element){throw 'Cannot inspect the selected screen point.'}
+ $belongs=$false
+ for($j=0;$j -lt 40 -and $element;$j++){
+  try{
+   $c=$element.Current
+   if($c.IsPassword -or [string]$c.Name -match '(?i)\b(password|passcode|pin|otp|authenticator|secret|token|sign.in)\b'){throw 'Sensitive control; coordinate click denied.'}
+   if([IntPtr]$c.NativeWindowHandle -eq [IntPtr]$window.Current.NativeWindowHandle -and [int]$c.ProcessId -eq [int]$window.Current.ProcessId){$belongs=$true;break}
+   $element=[System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($element)
+  }catch{throw}
+ }
+ if(!$belongs){throw 'Click target is covered by another window or is outside the selected application.'}
+ if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Foreground changed before visual click.'}
+ if(![SkyDesktopNative]::SetCursorPos($x,$y)){throw 'Mouse cursor move was rejected.'}
+ $kind=[string]$step.pointerKind
+ if(@('click','right_click','double_click') -cnotcontains $kind){throw 'Unsupported visual pointer action.'}
+ $down=if($kind -eq 'right_click'){[SkyMouseFlags]::RIGHT_DOWN}else{[SkyMouseFlags]::LEFT_DOWN}
+ $up=if($kind -eq 'right_click'){[SkyMouseFlags]::RIGHT_UP}else{[SkyMouseFlags]::LEFT_UP}
+ $times=if($kind -eq 'double_click'){2}else{1}
+ for($i=0;$i -lt $times;$i++){
+  if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Foreground changed before visual click.'}
+  try{[SkyDesktopNative]::mouse_event($down,0,0,0,[UIntPtr]::Zero)}
+  finally{[SkyDesktopNative]::mouse_event($up,0,0,0,[UIntPtr]::Zero)}
+  if($i -eq 0 -and $times -eq 2){Start-Sleep -Milliseconds 75}
+ }
+ # The screenshot is single-use to prevent blind repeated coordinate actions.
+ Remove-Item -LiteralPath ([string]$snap.path) -Force -ErrorAction SilentlyContinue
+ return @{kind=$kind;screenX=$x;screenY=$y;eventsSent=$times;outcomeVerified=$false}
+}
 function DragBetweenControls($window,$source,$destination){
  if($source -eq $destination){throw 'Drag source and destination must be different controls.'}
  # Resolve and hit-test both endpoints before pressing a mouse button.
@@ -327,6 +375,11 @@ function RunStep($step){
   throw 'Foreground window identity changed; action stopped.'
  }
  $kind=[string]$step.kind
+ if($kind -eq 'visual_click'){
+  $visualResult=VisualClick $window $step
+  Start-Sleep -Milliseconds 150
+  return @{kind=$kind;pointer=$visualResult;postObserved=$true;outcomeVerified=$false;after=Observe (Foreground) 12}
+ }
  if($kind -eq 'keypress'){
   $allowed=@('^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}','{BACKSPACE}','{DELETE}','{HOME}','{END}')
   if($allowed -cnotcontains [string]$step.keys){throw 'Shortcut is outside the approved keyboard allowlist.'}
