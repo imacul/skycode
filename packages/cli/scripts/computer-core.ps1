@@ -208,19 +208,37 @@ function GetSafePoint($window,$target){
 }
 function MouseAction($window,$target,[string]$kind){
  $point=GetSafePoint $window $target
- if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Focus changed before pointer operation.'}
- if(![SkyDesktopNative]::SetCursorPos([int]$point.x,[int]$point.y)){throw 'Windows rejected pointer positioning.'}
- if($kind -eq 'move'){return $point}
+ $handle=[IntPtr]$window.Current.NativeWindowHandle
+ if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Focus changed before pointer operation.'}
+ # Use a brief visible cursor movement rather than teleporting to the target.
+ $origin=New-Object SkyPoint
+ if(![SkyDesktopNative]::GetCursorPos([ref]$origin)){throw 'Cannot read current cursor position.'}
+ for($i=1;$i -le 8;$i++){
+  if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Focus changed while moving the mouse.'}
+  $x=[int][Math]::Round($origin.X+($point.x-$origin.X)*$i/8)
+  $y=[int][Math]::Round($origin.Y+($point.y-$origin.Y)*$i/8)
+  if(![SkyDesktopNative]::SetCursorPos($x,$y)){throw 'Windows rejected pointer positioning.'}
+  Start-Sleep -Milliseconds 18
+ }
+ $cursor=New-Object SkyPoint
+ if(![SkyDesktopNative]::GetCursorPos([ref]$cursor)){throw 'Cannot confirm cursor position.'}
+ if($cursor.X -ne [int]$point.x -or $cursor.Y -ne [int]$point.y){throw 'Pointer failed to reach target.'}
+ if($kind -eq 'move'){return @{x=$cursor.X;y=$cursor.Y;method='physical-mouse';clicksSent=0}}
  $down=if($kind -eq 'right_click'){[SkyMouseFlags]::RIGHT_DOWN}else{[SkyMouseFlags]::LEFT_DOWN}
  $up=if($kind -eq 'right_click'){[SkyMouseFlags]::RIGHT_UP}else{[SkyMouseFlags]::LEFT_UP}
  $times=if($kind -eq 'double_click'){2}else{1}
+ $sent=0
  for($k=0;$k -lt $times;$k++){
-  if([SkyDesktopNative]::GetForegroundWindow() -ne [IntPtr]$window.Current.NativeWindowHandle){throw 'Foreground changed before pointer click.'}
-  [SkyDesktopNative]::mouse_event($down,0,0,0,[UIntPtr]::Zero)
-  [SkyDesktopNative]::mouse_event($up,0,0,0,[UIntPtr]::Zero)
+  if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Foreground changed before pointer click.'}
+  try{
+   [SkyDesktopNative]::mouse_event($down,0,0,0,[UIntPtr]::Zero)
+   $sent++
+  }finally{
+   [SkyDesktopNative]::mouse_event($up,0,0,0,[UIntPtr]::Zero)
+  }
   if($k -eq 0 -and $times -eq 2){Start-Sleep -Milliseconds 75}
  }
- return $point
+ return @{x=$cursor.X;y=$cursor.Y;method='physical-mouse';clicksSent=$sent;outcomeVerified=$false}
 }
 function DragBetweenControls($window,$source,$destination){
  if($source -eq $destination){throw 'Drag source and destination must be different controls.'}
@@ -317,6 +335,9 @@ function RunStep($step){
  Start-Sleep -Milliseconds 100
  $after=Foreground
  CheckSafety $after
+ if($kind -eq 'move' -or $kind -eq 'click' -or $kind -eq 'right_click' -or $kind -eq 'double_click'){
+  return @{kind=$kind;after=Observe $after 12;pointer=$position;postObserved=$true;outcomeVerified=$false}
+ }
  if($kind -eq 'drag'){return @{kind=$kind;after=Observe $after 12;drag=$dragResult;postObserved=$true;outcomeVerified=$false}}
  if($kind -eq 'type'){return @{kind=$kind;after=Observe $after 12;input=$typeEvidence}}
  return @{kind=$kind;after=Observe $after 12}
