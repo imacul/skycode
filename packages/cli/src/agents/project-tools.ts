@@ -157,6 +157,22 @@ export function needsReachTools(input: string): boolean {
   return false;
 }
 
+/**
+ * Fast-path only unequivocal, read-only desktop observations. All mutations
+ * remain model-selected and approval-gated. This keeps a simple question from
+ * spawning a costly model/shell retry loop.
+ */
+export function selectDesktopObservation(input: string): ProjectToolCall | null {
+  const text = input.trim().toLowerCase();
+  if (/\\b(?:list|show|enumerate|what are|which)\\b/.test(text) &&
+      /\\b(?:open|running|currently)\\b/.test(text) &&
+      /\\b(?:windows|applications|apps|programs)\\b/.test(text) &&
+      !/\\b(?:close|kill|stop|terminate|delete|edit|change|launch)\\b/.test(text)) {
+    return { name: 'desktop_list_windows', args: { reason: 'List currently open Windows application windows' } };
+  }
+  return null;
+}
+
 export type ToolLoopMode = 'reach' | 'build';
 
 /**
@@ -2215,12 +2231,19 @@ export function projectToolResultMessage(
       delete safeArgs.cwd;
     }
 
+    // Cap feedback sent into the next model turn, preserving an explicit
+    // truncation marker so the agent can request targeted follow-up evidence.
+    const maxFeedbackChars = execution.success ? 6000 : 1800;
+    const feedback = execution.content.length > maxFeedbackChars
+      ? execution.content.slice(0, maxFeedbackChars) +
+        '\\n[tool output truncated; request a narrower inspection if necessary]'
+      : execution.content;
     return JSON.stringify({
       tool: execution.call.name,
       trust: execution.trust || projectToolResultTrust(execution.call.name),
       args: safeArgs,
       success: execution.success,
-      result_data_only: execution.content,
+      result_data_only: feedback,
     });
   });
 
