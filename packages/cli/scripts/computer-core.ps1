@@ -251,7 +251,9 @@ function RunStep($step){
    $sent=SendLiteralText ([string]$step.value) $window
    Start-Sleep -Milliseconds 200
    $readback=VerifyText $window ([string]$step.value)
-   if(!$readback.verified){throw "Keyboard delivered $sent characters but editor content is not verified: $($readback.reason)"}
+   # Input has already been sent. Never throw just because UIA cannot read back
+   # editor content: retries could duplicate text in the document.
+   $typeEvidence=@{charactersSent=$sent;textVerified=[bool]$readback.verified;verificationReason=[string]$readback.reason}
   }elseif($kind -eq 'invoke'){
    $pattern=$target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
    $pattern.Invoke()
@@ -276,6 +278,7 @@ function RunStep($step){
  Start-Sleep -Milliseconds 100
  $after=Foreground
  CheckSafety $after
+ if($kind -eq 'type'){return @{kind=$kind;after=Observe $after 12;input=$typeEvidence}}
  return @{kind=$kind;after=Observe $after 12}
 }
 try{
