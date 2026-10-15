@@ -32,14 +32,14 @@ function Find-DocumentWindow([string]$filename, [int]$milliseconds=15000) {
     # document as a tab. The process returned by Start-Process is not reliably
     # the process hosting the document, and the foreground may be PowerShell.
     $title = [string]$window.Current.Name
-    $nameMatch = $title -match "(?i)$needle"
+    $nameMatch = $title -match "(?i)^$needle(?:\\.txt)?(?:\\s+-\\s+Notepad)?$"
     if (!$nameMatch) {
      $tabs = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,
       [System.Windows.Automation.PropertyCondition]::new(
        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
        [System.Windows.Automation.ControlType]::TabItem))
      foreach ($tab in $tabs) {
-      if ([string]$tab.Current.Name -match "(?i)$needle") { $nameMatch = $true; break }
+      if ([string]$tab.Current.Name -ieq $stem -or [string]$tab.Current.Name -ieq $name) { $nameMatch = $true; break }
      }
     }
     if ($nameMatch) {return $window}
