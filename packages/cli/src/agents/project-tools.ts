@@ -157,7 +157,13 @@ export function needsReachTools(input: string): boolean {
   if (/\b(play|listen to|put on)\b.{0,80}\b(music|song|track|album|youtube|spotify)\b/.test(text)) {
     return true;
   }
-  if (/\b(?:desktop|screen|window|notepad|pc|computer)\b/.test(text) && /\b(?:open|show|inspect|see|save|write|create|control|observe|type|operate)\b/.test(text)) return true;
+  // Direct requests to operate a real desktop belong to the tool-capable agent.
+  // Exclude informational questions such as "how do I click in File Explorer?"
+  // so routing does not imply permission to perform an action.
+  const desktopTarget = /\b(?:desktop|screen|windows?|file explorer|explorer|notepad|pc|computer|mouse|cursor|pointer|folder|downloads|chrome|edge|brave|firefox|vs code|android studio|application|app)\b/;
+  const desktopAction = /\b(?:move|click|double.click|right.click|drag|drop|scroll|hover|point|focus|switch|select|press|type|paste|open|show|inspect|see|save|write|create|control|observe|operate|navigate|sort|minimize|maximize|restore)\b/;
+  const informationalOnly = /^\s*(?:how (?:do|can|would|does|should)|why (?:does|is)|what (?:is|does|are)|explain|describe|tell me how|can (?:skycode|you) (?:actually|really)?\s*(?:click|move|control))\b/;
+  if (desktopTarget.test(text) && desktopAction.test(text) && !informationalOnly.test(text)) return true;
   if (/\b(?:close|dismiss|exit)\b.{0,80}\b(?:file|document|tab|window|app|notepad)\b/.test(text)) return true;
   if (/\bmcp\b/.test(text)) return true;
   return false;
