@@ -123,7 +123,7 @@ try{
     CheckSafety $window
     $c=$window.Current
     $handle=[IntPtr]$c.NativeWindowHandle
-    if($handle -eq [IntPtr]::Zero -or !([string]$c.Name).Trim()){continue}
+    if($handle -eq [IntPtr]::Zero -or [string]::IsNullOrWhiteSpace([string]$c.Name)){continue}
     $proc=Get-Process -Id $c.ProcessId -ErrorAction SilentlyContinue
     if(!$proc){continue}
     $system=$proc.ProcessName -match '^(?i:explorer|shellexperiencehost|startmenuexperiencehost|searchhost|textinputhost)$'
