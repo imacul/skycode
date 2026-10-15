@@ -175,7 +175,8 @@ describe('native Windows typing regression', () => {
     expect(script).toContain('public static extern uint SendInput');
     expect(script).toContain('Windows SendInput failed');
     expect(script).toContain('$readback=VerifyText $window');
-    expect(script).toContain('editor content is not verified');
+    expect(script).toContain('verificationReason=[string]$readback.reason');
+    expect(script).toContain('textVerified=[bool]$readback.verified');
   });
 });
 
