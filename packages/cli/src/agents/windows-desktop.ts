@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, isAbsolute, relative, resolve } from 'node:path';
 
 export type WindowsDesktopRequest =
   | { action: 'snapshot' }
@@ -14,6 +13,11 @@ export interface WindowsDesktopResult {
   diskVerified?: boolean;
   notepadOpened?: boolean;
   editorVerified?: boolean;
+  documentCloseAttempted?: boolean;
+  documentReopened?: boolean;
+  reopenEditorVerified?: boolean;
+  verified?: boolean;
+  notes?: string[];
   editorVerification?: string;
   windowError?: string;
   window?: { title: string; processId: number; nodes: Array<{ name: string; role: string; automationId: string; enabled: boolean; offscreen: boolean }> };
