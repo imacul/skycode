@@ -383,7 +383,8 @@ describe('dynamic prerequisite discovery and GUI completion', () => {
     expect(instructions).toContain('infer prerequisite actions');
     expect(instructions).toContain('open_app when necessary');
     expect(instructions).toContain('A screenshot taken from the wrong application cannot verify');
-    expect(instructions).toContain('Continue the original objective without asking the user to restate it');
+    expect(instructions).toContain('re-enumerate and focus the requested window');
+    expect(instructions).toContain('the original task remains incomplete');
     const agent = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
     expect(agent).toContain('plan and execute any reasonable prerequisites');
     expect(agent).toContain('When a screenshot shows a different app');
