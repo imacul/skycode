@@ -252,6 +252,40 @@ skycode eval --ids 4,17,31,46,61
 
 Reports are saved locally under `~/.skycode/evals/` as both Markdown and JSON. The suite covers identity/fabrication, instruction following, memory, reasoning, coding, routing, and streaming/UI checks. Cases that require visual or integration review are marked `SKIP` or `REVIEW` instead of pretending they were automatically verified.
 
+## Sign in with ChatGPT (experimental)
+
+SkyCode also supports eligible ChatGPT plan usage through OpenAI's officially documented
+open-source OAuth flow. This is **separate from the OpenAI API-key provider**, and it does
+not share ChatGPT conversations or grant any computer permissions.
+
+From PowerShell (outside the SkyCode TUI):
+
+```powershell
+skycode chatgpt login
+skycode chatgpt status
+skycode
+```
+
+The login opens an OpenAI sign-in page in your browser, requests explicit permission for
+ChatGPT plan usage, and returns to a local-only loopback callback. SkyCode uses its OS-backed
+credential store (Windows DPAPI, macOS Keychain, or Linux Secret Service) rather than putting
+OAuth tokens in settings.json. Login requires a working OS credential store.
+
+After connecting, select a model from the SkyCode terminal using `/model`, or switch with
+`/model chatgpt:<model-slug>`. The model list is account-specific. This connection uses
+the public Responses API with `store: false` and `stream: true`, requires an actual
+`response.completed` event, and may be subject to plan limits. If the subscription
+permission expires or is denied, run `skycode chatgpt login` again.
+
+Disconnect locally with `skycode chatgpt logout`. To revoke authorization at OpenAI as
+well, manage the app's access from your ChatGPT account settings.
+
+This integration is in preview; live end-to-end testing with an authorized ChatGPT account
+is required before production rollout. SkyCode does not support Claude subscription token
+reuse; Claude's API-key provider remains separate.
+
+Reference: https://developers.openai.com/siwc/token-sharing-open-source
+
 ## Local models
 
 Inside SkyCode:
