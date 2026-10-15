@@ -289,9 +289,10 @@ export class OpenRouterProvider implements BaseProvider {
         : undefined;
       if (previous && previous.role === role) {
         if (image || Array.isArray(previous.content)) {
-          const parts = typeof previous.content === 'string'
-            ? [{ type: 'text' as const, text: previous.content }]
-            : previous.content;
+          const parts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> =
+            typeof previous.content === 'string'
+              ? [{ type: 'text', text: previous.content }]
+              : previous.content;
           parts.push({ type: 'text', text: content });
           if (image) parts.push(image);
           previous.content = parts;
