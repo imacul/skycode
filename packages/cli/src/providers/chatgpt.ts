@@ -48,7 +48,7 @@ export class ChatGPTPlanProvider implements BaseProvider {
           content: m.imageDataUrl && m.role === 'user'
             ? [
                 { type: 'input_text', text: m.content },
-                { type: 'input_image', image_url: m.imageDataUrl, detail: 'low' },
+                { type: 'input_image', image_url: m.imageDataUrl, detail: 'high' },
               ]
             : m.content,
         })),
