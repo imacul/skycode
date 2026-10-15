@@ -169,6 +169,14 @@ try {
   if (!$editorVerified) { $notes+=([string]$first.reason) }
   # Only close if we proved the document tab identity and it is the intended tab.
   Close-DocumentTab $window $path
+  # Confirm the exact document no longer appears as an open tab/window.
+  # Failure to prove closure blocks the subsequent reopen verification.
+  try {
+   $stillOpen=Find-DocumentWindow $path 1200
+   throw "The document still appears open after Ctrl+W; refusing to claim it was closed."
+  } catch {
+   if ($_.Exception.Message -notmatch '^Could not find a Notepad window or tab') {throw}
+  }
   $closed=$true
   # Modern Notepad may keep a saved-document tab in a background process.
   # Reopening is safe and must be accompanied by another disk/content check.
@@ -184,7 +192,7 @@ try {
  }
  $verifiedDiskAfter=[IO.File]::Exists($path) -and ([IO.File]::ReadAllText($path) -ceq $content)
  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$verifiedDiskAfter;
-  notepadOpened=$opened;editorVerified=$editorVerified;documentCloseAttempted=$closed;
+  notepadOpened=$opened;editorVerified=$editorVerified;documentClosed=$closed;
   documentReopened=$reopened;reopenEditorVerified=$reopenVerified;
   verified=$verifiedDiskAfter -and $opened -and $editorVerified -and $closed -and $reopened -and $reopenVerified;
   notes=$notes;window=$observed}
