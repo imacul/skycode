@@ -13,7 +13,7 @@ export interface WindowsDesktopResult {
   diskVerified?: boolean;
   notepadOpened?: boolean;
   editorVerified?: boolean;
-  documentCloseAttempted?: boolean;
+  documentClosed?: boolean;
   documentReopened?: boolean;
   reopenEditorVerified?: boolean;
   verified?: boolean;
