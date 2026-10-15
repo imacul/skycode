@@ -983,6 +983,7 @@ function App() {
         const catalog = await loadUnifiedModelCatalog();
         const openRouterModels = catalog.filter((entry) => entry.provider === 'openrouter');
         const localModels = catalog.filter((entry) => entry.provider === 'local');
+        const chatgptModels = catalog.filter((entry) => entry.provider === 'chatgpt');
 
         const freeCount = openRouterModels.filter((entry) => entry.free).length;
         const paidCount = openRouterModels.length - freeCount;
@@ -1012,8 +1013,14 @@ function App() {
               })
             ),
             '',
+            '',
+            chatgptModels.length > 0
+              ? 'CHATGPT PLAN — ' + chatgptModels.length + ' models from your connected subscription'
+              : 'CHATGPT PLAN — run skycode chatgpt login to connect',
+            ...chatgptModels.map(entry => formatCatalogLine(entry, { provider: provider?.name || '', model })),
+            '',
             'Labels: [FREE] = zero OpenRouter prompt/completion price; [PAID] shows current per-million-token prices; [LOCAL · FREE] runs on your own machine.',
-            'Switch with: /model openrouter:<model-id> or /model local:<model-id>',
+            'Switch with: /model openrouter:<id>, /model local:<id>, or /model chatgpt:<id>',
             'Search everything with: /model search <query>',
           ].join('\n')
         );
@@ -1058,7 +1065,7 @@ function App() {
                 '',
                 'Switch with the exact selector shown above.',
               ].join('\n')
-            : 'No OpenRouter or running local models matched "' + query + '".'
+            : 'No matching models found "' + query + '".'
         );
       } catch (modelError) {
         addMessage(
@@ -1074,13 +1081,13 @@ function App() {
       const explicitModel = separator > 0 ? selector.slice(separator + 1) : selector;
 
       try {
-        if (explicitProvider === 'openrouter' || explicitProvider === 'local') {
+        if (explicitProvider === 'openrouter' || explicitProvider === 'local' || explicitProvider === 'chatgpt') {
           await activateCatalogModel(explicitProvider, explicitModel);
           addMessage(
             'system',
             'Switched to ' + explicitProvider + ' model: ' + explicitModel
           );
-        } else if (provider?.name === 'openrouter' || provider?.name === 'local') {
+        } else if (provider?.name === 'openrouter' || provider?.name === 'local' || provider?.name === 'chatgpt') {
           await activateCatalogModel(provider.name, selector);
           addMessage(
             'system',
