@@ -52,7 +52,7 @@ interface OpenRouterRequest {
   model: string;
   messages: Array<{
     role: 'user' | 'assistant' | 'system';
-    content: string;
+    content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
   }>;
   temperature?: number;
   max_tokens?: number;
@@ -281,8 +281,17 @@ export class OpenRouterProvider implements BaseProvider {
         }
       }
 
+      // Images must remain attached to the same message as their tool result.
+      // Do not merge multimodal messages into text-only adjacent user turns.
+      if (msg.imageDataUrl && role === 'user') {
+        normalized.push({ role, content: [
+          { type: 'text', text: content },
+          { type: 'image_url', image_url: { url: msg.imageDataUrl } },
+        ] });
+        continue;
+      }
       const previous = normalized[normalized.length - 1];
-      if (previous && previous.role === role) {
+      if (previous && previous.role === role && typeof previous.content === 'string') {
         previous.content += '\n\n' + content;
       } else {
         normalized.push({ role, content });
