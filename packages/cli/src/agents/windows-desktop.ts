@@ -142,7 +142,7 @@ export type ComputerStep = {
   y?: number;
   pointerKind?: 'click' | 'right_click' | 'double_click';
   snapshot?: {
-    path: string; title: string; processId: number; windowHandle: string;
+    path: string; scope?: 'desktop' | 'window'; title: string; processId: number; windowHandle: string;
     left: number; top: number; width: number; height: number;
     imageWidth: number; imageHeight: number; capturedAt: number;
   };
@@ -156,6 +156,7 @@ export function validateComputerStep(step: ComputerStep): void {
   } else if (step.kind === 'visual_click') {
     if (!step.snapshot || typeof step.snapshot.path !== 'string' ||
         !/^skycode-window-[0-9a-f]{32}\.jpg$/.test(step.snapshot.path.split(/[\\/]/).pop() || '') ||
+        step.snapshot.scope !== 'window' ||
         step.snapshot.title !== step.expectedTitle || step.snapshot.processId !== step.expectedProcessId ||
         !/^\d+$/.test(step.snapshot.windowHandle || '') ||
         typeof step.x !== 'number' || typeof step.y !== 'number' ||
@@ -174,7 +175,7 @@ export function validateComputerStep(step: ComputerStep): void {
   if (step.kind === 'scroll' && !['up','down'].includes(step.direction || '')) throw new Error('Scroll direction must be up or down.');
 }
 
-export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch' | 'observe_window' | 'focus_window' | 'verify_text' | 'capture', steps: ComputerStep[] = [], selector?: ComputerWindowSelector, textVerification?: ComputerTextVerification): Promise<Record<string, unknown>> {
+export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch' | 'observe_window' | 'focus_window' | 'verify_text' | 'capture', steps: ComputerStep[] = [], selector?: ComputerWindowSelector, textVerification?: ComputerTextVerification, captureScope: 'desktop' | 'window' = 'desktop'): Promise<Record<string, unknown>> {
   if (process.platform !== 'win32') throw new Error('Windows only.');
   if (action === 'act' && steps.length !== 1) throw new Error('Act requires exactly one step.');
   if (action === 'batch' && (!steps.length || steps.length > 8)) throw new Error('Batch requires 1–8 steps.');
@@ -186,7 +187,7 @@ export async function runComputerCore(action: 'observe' | 'list_windows' | 'act'
   if (action === 'verify_text') validateComputerTextVerification(textVerification as ComputerTextVerification);
   const script = resolve(import.meta.dir, '../../scripts/computer-core.ps1');
   if (!existsSync(script)) throw new Error('Computer adapter missing.');
-  const request = action === 'act' ? { action, step: steps[0] } : { action, steps, selector, ...(action === 'verify_text' ? textVerification : {}) };
+  const request = action === 'act' ? { action, step: steps[0] } : { action, steps, selector, ...(action === 'verify_text' ? textVerification : {}), ...(action === 'capture' ? {scope: captureScope} : {}) };
   return await new Promise<Record<string, unknown>>((done, reject) => {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', script], {
       windowsHide: true, stdio: ['pipe','pipe','pipe'],
