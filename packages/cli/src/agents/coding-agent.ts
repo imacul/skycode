@@ -345,10 +345,12 @@ export class CodingAgent implements BaseAgent {
         role: 'user',
         content:
           'The model decides whether tools are needed; do not require trigger phrases. ' +
-          'Review the SkyCode tools available to you and call the one that fits. ' +
-          'You may respond conversationally without a tool, or use computer, file, browser and network tools when execution is needed. ' +
-          'If none fit, say clearly that SkyCode does not provide that capability yet. ' +
-          'Do not invent success and do not start unrelated file edits.',
+          'Interpret the user requested end state and resolve references from conversation context. ' +
+          'If the request needs action, plan and execute any reasonable prerequisites before the requested operation: discover the existing target, start or open it when absent, then inspect, act, and verify. ' +
+          'When a screenshot shows a different app, switch to or open the target and inspect again; do not give up based on the wrong foreground window. ' +
+          'You may respond conversationally without a tool for information-only requests. ' +
+          'Never claim that an action or menu state succeeded without current tool evidence. ' +
+          'If no supported sequence can reach the outcome, clearly report which prerequisite failed.',
         timestamp: new Date(),
       });
     }
