@@ -145,7 +145,6 @@ try {
    [System.Windows.Automation.Condition]::TrueCondition)
   $foreground = [SkyCodeWin32]::GetForegroundWindow()
   $systemProcesses = 'explorer','shellexperiencehost','startmenuexperiencehost','searchhost','searchapp','textinputhost','applicationframehost','systemsettingsbroker'
-  $trackedPids = [System.Collections.Generic.HashSet[int]]::new()
   foreach ($window in $windows) {
    if ($items.Count -ge 60) { break }
    try {
@@ -301,37 +300,16 @@ try {
 }
  -or
         $title -match '(?i)password|passcode|authenticator|sign.in|log.in|recovery phrase|seed phrase') { continue }
-    $null = $trackedPids.Add($pidValue)
     $minimized = [SkyCodeWin32]::IsIconic($handle)
     $shown = [SkyCodeWin32]::IsWindowVisible($handle)
     $isSystem = $systemProcesses -contains $processName.ToLowerInvariant()
     $kind = if ($isSystem) {'system-ui'} elseif ($minimized) {'minimized'} elseif ($shown) {'visible'} else {'background'}
-    $items += @{
-     title = $title
-     processName = $processName
-     processId = $pidValue
-     windowHandle = [string]$handle
-     focused = ($handle -eq $foreground)
-     visibility = $kind
-    }
+    $items += @{title=$title;processName=$processName;processId=$pidValue;
+     windowHandle=[string]$handle;focused=($handle -eq $foreground);visibility=$kind}
    } catch { continue }
   }
-  # Do not guess that all running processes are open windows. Report only a
-  # small optional sample of recognizable GUI processes without any observed
-  # window, clearly marked as background-process candidates.
-  $knownGui = 'chrome','brave','msedge','firefox','code','notepad','whatsapp','discord','spotify','obs64','screenpal','epicgameslauncher','studio64','figma'
-  $candidates = @()
-  foreach ($process in (Get-Process -ErrorAction SilentlyContinue)) {
-   if ($candidates.Count -ge 15) { break }
-   try {
-    if ($knownGui -notcontains $process.ProcessName.ToLowerInvariant()) { continue }
-    if ($trackedPids.Contains([int]$process.Id)) { continue }
-    if ($process.MainWindowHandle -ne [IntPtr]::Zero) { continue }
-    $candidates += @{processName=[string]$process.ProcessName;processId=[int]$process.Id;visibility='background-process'}
-   } catch { continue }
-  }
-  Say @{ok=$true;action='list_windows';windows=$items;backgroundProcessCandidates=$candidates;complete=$false;
-   note='Top-level titled windows plus a limited sample of GUI background processes. Not a complete process inventory; visibility does not guarantee unobscured on-screen pixels.'}
+  Say @{ok=$true;action='list_windows';windows=$items;backgroundProcessCandidates=@();complete=$false;
+   note='Bounded top-level titled windows, not a full process inventory; visible does not mean unobscured.'}
   exit 0
  }
  if ($request.action -eq 'snapshot') {
