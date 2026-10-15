@@ -24,6 +24,14 @@ Targeted computer actions may identify controls by exact `name`, `automationId`,
 
 This improves generic targeting, but does not guarantee that every Windows application exposes unique accessibility identities. A screenshot/vision fallback remains future work.
 
+### Screenshot-based visual fallback (experimental)
+
+When UI Automation cannot identify an interface element, SkyCode can call `computer_screenshot` to capture the **current foreground window**, and the result is supplied to the chosen vision-capable model as actual JPEG image content. The screenshot is resized to fit within 1280 × 900 pixels and capped at 2 MB. SkyCode supports image input through its ChatGPT-plan Responses API, OpenAI Chat Completions, and OpenRouter Chat Completions adapters; the selected *model* must also support image inputs.
+
+The image result includes the exact foreground title, process ID, native window handle, screenshot origin and size, resized image dimensions, creation time, and a temporary screenshot token. If accessibility-based `computer_act` cannot reach a control, the agent may issue `computer_act` with `kind: "visual_click"`, `pointerKind: "click"` (or `right_click`/`double_click`), `x` and `y` in **resized screenshot image pixels**, and `snapshot` copied from the screenshot metadata. The adapter rejects screenshots more than 60 seconds old, mismatched windows, out-of-bounds points, detected credential controls and windows covered by a different application. A successful visual click consumes its screenshot token; after navigating or opening a menu, capture again rather than reuse earlier coordinates.
+
+Capture is local, but the compressed screenshot pixels are sent to the connected model provider for analysis. Avoid opening private information before requesting screen inspection. A successful click is **not** proof of the desired application state: take a fresh UIA observation or screenshot to verify the result. Secure desktops/UAC prompts are intentionally unsupported. The visual fallback has not yet been live-validated on the user's Windows installation.
+
 ### Real Windows cursor input
 
 Mouse actions are distinct from UI Automation invocation or shell commands. For natural-language requests involving actual mouse movement or clicking, SkyCode should choose `computer_act` with `move`, `click`, `right_click`, `double_click`, or `drag`. It will resolve a unique accessible control, hit-test the endpoint, verify the foreground identity, visibly move the real cursor, and send Windows mouse events as appropriate. The action result includes a pointer location, event count, and `outcomeVerified:false`; use a separate observation to verify whether the UI responded.
