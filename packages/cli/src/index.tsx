@@ -35,6 +35,8 @@ import { createOpenRouterProvider } from './providers/openrouter';
 import { createLocalLLMProvider } from './providers/local';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAIProvider } from './providers/openai';
+import { createChatGPTPlanProvider } from './providers/chatgpt';
+import { runChatGPTCommand, hasChatGPTPlan } from './auth/chatgpt';
 import { createAgentOrchestrator } from './agents';
 import {
   describeRunningProcesses,
@@ -93,6 +95,10 @@ if (STARTUP_COMMAND === 'update') {
   process.exit(exitCode);
 }
 
+if (STARTUP_COMMAND === 'chatgpt') {
+  process.exit(await runChatGPTCommand(CLI_ARGS.slice(1)));
+}
+
 if (STARTUP_COMMAND === 'eval') {
   const exitCode = await runEvalCommand(CLI_ARGS.slice(1));
   process.exit(exitCode);
@@ -109,6 +115,8 @@ function createProvider(provider: string): BaseProvider | null {
       return createAnthropicProvider();
     case 'openai':
       return createOpenAIProvider();
+    case 'chatgpt':
+      return createChatGPTPlanProvider();
     default:
       return null;
   }
@@ -352,6 +360,12 @@ function App() {
         
         // Resolve a model that actually belongs to the selected provider.
         let defaultModel = modelSettings.defaultModel || 'meta-llama/llama-3.1-70b-instruct';
+        if (providerName === 'chatgpt') {
+          const planModels = await providerInstance.listModels();
+          defaultModel = planModels.find(m => m.id === modelSettings.defaultModel)?.id || planModels[0]?.id || '';
+          if (!defaultModel) throw new Error('No ChatGPT plan models returned for this account.');
+          if (defaultModel !== modelSettings.defaultModel) updateModelSettings({ defaultModel });
+        }
         if (providerName === 'local') {
           const localModels = await providerInstance.listModels();
           const persistedLocalModel = localModels.find(
@@ -773,11 +787,22 @@ function App() {
       }
     }
 
+    if (hasChatGPTPlan()) {
+      const chatgpt = createChatGPTPlanProvider();
+      await chatgpt.initialize({});
+      try {
+        const models = await chatgpt.listModels();
+        entries.push(...models.map(item => ({
+          provider: 'chatgpt' as const, model: item, free: false, local: false,
+        })));
+      } finally { await chatgpt.close(); }
+    }
+
     return entries;
   }, []);
 
   const activateCatalogModel = useCallback(async (
-    providerName: 'openrouter' | 'local',
+    providerName: 'openrouter' | 'local' | 'chatgpt',
     modelId: string
   ) => {
     const nextProvider = createProvider(providerName);
@@ -785,7 +810,10 @@ function App() {
       throw new Error('Provider is not supported: ' + providerName);
     }
 
-    if (providerName === 'openrouter') {
+    if (providerName === 'chatgpt') {
+      if (!hasChatGPTPlan()) throw new Error('Run skycode chatgpt login first.');
+      await nextProvider.initialize({ model: modelId });
+    } else if (providerName === 'openrouter') {
       const apiKey = getProviderApiKey('openrouter');
       if (!apiKey) {
         throw new Error('OpenRouter is not configured. Set OPENROUTER_API_KEY or run /openroute.');
