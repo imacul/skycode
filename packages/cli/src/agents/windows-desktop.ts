@@ -48,6 +48,10 @@ export function validateNotepadTarget(filename: string, workspace: string): stri
 
 export async function runWindowsDesktop(request: WindowsDesktopRequest): Promise<WindowsDesktopResult> {
   if (process.platform !== 'win32') throw new Error('Windows desktop control is available on Windows only.');
+  if (request.action === 'snapshot' || request.action === 'list_windows') {
+    const result = await runComputerCore(request.action === 'snapshot' ? 'observe' : 'list_windows');
+    return { ...result, action: request.action } as WindowsDesktopResult;
+  }
   const script = resolve(import.meta.dir, '../../scripts/windows-desktop.ps1');
   if (!existsSync(script)) throw new Error('Windows desktop adapter script was not installed.');
   return await new Promise<WindowsDesktopResult>((resolvePromise, reject) => {
