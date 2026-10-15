@@ -23,7 +23,7 @@ After a `type` or `set_value` action, call `computer_verify` with `expectedTitle
 The existing `computer_act` and `computer_batch` tools now accept these UI-targeted operations:
 
 - `move`, `click`, `right_click`, `double_click`: find **exactly one** accessible control by name/automation ID, check its center against the selected window and Windows hit-testing, then move or click. Never supply guessed x/y pixel coordinates.
-- `type`: focus a named `Edit` or `Document` accessibility control and enter literal text (up to 1,000 characters per action). Special SendKeys characters are escaped, but complex Unicode/IME and cross-app behavior still need live testing. Prefer `set_value` when the editor supports ValuePattern.
+- `type`: focus a named `Edit` or `Document` accessibility control and enter literal text (up to 1,000 characters per action). Typing uses native Windows SendInput Unicode key events and returns charactersSent/textVerified evidence. If UI Automation cannot read back the content, SkyCode must report uncertainty rather than repeat the typing action. IME and cross-app behavior still require live testing. Prefer `set_value` when the editor supports ValuePattern.
 - `keypress`: send an explicitly allowlisted shortcut, including navigation, Enter, Escape, Backspace and Delete.
 - `scroll`: use the accessibility control's vertical ScrollPattern.
 
