@@ -18,6 +18,12 @@ Call `desktop_list_windows` to obtain the exact window title, process ID, and op
 
 After a `type` or `set_value` action, call `computer_verify` with `expectedTitle`, `expectedProcessId`, and `expectedText` (1–1000 characters). This checks text actually exposed by accessible Edit/Document controls, searching up to 3,000 descendants instead of relying on the first 40 nodes returned by `computer_observe`. When the app does not expose readable text, the outcome is `verified:false` (unknown), **not** proof that the action failed or succeeded. Do not use `controlName` as evidence that the expected text was typed.
 
+### Ambiguous controls and cross-application recovery
+
+Targeted computer actions may identify controls by exact `name`, `automationId`, and `role` (e.g. `ControlType.Button`). When multiple fields are supplied, **all must match**; the operator never falls back to a looser name search. An ambiguous match reports a bounded sample of candidate control identities. The agent should inspect and narrow rather than repeat the same click. It should also avoid launching new application windows when the requested window is already present.
+
+This improves generic targeting, but does not guarantee that every Windows application exposes unique accessibility identities. A screenshot/vision fallback remains future work.
+
 ### Mouse and keyboard controls (experimental)
 
 The existing `computer_act` and `computer_batch` tools now accept these UI-targeted operations:
