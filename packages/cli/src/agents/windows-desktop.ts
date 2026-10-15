@@ -158,6 +158,7 @@ export function validateComputerStep(step: ComputerStep): void {
         !/^skycode-window-[0-9a-f]{32}\.jpg$/.test(step.snapshot.path.split(/[\\/]/).pop() || '') ||
         step.snapshot.title !== step.expectedTitle || step.snapshot.processId !== step.expectedProcessId ||
         !/^\d+$/.test(step.snapshot.windowHandle || '') ||
+        typeof step.x !== 'number' || typeof step.y !== 'number' ||
         !Number.isSafeInteger(step.x) || !Number.isSafeInteger(step.y) ||
         !Number.isSafeInteger(step.snapshot.imageWidth) || !Number.isSafeInteger(step.snapshot.imageHeight) ||
         step.snapshot.imageWidth <= 0 || step.snapshot.imageHeight <= 0 ||
