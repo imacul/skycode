@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateNotepadTarget, runWindowsDesktop, validateComputerStep, verifyComputerObservation, validateComputerWindowSelector } from '../agents/windows-desktop';
+import { validateNotepadTarget, runWindowsDesktop, validateComputerStep, verifyComputerObservation, validateComputerWindowSelector, validateComputerTextVerification } from '../agents/windows-desktop';
 import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls, selectDesktopObservation, projectToolResultMessage } from '../agents/project-tools';
 
 describe('Windows desktop operator milestone', () => {
@@ -162,5 +162,23 @@ describe('target-aware Windows selection', () => {
     expect(script).toContain("if($request.action -eq 'observe_window')");
     expect(script).toContain("if($request.action -eq 'focus_window')");
     expect(script).toContain('GetForegroundWindow() -ne $handle');
+  });
+});
+
+describe('editor-content verification regression', () => {
+  test('requires bounded explicit text and exact window identity', () => {
+    expect(() => validateComputerTextVerification({expectedTitle:'Notepad',expectedProcessId:55,expectedText:'Hello from SkyCode'})).not.toThrow();
+    expect(() => validateComputerTextVerification({expectedTitle:'Notepad',expectedProcessId:55,expectedText:''})).toThrow();
+    expect(() => validateComputerTextVerification({expectedTitle:'Notepad',expectedProcessId:55,expectedText:'x'.repeat(1001)})).toThrow();
+    expect(() => validateComputerTextVerification({expectedTitle:'',expectedProcessId:55,expectedText:'Hi'})).toThrow();
+  });
+  test('text verification is not bounded by the first 40 observed controls', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    expect(script).toContain('function VerifyText(');
+    expect(script).toContain("if($request.action -eq 'verify_text')");
+    expect(script).toContain('TextPattern');
+    expect(script).toContain('ValuePattern');
+    expect(script).toContain('Math]::Min($all.Count,3000)');
+    expect(script).toContain('No readable editor text was exposed');
   });
 });
