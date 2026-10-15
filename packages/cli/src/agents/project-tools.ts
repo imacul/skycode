@@ -2120,11 +2120,11 @@ export async function executeProjectToolCall(
         return {
           call, success: result.ok === true, trust: 'untrusted-data',
           content: JSON.stringify({
-            ...result,
             visualFeedback: visual
               ? { captured: true, scope: 'desktop', capture: visual.capture,
                   note: 'Fresh pixels after the attempted action (whether success or failure). On failure identify the actual foreground window, then safely refocus or ask the user if Windows blocks activation.' }
               : { captured: false, error: visualError || 'Screenshot unavailable' },
+            ...result,
           }),
           imageDataUrl: visual?.imageDataUrl,
         };
