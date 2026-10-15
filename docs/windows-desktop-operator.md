@@ -5,7 +5,7 @@ This feature is a bounded foundation for SkyCode's future observe → reason →
 ## Available agent tools
 
 - `desktop_snapshot`: approval-gated inspection of the current foreground window through Windows UI Automation. The result reports the window and up to 60 accessibility elements. It does not use screenshots or interpret pixels.
-- `desktop_notepad_document`: creates a **new** `.txt` document under the active workspace (max 20,000 characters), reads it back from disk, launches it in Notepad, and tries to verify the editor text through accessibility. This first version writes with the filesystem and *opens* the document in Notepad; it does not pretend to type into the GUI.
+- `desktop_notepad_document`: creates a **new** `.txt` document under the active workspace (max 20,000 characters), reads it back from disk, opens and verifies the editor, closes only the matched Notepad document tab, reopens it, and verifies the editor again. Each stage is independently reported. This first version writes with the filesystem and *opens* the document in Notepad; it does not pretend to type into the GUI.
 
 Both operations require user approval unless the user has deliberately enabled Owner Mode with automatic approval. The durable emergency stop remains part of the agent's tool boundary.
 
@@ -26,7 +26,10 @@ Review and approve the requested operation. Inspect its result:
 
 - `diskVerified: true` means the saved bytes were read back successfully.
 - `notepadOpened: true` means an accessible Notepad window was located.
-- `editorVerified: true` means the accessible editor content matched the file.
+- `editorVerified: true` means the accessible editor content matched the file on first open.
+- `documentClosed: true` means the target document tab/window was confirmed absent after closing.
+- `documentReopened: true` and `reopenEditorVerified: true` mean reopening and a second editor check succeeded.
+- `verified: true` requires all of these stages.
 - An unsuccessful editor verification must be reported as **unverified**, not completion.
 
 The file is placed in the current working directory used to launch SkyCode. Use a new filename for each test; this milestone refuses to overwrite existing files.
