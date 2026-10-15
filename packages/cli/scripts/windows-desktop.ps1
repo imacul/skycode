@@ -10,8 +10,6 @@ public static class SkyCodeWin32 {
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
- [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
- [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
 }
 '@
 function Say($result) { [Console]::Out.WriteLine(($result | ConvertTo-Json -Depth 8 -Compress)) }
@@ -102,22 +100,7 @@ function Verify-Text($window,$expected) {
 }
 try {
  $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
- if ($request.action -eq 'list_windows') {
-  $items=@()
-  $root=[System.Windows.Automation.AutomationElement]::RootElement
-  $windows=$root.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
-  $foreground=[SkyCodeWin32]::GetForegroundWindow()
-  $sys=@('explorer','shellexperiencehost','startmenuexperiencehost','searchhost','searchapp','textinputhost')
-  foreach($window in $windows) {
-   if($items.Count -ge 60) {break}
-   try {
-    $p=$window.Current; $title=[string]$p.Name; $pidValue=[int]$p.ProcessId
-    $handle=[IntPtr]$p.NativeWindowHandle
-    if(!$title.Trim() -or $pidValue -le 0 -or $handle -eq [IntPtr]::Zero){continue}
-    $proc=Get-Process -Id $pidValue -ErrorAction SilentlyContinue
-    if(!$proc){continue}
-    $pn=[string]$proc.ProcessName
-    if($pn -match '^(?i:logonui|credentialuibroker|consent|1password|bitwarden|keepass|keepassxc|lastpass)
+ if ($request.action -eq 'snapshot') {
   $hwnd=[SkyCodeWin32]::GetForegroundWindow()
   if ($hwnd -eq [IntPtr]::Zero) { throw "No foreground window." }
   $window=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
@@ -126,8 +109,8 @@ try {
   Say @{ok=$true;action='snapshot';window=$obs}; exit 0
  }
  if ($request.action -eq 'close_document') {
-  $filename=[string]$request.filename
-  if($filename -notmatch '^[a-zA-Z0-9_][a-zA-Z0-9_ .-]{0,100}\.txt {throw "Unsupported desktop operation."}
+  $name = [string]$request.filename
+  if (![regex]::IsMatch($name, '^[A-Za-z0-9_][A-Za-z0-9_ .-]{0,100}[.]txt
  $path=[IO.Path]::GetFullPath([string]$request.path)
  $content=[string]$request.content
  if (!$path.EndsWith('.txt',[StringComparison]::OrdinalIgnoreCase)) {throw "Only .txt files are permitted."}
@@ -151,97 +134,19 @@ try {
  Say @{ok=$false;error=$_.Exception.Message}
  exit 1
 }
- -or $title -match '(?i)password|passcode|authenticator|sign.in|log.in|seed phrase'){continue}
-    $kind=if($sys -contains $pn.ToLowerInvariant()){'system-ui'} elseif([SkyCodeWin32]::IsIconic($handle)){'minimized'} elseif([SkyCodeWin32]::IsWindowVisible($handle)){'visible'} else {'background'}
-    $items+=@{title=$title;processName=$pn;processId=$pidValue;windowHandle=[string]$handle;focused=($handle -eq $foreground);visibility=$kind}
-   }catch{continue}
-  }
-  Say @{ok=$true;action='list_windows';windows=$items;backgroundProcessCandidates=@();complete=$false;
-   note='Bounded titled windows; background process inventory is not included.'}
-  exit 0
- }
- if ($request.action -eq 'snapshot') {
-  $hwnd=[SkyCodeWin32]::GetForegroundWindow()
-  if ($hwnd -eq [IntPtr]::Zero) { throw "No foreground window." }
-  $window=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-  $obs=Observe-Window $window
-  if ([string]$window.Current.Name -match '(?i)password|credential|sign in|log in|authenticator|bank') {throw "Sensitive window blocked."}
-  Say @{ok=$true;action='snapshot';window=$obs}; exit 0
- }
- if ($request.action -ne 'notepad_document') {throw "Unsupported desktop operation."}
- $path=[IO.Path]::GetFullPath([string]$request.path)
- $content=[string]$request.content
- if (!$path.EndsWith('.txt',[StringComparison]::OrdinalIgnoreCase)) {throw "Only .txt files are permitted."}
- if ([IO.File]::Exists($path)) {throw "File exists; overwrite is not allowed."}
- [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) | Out-Null
- # Stage the document via .NET, not by simulating an unverified GUI paste.
- [IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
- $onDisk=[IO.File]::ReadAllText($path)
- if ($onDisk -cne $content) {throw "Disk read-back does not match."}
- $proc=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
- Start-Sleep -Milliseconds 800
- try {
-  $window=Find-DocumentWindow $path
-  $observed=Observe-Window $window 30
-  $visible=Verify-Text $window $content
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$true;editorVerified=$visible.verified;editorVerification=$visible.reason;window=$observed};exit 0
- } catch {
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$false;editorVerified=$false;windowError=$_.Exception.Message};exit 0
- }
-} catch {
- Say @{ok=$false;error=$_.Exception.Message}
- exit 1
-}
- -or $filename.Contains('..')){throw 'Invalid filename'}
-  $window=Find-DocumentWindow $filename 3500
+) -or $name.Contains('..')) {throw 'Invalid file name.'}
+  $window = Find-DocumentWindow $name 3500
   Assert-SafeForeground $window
   [System.Windows.Forms.SendKeys]::SendWait('^w')
   Start-Sleep -Milliseconds 400
-  $closed=$false
-  try {$unused=Find-DocumentWindow $filename 1200} catch {if($_.Exception.Message -match '^Could not find a Notepad window'){$closed=$true}else{throw}}
-  Say @{ok=$true;action='close_document';filename=$filename;closed=$closed;verified=$closed}
-  exit 0
- }
- if ($request.action -ne 'notepad_document') {throw "Unsupported desktop operation."}
- $path=[IO.Path]::GetFullPath([string]$request.path)
- $content=[string]$request.content
- if (!$path.EndsWith('.txt',[StringComparison]::OrdinalIgnoreCase)) {throw "Only .txt files are permitted."}
- if ([IO.File]::Exists($path)) {throw "File exists; overwrite is not allowed."}
- [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) | Out-Null
- # Stage the document via .NET, not by simulating an unverified GUI paste.
- [IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
- $onDisk=[IO.File]::ReadAllText($path)
- if ($onDisk -cne $content) {throw "Disk read-back does not match."}
- $proc=Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $path + '"') -PassThru
- Start-Sleep -Milliseconds 800
- try {
-  $window=Find-DocumentWindow $path
-  $observed=Observe-Window $window 30
-  $visible=Verify-Text $window $content
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$true;editorVerified=$visible.verified;editorVerification=$visible.reason;window=$observed};exit 0
- } catch {
-  Say @{ok=$true;action='notepad_document';path=$path;diskVerified=$true;notepadOpened=$false;editorVerified=$false;windowError=$_.Exception.Message};exit 0
- }
-} catch {
- Say @{ok=$false;error=$_.Exception.Message}
- exit 1
-}
- -or $title -match '(?i)password|passcode|authenticator|sign.in|log.in|seed phrase'){continue}
-    $kind=if($sys -contains $pn.ToLowerInvariant()){'system-ui'} elseif([SkyCodeWin32]::IsIconic($handle)){'minimized'} elseif([SkyCodeWin32]::IsWindowVisible($handle)){'visible'} else {'background'}
-    $items+=@{title=$title;processName=$pn;processId=$pidValue;windowHandle=[string]$handle;focused=($handle -eq $foreground);visibility=$kind}
-   }catch{continue}
+  $closed = $false
+  try {$unused = Find-DocumentWindow $name 1200}
+  catch {
+   if ($_.Exception.Message.StartsWith('Could not find a Notepad window')) {$closed = $true}
+   else {throw}
   }
-  Say @{ok=$true;action='list_windows';windows=$items;backgroundProcessCandidates=@();complete=$false;
-   note='Bounded titled windows; background process inventory is not included.'}
+  Say @{ok=$true;action='close_document';filename=$name;closed=$closed;verified=$closed}
   exit 0
- }
- if ($request.action -eq 'snapshot') {
-  $hwnd=[SkyCodeWin32]::GetForegroundWindow()
-  if ($hwnd -eq [IntPtr]::Zero) { throw "No foreground window." }
-  $window=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-  $obs=Observe-Window $window
-  if ([string]$window.Current.Name -match '(?i)password|credential|sign in|log in|authenticator|bank') {throw "Sensitive window blocked."}
-  Say @{ok=$true;action='snapshot';window=$obs}; exit 0
  }
  if ($request.action -ne 'notepad_document') {throw "Unsupported desktop operation."}
  $path=[IO.Path]::GetFullPath([string]$request.path)
