@@ -450,6 +450,12 @@ export class CodingAgent implements BaseAgent {
     try {
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const modelActivityId = 'model_round_' + Date.now() + '_' + iteration;
+      // Screenshot pixels are needed for one model decision, not every
+      // subsequent reasoning turn. Keep the small capture metadata in text.
+      for (const message of messages) {
+        if (message.imageDataUrl) delete message.imageDataUrl;
+      }
+
       onActivity?.({
         id: modelActivityId,
         type: 'planning',
