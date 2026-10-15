@@ -235,6 +235,12 @@ function App() {
   }, [updateNotice]);
 
   useEffect(() => {
+    if (!historyView) return;
+    const timer = setTimeout(() => setHistoryView(null), 12000);
+    return () => clearTimeout(timer);
+  }, [historyView]);
+
+  useEffect(() => {
     activeChatScroll = messagesScrollRef.current;
 
     return () => {
@@ -1528,6 +1534,15 @@ Current provider: ${provider?.name || 'none'}
         </box>
       )}
 
+      {historyView && !showHistoryPanel && (
+        <box width="96%" paddingX={2} flexDirection="row" gap={2} flexShrink={0}>
+          <box flexGrow={1} flexShrink={1} minWidth={0}>
+            <text fg="yellow">{historyView}</text>
+          </box>
+          <text fg="gray" onMouseDown={() => setHistoryView(null)}>[x]</text>
+        </box>
+      )}
+
       {/* Clip the chat viewport independently of the fixed bottom input. */}
       <box width="100%" flexGrow={1} flexShrink={1} minHeight={0} overflow="hidden">
       <scrollbox
@@ -1622,19 +1637,6 @@ Current provider: ${provider?.name || 'none'}
           <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
             <text attributes={{ blink: true }}>Thinking...</text>
-          </box>
-        )}
-        {historyView && (
-          <box
-            width="100%"
-            paddingY={1}
-            border={['top']}
-            borderColor="gray"
-            flexShrink={0}
-          >
-            <text fg="yellow" wordWrap="break-word" width="100%">
-              {historyView}
-            </text>
           </box>
         )}
       </scrollbox>
