@@ -293,6 +293,7 @@ export class CodingAgent implements BaseAgent {
     // Reset after any state-changing tool so legitimate re-verification works.
     let lastPassiveObservation = '';
     let repeatedPassiveObservations = 0;
+    const launchedApplicationTargets = new Set<string>();
 
     if (loopMode === 'build') {
       const initialActivityId = 'planning_' + Date.now();
@@ -714,6 +715,23 @@ export class CodingAgent implements BaseAgent {
       }
       for (const call of executableCalls.slice(0, Math.min(8, remainingToolBudget))) {
         const signature = call.name + ':' + JSON.stringify(call.args);
+        // A model can rediscover or refocus an existing application, but it
+        // must not spawn the same app repeatedly within one task.
+        if (call.name === 'open_app' && typeof call.args.name === 'string') {
+          const target = call.args.name.trim().toLowerCase().replace(/\\.exe$/i, '');
+          if (launchedApplicationTargets.has(target)) {
+            const blocked: ProjectToolExecution = {
+              call, success: false,
+              content: 'This application was already launched during the current task. Enumerate existing windows and focus the target instead of launching another instance.',
+              trust: 'trusted-control',
+            };
+            executions.push(blocked);
+            allExecutions.push(blocked);
+            lastModelToolFailed = true;
+            onToolExecution?.(blocked);
+            continue;
+          }
+        }
         const isPassiveObservation = [
           'desktop_list_windows', 'computer_observe', 'computer_observe_window',
           'computer_verify', 'desktop_snapshot', 'computer_screenshot'
@@ -819,6 +837,9 @@ export class CodingAgent implements BaseAgent {
         );
         executions.push(execution);
         allExecutions.push(execution);
+        if (execution.success && call.name === 'open_app' && typeof call.args.name === 'string') {
+          launchedApplicationTargets.add(call.args.name.trim().toLowerCase().replace(/\\.exe$/i, ''));
+        }
         if (!execution.success) failedCallCounts.set(signature, (failedCallCounts.get(signature) || 0) + 1);
         if (execution.success && (call.name === 'web_search' || call.name === 'web_fetch')) {
           hasWebEvidence = true;
