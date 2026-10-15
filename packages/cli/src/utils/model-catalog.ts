@@ -1,7 +1,7 @@
 import type { ModelInfo } from '../providers/base';
 
 export interface CatalogModel {
-  provider: 'openrouter' | 'local';
+  provider: 'openrouter' | 'local' | 'chatgpt';
   model: ModelInfo;
   free: boolean;
   local: boolean;
@@ -42,6 +42,8 @@ export function formatCatalogLine(entry: CatalogModel, current?: {
       selected
     );
   }
+
+  if (entry.provider === 'chatgpt') return '  chatgpt:' + entry.model.id + '  [CHATGPT PLAN]' + context + selected;
 
   const price = entry.free
     ? '[FREE]'
@@ -87,7 +89,7 @@ export function createModelPickerItems(
         ? Math.round(entry.model.contextLength / 1000) + 'K ctx'
         : 'context unknown';
 
-      const cost = entry.local
+      const cost = entry.provider === 'chatgpt' ? 'CHATGPT PLAN' : entry.local
         ? 'LOCAL · FREE'
         : entry.free
           ? 'FREE'
@@ -96,7 +98,7 @@ export function createModelPickerItems(
             formatPricePerMillion(entry.model.pricing?.completion) +
             ' out';
 
-      const providerLabel = entry.local ? 'LOCAL' : 'OPENROUTER';
+      const providerLabel = entry.provider === 'chatgpt' ? 'CHATGPT' : entry.local ? 'LOCAL' : 'OPENROUTER';
       const name = entry.model.name || entry.model.id;
       const meta = providerLabel + ' · ' + cost + ' · ' + context;
 
