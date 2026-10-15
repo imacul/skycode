@@ -371,7 +371,7 @@ describe('model-led general task routing', () => {
     const agent = readFileSync(resolve(import.meta.dir,'../agents/coding-agent.ts'),'utf8');
     expect(agent).toContain('private shouldRunProjectTools(_request: AgentRequest): boolean');
     expect(agent).toContain('return true;');
-    expect(agent).toContain("const loopMode = 'reach' as const");
+    expect(agent).toContain("request.context?.toolLoopMode === 'build' ? 'build' : 'reach'");
     expect(agent).not.toContain('const loopMode = classifyToolLoopMode(request.input)');
   });
 });
