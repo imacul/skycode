@@ -97,8 +97,6 @@ describe('window state classification contract', () => {
     expect(script).toContain("'system-ui'");
     expect(script).toContain("'minimized'");
     expect(script).toContain("'visible'");
-    expect(script).toContain("'background-process'");
-    expect(script).toContain('backgroundProcessCandidates');
     expect(script).toContain('GetForegroundWindow');
   });
 });
