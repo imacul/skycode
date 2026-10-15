@@ -131,6 +131,7 @@ export type ComputerStep = {
   expectedProcessId: number;
   name?: string;
   automationId?: string;
+  role?: string;
   targetName?: string;
   targetAutomationId?: string;
   keys?: string;
