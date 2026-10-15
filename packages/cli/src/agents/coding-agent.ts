@@ -258,7 +258,7 @@ export class CodingAgent implements BaseAgent {
     // no suitable capability exists).
     // Tool availability never depends on the exact words in the request.
     // The model chooses whether to inspect the workspace or operate the desktop.
-    const loopMode = 'reach' as const;
+    const loopMode: 'reach' | 'build' = request.context?.toolLoopMode === 'build' ? 'build' : 'reach';
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
     const traceId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
