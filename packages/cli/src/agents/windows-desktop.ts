@@ -4,6 +4,7 @@ import { basename, isAbsolute, relative, resolve } from 'node:path';
 
 export type WindowsDesktopRequest =
   | { action: 'snapshot' }
+  | { action: 'list_windows' }
   | { action: 'close_document'; filename: string }
   | { action: 'notepad_document'; path: string; content: string };
 
@@ -13,6 +14,7 @@ export interface WindowsDesktopResult {
   path?: string;
   filename?: string;
   targetWindow?: string;
+  windows?: Array<{ title: string; processName: string; processId: number; windowHandle: string; focused: boolean }>;
   closed?: boolean;
   diskVerified?: boolean;
   notepadOpened?: boolean;
