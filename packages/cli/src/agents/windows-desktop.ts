@@ -126,7 +126,7 @@ export function verifyComputerObservation(
 }
 
 export type ComputerStep = {
-  kind: 'focus' | 'invoke' | 'set_value' | 'keypress' | 'scroll' | 'move' | 'click' | 'right_click' | 'double_click' | 'type' | 'drag';
+  kind: 'focus' | 'invoke' | 'set_value' | 'keypress' | 'scroll' | 'move' | 'click' | 'right_click' | 'double_click' | 'type' | 'drag' | 'visual_click';
   expectedTitle: string;
   expectedProcessId: number;
   name?: string;
@@ -137,13 +137,34 @@ export type ComputerStep = {
   keys?: string;
   value?: string;
   direction?: 'up' | 'down';
+  /** Pixel coordinate in the resized screenshot, not desktop coordinates. */
+  x?: number;
+  y?: number;
+  pointerKind?: 'click' | 'right_click' | 'double_click';
+  snapshot?: {
+    path: string; title: string; processId: number; windowHandle: string;
+    left: number; top: number; width: number; height: number;
+    imageWidth: number; imageHeight: number; capturedAt: number;
+  };
 };
 
 export function validateComputerStep(step: ComputerStep): void {
-  if (!step || !['focus','invoke','set_value','keypress','scroll','move','click','right_click','double_click','type','drag'].includes(step.kind)) throw new Error('Invalid computer action.');
+  if (!step || !['focus','invoke','set_value','keypress','scroll','move','click','right_click','double_click','type','drag','visual_click'].includes(step.kind)) throw new Error('Invalid computer action.');
   if (!step.expectedTitle || !Number.isSafeInteger(step.expectedProcessId) || step.expectedProcessId <= 0) throw new Error('Exact foreground window identity required.');
   if (step.kind === 'keypress') {
     if (!['^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}','{BACKSPACE}','{DELETE}','{HOME}','{END}'].includes(step.keys || '')) throw new Error('Unsupported keyboard shortcut.');
+  } else if (step.kind === 'visual_click') {
+    if (!step.snapshot || typeof step.snapshot.path !== 'string' ||
+        !/^skycode-window-[0-9a-f]{32}\.jpg$/.test(step.snapshot.path.split(/[\\/]/).pop() || '') ||
+        step.snapshot.title !== step.expectedTitle || step.snapshot.processId !== step.expectedProcessId ||
+        !/^\d+$/.test(step.snapshot.windowHandle || '') ||
+        !Number.isSafeInteger(step.x) || !Number.isSafeInteger(step.y) ||
+        !Number.isSafeInteger(step.snapshot.imageWidth) || !Number.isSafeInteger(step.snapshot.imageHeight) ||
+        step.snapshot.imageWidth <= 0 || step.snapshot.imageHeight <= 0 ||
+        step.x! < 0 || step.y! < 0 || step.x! >= step.snapshot.imageWidth || step.y! >= step.snapshot.imageHeight ||
+        !['click','right_click','double_click'].includes(step.pointerKind || '')) {
+      throw new Error('Visual click requires exact recent screenshot identity, image pixel coordinates and pointerKind.');
+    }
   } else if (!step.name && !step.automationId) throw new Error('Specify an accessible control name or automationId.');
   if (step.kind === 'drag' && (!step.targetName && !step.targetAutomationId)) throw new Error('Drag requires an exact destination control name or automationId.');
   if (step.kind === 'drag' && step.name === step.targetName && step.name !== undefined && !step.automationId && !step.targetAutomationId) throw new Error('Drag source and destination must be different.');
@@ -152,7 +173,7 @@ export function validateComputerStep(step: ComputerStep): void {
   if (step.kind === 'scroll' && !['up','down'].includes(step.direction || '')) throw new Error('Scroll direction must be up or down.');
 }
 
-export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch' | 'observe_window' | 'focus_window' | 'verify_text', steps: ComputerStep[] = [], selector?: ComputerWindowSelector, textVerification?: ComputerTextVerification): Promise<Record<string, unknown>> {
+export async function runComputerCore(action: 'observe' | 'list_windows' | 'act' | 'batch' | 'observe_window' | 'focus_window' | 'verify_text' | 'capture', steps: ComputerStep[] = [], selector?: ComputerWindowSelector, textVerification?: ComputerTextVerification): Promise<Record<string, unknown>> {
   if (process.platform !== 'win32') throw new Error('Windows only.');
   if (action === 'act' && steps.length !== 1) throw new Error('Act requires exactly one step.');
   if (action === 'batch' && (!steps.length || steps.length > 8)) throw new Error('Batch requires 1–8 steps.');
