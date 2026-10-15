@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateNotepadTarget, runWindowsDesktop } from '../agents/windows-desktop';
@@ -73,5 +73,20 @@ describe('Windows desktop PowerShell adapter syntax', () => {
     ], { encoding: 'utf8', timeout: 15000 });
     expect(parse.error).toBeUndefined();
     expect(parse.status).toBe(0);
+  });
+});
+
+describe('window state classification contract', () => {
+  test('adapter distinguishes minimized from visible and separates shell UI', () => {
+    const file = resolve(import.meta.dir, '../../scripts/windows-desktop.ps1');
+    const script = readFileSync(file, 'utf8');
+    expect(script).toContain('IsIconic');
+    expect(script).toContain('IsWindowVisible');
+    expect(script).toContain("'system-ui'");
+    expect(script).toContain("'minimized'");
+    expect(script).toContain("'visible'");
+    expect(script).toContain("'background-process'");
+    expect(script).toContain('backgroundProcessCandidates');
+    expect(script).toContain('GetForegroundWindow');
   });
 });
