@@ -2121,6 +2121,40 @@ export async function executeProjectToolCall(
           throw new Error(call.name === 'open_url' ? 'url must be a non-empty string.' : 'name must be a non-empty string.');
         }
         await ensureDesktopApproval(workspace, call.name, target, args.reason, requestApproval);
+        // Reuse an existing desktop app before launching another process.
+        // This is based on actual Windows process/window identities, never
+        // command wording or a hardcoded application-specific workflow.
+        if (call.name === 'open_app' && process.platform === 'win32') {
+          const normalized = target.trim().replace(/\\.exe$/i, '').split(/[\\/]/).pop()?.toLowerCase() || '';
+          try {
+            const inventory = await runComputerCore('list_windows');
+            const candidates = (inventory.windows as Array<{
+              title: string; processId: number; processName: string;
+              windowHandle: string; visibility: string; focused: boolean
+            }> | undefined) || [];
+            const matching = candidates.filter(window =>
+              window.processName.toLowerCase() === normalized &&
+              window.visibility === 'visible' &&
+              !/^program manager$/i.test(window.title)
+            );
+            const chosen = matching.find(window => window.focused) || matching[0];
+            if (chosen) {
+              await runComputerCore('focus_window', [], {
+                title: chosen.title,
+                processId: chosen.processId,
+                windowHandle: chosen.windowHandle,
+              });
+              return {
+                call, success: true,
+                content: 'Reused and focused the already open application window: ' + chosen.title,
+                displayPath: chosen.title,
+              };
+            }
+          } catch (error) {
+            agentDebug('desktop.reuse_window.failed', { target, error: String(error) });
+            // Continue to regular launch only when no reusable window was confirmed.
+          }
+        }
         // Route Brave through the single-instance controller so open_app does
         // not spawn a second browser beside browser/search/open calls.
         if (call.name === 'open_app' && /^brave$/i.test(target.trim())) {
