@@ -32,6 +32,7 @@ import {
   parseProjectClarification,
   projectToolResultMessage,
   summarizeToolProvenance,
+  getBuildVerificationStatus,
   describeRunningProcesses,
   recoverImpliedToolCall,
   responseLooksLikePendingWork,
@@ -295,6 +296,7 @@ export class CodingAgent implements BaseAgent {
     let lastPassiveObservation = '';
     let repeatedPassiveObservations = 0;
     const launchedApplicationTargets = new Set<string>();
+    let verificationReminderCount = 0;
     // Track actual tool results across rounds, not keywords in the user's
     // request. A desktop interaction has a smaller recovery budget than a
     // software build, while the full general-purpose budget remains available.
@@ -542,6 +544,20 @@ export class CodingAgent implements BaseAgent {
       const containsRawToolProtocol = /<tool_call>|<\|DSML\|/i.test(response.content);
 
       if (calls.length === 0) {
+        const buildCheck = getBuildVerificationStatus(allExecutions);
+        if (buildCheck.codeChanged && !buildCheck.checkPassed && verificationReminderCount < 2 &&
+            !parseProjectClarification(response.content)) {
+          verificationReminderCount += 1;
+          messages.push({
+            id: 'verification_request_' + Date.now() + '_' + iteration,
+            role: 'user',
+            content: buildCheck.checkFailed
+              ? 'Engineering verification FAILED after the latest code changes (' + (buildCheck.lastCheck || 'verification command') + '). Inspect the actual error, fix the source, and rerun a relevant check. Do not claim that the software is working.'
+              : 'You changed project files, but no successful test/build/typecheck is recorded AFTER the latest change. Inspect the project scripts, run the relevant existing verification command using run_command, and fix errors before finishing. If no checks exist or execution is impossible, clearly report the limitation instead of inventing success.',
+            timestamp: new Date(),
+          });
+          continue;
+        }
         const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
 
         if (containsRawToolProtocol || (!hasExecutedTools && falseCapabilityRefusal && iteration < 2) || (requiresWebEvidence && !hasWebEvidence && iteration < 4)) {
@@ -629,11 +645,19 @@ export class CodingAgent implements BaseAgent {
           : stripped || response.content.trim();
         if (finalText) {
           const method = summarizeToolProvenance(allExecutions);
+          const verification = getBuildVerificationStatus(allExecutions);
+          const unverifiedChanges = verification.codeChanged && !verification.checkPassed;
+          const verificationNote = !verification.codeChanged ? '' :
+            verification.checkPassed
+              ? 'Verification: passed ' + (verification.lastCheck || 'project check') + ' after the latest code changes.'
+              : 'Verification: NOT PASSED after the latest code changes. ' +
+                (verification.checkFailed ? 'The latest check failed: ' + (verification.lastCheck || 'unknown check') + '.' :
+                'No successful build/test/typecheck was recorded. The delivered code is unverified.');
           onActivity?.({
             id: 'complete_' + Date.now(),
             type: 'complete',
-            status: 'success',
-            title: 'Project work complete',
+            status: unverifiedChanges ? 'error' : 'success',
+            title: unverifiedChanges ? 'Code changes not verified' : 'Project work complete',
             detail:
               allExecutions.length > 0
                 ? allExecutions.filter((item) => item.success).length +
@@ -641,8 +665,8 @@ export class CodingAgent implements BaseAgent {
                 : undefined,
           });
           return {
-            content: method ? finalText + '\n\n' + method : finalText,
-            finishReason,
+            content: [finalText, verificationNote, method].filter(Boolean).join('\n\n'),
+            finishReason: unverifiedChanges ? 'build_unverified' : finishReason,
             tokensUsed,
           };
         }
