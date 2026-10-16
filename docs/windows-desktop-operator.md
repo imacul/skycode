@@ -20,7 +20,7 @@ After a `type` or `set_value` action, call `computer_verify` with `expectedTitle
 
 ### Goal-directed visual exploration
 
-A screenshot represents a **viewport**, not necessarily the whole content of a window. SkyCode can now use a general `computer_act` step with `kind: "scroll_view"`, a verified foreground window identity, direction (`up` or `down`), and one to five wheel notches. The adapter sends real Windows wheel input over the foreground window and returns a new UIA observation. The agent's adaptive visual feedback mechanism attaches a fresh screenshot afterward.
+A screenshot represents a **viewport**, not necessarily the whole content of a window. SkyCode can now use a general `computer_act` step with `kind: "scroll_view"`, a verified foreground window identity, direction (`up` or `down`), one to five wheel notches, and optionally viewport-relative `atXPercent` / `atYPercent` coordinates (5–95). The model chooses the scroll target within the actual foreground window when there are multiple panes. The adapter sends real Windows wheel input over the foreground window and returns a new UIA observation. The agent's adaptive visual feedback mechanism attaches a fresh screenshot afterward.
 
 When collecting information from a long list, the model should keep the requested outcome in mind, inspect subsequent viewports, combine observed entries without duplicates, and distinguish complete information from partial observations. UIA snapshots now also include scroll extent/percentage when a non-sensitive control exposes a scroll pattern. These capabilities are generic across applications; no user wording or folder names trigger them.
 
