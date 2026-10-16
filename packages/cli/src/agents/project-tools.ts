@@ -2461,6 +2461,43 @@ export async function executeProjectToolCall(
   }
 }
 
+/** Honest provenance for task results: report the actual executed tools.
+ * A wheel-input success alone does not prove that a viewport moved.
+ */
+export function summarizeToolProvenance(executions: readonly ProjectToolExecution[]): string {
+  if (!executions.length) return '';
+  const successful = executions.filter(item => item.success);
+  const kinds = new Set<string>();
+  if (successful.some(item => item.call.name === 'run_command')) kinds.add('terminal commands');
+  if (successful.some(item => ['list_files', 'read_file', 'search_files'].includes(item.call.name))) kinds.add('file tools');
+  if (successful.some(item => item.call.name === 'computer_screenshot')) kinds.add('screen images');
+  if (successful.some(item => ['computer_observe', 'computer_observe_window', 'desktop_snapshot', 'desktop_list_windows'].includes(item.call.name))) kinds.add('Windows accessibility/window inspection');
+  if (successful.some(item => item.call.name === 'open_app')) kinds.add('application launch or reuse');
+  if (successful.some(item => ['computer_act', 'computer_batch', 'computer_focus_window'].includes(item.call.name))) kinds.add('Windows interface actions');
+  let scrollSent = 0;
+  let scrollFailed = 0;
+  for (const execution of executions) {
+    if (!['computer_act', 'computer_batch'].includes(execution.call.name)) continue;
+    const stepArgs = execution.call.name === 'computer_act'
+      ? [execution.call.args.step] : execution.call.args.steps;
+    const steps = Array.isArray(stepArgs) ? stepArgs : [];
+    const count = steps.filter(step =>
+      !!step && typeof step === 'object' &&
+      ['scroll_view', 'scroll'].includes(String((step as {kind?: unknown}).kind || ''))
+    ).length;
+    if (execution.success) scrollSent += count;
+    else scrollFailed += count;
+  }
+  if (successful.some(item => ['computer_act', 'computer_batch'].includes(item.call.name))) {
+    kinds.add('post-action screen/accessibility feedback');
+  }
+  if (!kinds.size && !scrollFailed) return '';
+  return 'Method used (tool trace): ' + (kinds.size ? [...kinds].join(', ') : 'no confirmed tool operation') +
+    '. Scroll operations sent: ' + scrollSent +
+    (scrollFailed ? '; attempted in failed actions: ' + scrollFailed : '') +
+    '. Scroll input alone does not prove the viewport moved.';
+}
+
 export function projectToolResultMessage(
   executions: ProjectToolExecution[]
 ): Message {
