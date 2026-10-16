@@ -50,6 +50,7 @@ import {
   stripProjectToolCalls,
 } from './agents/project-tools';
 import { agentDebug, getAgentDebugLogPath } from './utils/agent-debug';
+import { classifyTaskNotice, notifyTaskFinished } from './utils/task-notification';
 import type { BaseProvider } from './providers/base';
 import type {
   AgentActivity,
@@ -735,8 +736,8 @@ function App() {
               ? 'running'
               : taskFinishReason === 'clarification_required'
               ? 'blocked'
-              : /tool_iteration_limit|provider_stopped|tool_protocol_not_followed/i.test(taskFinishReason)
-                ? 'running'
+              : /tool_iteration_limit|desktop_progress_limit|tool_action_budget|repeated_tool_failure|provider_stopped|tool_protocol_not_followed|web_evidence_required/i.test(taskFinishReason)
+                ? 'failed'
                 : 'completed'
             : undefined;
 
@@ -761,6 +762,7 @@ function App() {
           setIsProcessing(false);
           setCurrentResponse('');
           scrollChatToBottom();
+          notifyTaskFinished(classifyTaskNotice(taskFinishReason, taskState));
         },
         onError: (err) => {
           agentDebug('ui.request.error', { error: err });
