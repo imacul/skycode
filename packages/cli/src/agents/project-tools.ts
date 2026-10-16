@@ -2464,6 +2464,42 @@ export async function executeProjectToolCall(
 /** Honest provenance for task results: report the actual executed tools.
  * A wheel-input success alone does not prove that a viewport moved.
  */
+export interface BuildVerificationStatus {
+  codeChanged: boolean;
+  checkAttempted: boolean;
+  checkPassed: boolean;
+  checkFailed: boolean;
+  lastCheck?: string;
+}
+/**
+ * A development run can only claim verified code changes after a successful
+ * check following the last code mutation. Earlier green tests are stale.
+ */
+export function getBuildVerificationStatus(executions: readonly ProjectToolExecution[]): BuildVerificationStatus {
+  const status: BuildVerificationStatus = {
+    codeChanged: false, checkAttempted: false, checkPassed: false, checkFailed: false,
+  };
+  const checkCommand = /^(?:(?:bun|npm|pnpm|yarn)\\s+(?:test|run\\s+(?:test|build|lint|typecheck|check)(?::[\\w-]+)?)(?:\\s|$)|(?:npx\\s+tsc|tsc|cargo\\s+(?:test|check|build)|go\\s+(?:test|vet|build)|pytest|python(?:3)?\\s+-m\\s+pytest|dotnet\\s+(?:test|build)|mvn\\s+(?:test|verify)|gradle\\s+(?:test|build))(?:\\s|$))/i;
+  for (const item of executions) {
+    if (item.success && ['write_file', 'create_directory', 'delete_file', 'delete_directory'].includes(item.call.name)) {
+      status.codeChanged = true;
+      status.checkPassed = false;
+      status.checkFailed = false;
+      status.checkAttempted = false;
+      status.lastCheck = undefined;
+    }
+    if (item.call.name === 'run_command' &&
+        typeof item.call.args.command === 'string' &&
+        checkCommand.test(item.call.args.command.trim())) {
+      status.checkAttempted = true;
+      status.checkPassed = item.success;
+      status.checkFailed = !item.success;
+      status.lastCheck = item.call.args.command.trim().slice(0, 120);
+    }
+  }
+  return status;
+}
+
 export function summarizeToolProvenance(executions: readonly ProjectToolExecution[]): string {
   if (!executions.length) return '';
   const successful = executions.filter(item => item.success);
