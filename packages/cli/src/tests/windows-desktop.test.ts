@@ -566,12 +566,18 @@ describe('goal-directed viewport exploration', () => {
   test('accepts guarded window-scoped wheel scrolling without hardcoded target names', () => {
     expect(() => validateComputerStep({
       kind: 'scroll_view', expectedTitle: 'Any App', expectedProcessId: 123,
-      direction: 'down', notches: 2,
+      direction: 'down', notches: 2, atXPercent: 70, atYPercent: 60,
     })).not.toThrow();
     expect(() => validateComputerStep({
       kind: 'scroll_view', expectedTitle: 'Any App', expectedProcessId: 123,
       direction: 'up',
     })).not.toThrow();
+    for (const x of [-1,0,4,96,101,Infinity,NaN]) {
+      expect(() => validateComputerStep({
+        kind: 'scroll_view', expectedTitle: 'Any App', expectedProcessId: 123,
+        direction: 'down', atXPercent: x,
+      })).toThrow(/Viewport scroll/);
+    }
     for (const notches of [0,6,-1,1.5]) {
       expect(() => validateComputerStep({
         kind: 'scroll_view', expectedTitle: 'Any App', expectedProcessId: 123,
@@ -586,12 +592,15 @@ describe('goal-directed viewport exploration', () => {
     expect(script).toContain("if($kind -eq 'scroll_view')");
     expect(script).toContain('return @{kind=$kind;scroll=$wheel;after=Observe (Foreground) 40');
     expect(script).toContain('$node.scroll=@{vertical=');
+    expect(script).toContain('$step.atXPercent');
+    expect(script).toContain('$step.atYPercent');
   });
   test('model is told to inspect hidden content until goal is met rather than stop at visible entries', () => {
     const instructions = getProjectToolInstructions(process.cwd());
     expect(instructions).toContain('compare');
     expect(instructions).toContain('kind scroll_view');
     expect(instructions).toContain('Never invent hidden items');
+    expect(instructions).toContain('Choose the target position from the actual observed pane');
     expect(instructions).toContain('label the answer partial');
   });
 });
