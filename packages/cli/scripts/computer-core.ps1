@@ -50,6 +50,7 @@ public static class SkyMouseFlags {
  public const uint LEFT_UP = 0x0004;
  public const uint RIGHT_DOWN = 0x0008;
  public const uint RIGHT_UP = 0x0010;
+ public const uint WHEEL = 0x0800;
 }
 '@
 # Align UIA physical bounds, screenshots, and cursor coordinates on scaled displays.
@@ -85,7 +86,14 @@ function Observe($window,[int]$max=40){
    if($c.IsOffscreen){continue}
    $name=[string]$c.Name
    if($c.IsPassword -or $name -match '(?i)\b(password|passcode|pin|otp|authenticator|secret|token|sign.in)\b'){continue}
-   $nodes+=@{id=($i.ToString());name=$name;role=[string]$c.ControlType.ProgrammaticName;automationId=[string]$c.AutomationId;enabled=[bool]$c.IsEnabled}
+   $node=@{id=($i.ToString());name=$name;role=[string]$c.ControlType.ProgrammaticName;automationId=[string]$c.AutomationId;enabled=[bool]$c.IsEnabled}
+   $scrollPattern=$null
+   if($all.Item($i).TryGetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern,[ref]$scrollPattern)){
+    $sp=$scrollPattern.Current
+    $node.scroll=@{vertical=[bool]$sp.VerticallyScrollable;percent=[double]$sp.VerticalScrollPercent;
+      viewSize=[double]$sp.VerticalViewSize}
+   }
+   $nodes+=,$node
   }catch{continue}
  }
  return @{title=[string]$p.Name;processId=[int]$p.ProcessId;windowHandle=[string]$p.NativeWindowHandle;nodes=$nodes}
@@ -392,6 +400,23 @@ function SendLiteralText([string]$value,$window){
  }
  return $sent
 }
+function ScrollViewport($window,[string]$direction,[int]$notches){
+ CheckSafety $window
+ if($direction -ne 'up' -and $direction -ne 'down'){throw 'Viewport scroll direction must be up or down.'}
+ if($notches -lt 1 -or $notches -gt 5){throw 'Viewport scroll must be 1 to 5 wheel notches.'}
+ $handle=[IntPtr]$window.Current.NativeWindowHandle
+ if([SkyDesktopNative]::GetForegroundWindow() -ne $handle){throw 'Foreground changed before scrolling.'}
+ $rect=$window.Current.BoundingRectangle
+ if($rect.IsEmpty -or $rect.Width -lt 80 -or $rect.Height -lt 80){throw 'No usable visible viewport.'}
+ $screen=[System.Windows.Forms.SystemInformation]::VirtualScreen
+ $px=[int][Math]::Max($screen.Left,[Math]::Min($screen.Right-1,($rect.Left + ($rect.Width*0.65))))
+ $py=[int][Math]::Max($screen.Top,[Math]::Min($screen.Bottom-1,($rect.Top + ($rect.Height*0.60))))
+ if(![SkyDesktopNative]::SetCursorPos($px,$py)){throw 'Could not position mouse over viewport.'}
+ $delta=if($direction -eq 'up'){$notches*120}else{-$notches*120}
+ [SkyDesktopNative]::mouse_event([SkyMouseFlags]::WHEEL,0,0,[uint32]$delta,[UIntPtr]::Zero)
+ Start-Sleep -Milliseconds 200
+ return @{direction=$direction;notches=$notches;pointer=@{x=$px;y=$py};outcomeVerified=$false}
+}
 function RunStep($step){
  $window=Foreground
  CheckSafety $window
@@ -402,7 +427,12 @@ function RunStep($step){
   # A different application may have taken focus between model/tool rounds.
   # Recover only for semantic actions and only when an exact target window still exists.
   # Pixel actions are NOT refocused: their screenshot may already be stale.
-  if($kind -eq 'visual_click'){throw 'Foreground changed since screenshot; capture another image before clicking.'}
+  if($kind -eq 'scroll_view'){
+  $notches=if($step.notches){[int]$step.notches}else{2}
+  $wheel=ScrollViewport $window ([string]$step.direction) $notches
+  return @{kind=$kind;scroll=$wheel;after=Observe (Foreground) 40;postObserved=$true;outcomeVerified=$false}
+ }
+ if($kind -eq 'visual_click'){throw 'Foreground changed since screenshot; capture another image before clicking.'}
   $candidate=FindWindow ([pscustomobject]@{title=$step.expectedTitle;processId=$step.expectedProcessId;windowHandle=$step.windowHandle})
   $window=FocusWindow $candidate
   if($window.Current.Name -cne [string]$step.expectedTitle -or
