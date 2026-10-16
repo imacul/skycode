@@ -551,6 +551,7 @@ describe('adaptive GUI feedback decisions', () => {
     expect(shouldCaptureGuiFeedback(true, ['keypress'])).toBe(false);
     expect(shouldCaptureGuiFeedback(true, ['move'])).toBe(false);
     expect(shouldCaptureGuiFeedback(true, ['set_value'])).toBe(false);
+    expect(shouldCaptureGuiFeedback(true, ['scroll_view'])).toBe(true);
   });
   test('captures visual evidence for pointer interaction and failures', () => {
     for (const action of ['click','double_click','right_click','visual_click','drag']) {
@@ -558,5 +559,39 @@ describe('adaptive GUI feedback decisions', () => {
     }
     expect(shouldCaptureGuiFeedback(false, ['focus'])).toBe(true);
     expect(shouldCaptureGuiFeedback(false, ['keypress'])).toBe(true);
+  });
+});
+
+describe('goal-directed viewport exploration', () => {
+  test('accepts guarded window-scoped wheel scrolling without hardcoded target names', () => {
+    expect(() => validateComputerStep({
+      kind: 'scroll_view', expectedTitle: 'Any App', expectedProcessId: 123,
+      direction: 'down', notches: 2,
+    })).not.toThrow();
+    expect(() => validateComputerStep({
+      kind: 'scroll_view', expectedTitle: 'Any App', expectedProcessId: 123,
+      direction: 'up',
+    })).not.toThrow();
+    for (const notches of [0,6,-1,1.5]) {
+      expect(() => validateComputerStep({
+        kind: 'scroll_view', expectedTitle: 'Any App', expectedProcessId: 123,
+        direction: 'down', notches
+      })).toThrow(/Viewport scroll/);
+    }
+  });
+  test('desktop adapter provides scroll progress and physical viewport wheel input', () => {
+    const script = readFileSync(resolve(import.meta.dir, '../../scripts/computer-core.ps1'), 'utf8');
+    expect(script).toContain('function ScrollViewport(');
+    expect(script).toContain("[SkyMouseFlags]::WHEEL");
+    expect(script).toContain("if($kind -eq 'scroll_view')");
+    expect(script).toContain('return @{kind=$kind;scroll=$wheel;after=Observe (Foreground) 40');
+    expect(script).toContain('$node.scroll=@{vertical=');
+  });
+  test('model is told to inspect hidden content until goal is met rather than stop at visible entries', () => {
+    const instructions = getProjectToolInstructions(process.cwd());
+    expect(instructions).toContain('compare');
+    expect(instructions).toContain('kind scroll_view');
+    expect(instructions).toContain('Never invent hidden items');
+    expect(instructions).toContain('label the answer partial');
   });
 });
