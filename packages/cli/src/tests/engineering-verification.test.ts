@@ -56,4 +56,22 @@ describe('outcome-driven engineering verification', () => {
       expect(getBuildVerificationStatus([event('write_file'), event('run_command', true, command)]).checkPassed).toBe(false);
     }
   });
+  test('a rerun of the same failed test can recover after transient failures', () => {
+    const status = getBuildVerificationStatus([
+      event('write_file'),
+      event('run_command', false, 'bun test'),
+      event('run_command', true, 'bun test'),
+    ]);
+    expect(status.checkPassed).toBe(true);
+    expect(status.checkFailed).toBe(false);
+  });
+  test('other failed checks remain visible even after a passing rerun', () => {
+    const status = getBuildVerificationStatus([
+      event('write_file'),
+      event('run_command', false, 'bun test'),
+      event('run_command', true, 'npx tsc --noEmit'),
+    ]);
+    expect(status.checkPassed).toBe(false);
+  });
+
 });
