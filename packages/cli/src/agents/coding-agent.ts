@@ -294,6 +294,14 @@ export class CodingAgent implements BaseAgent {
     let lastPassiveObservation = '';
     let repeatedPassiveObservations = 0;
     const launchedApplicationTargets = new Set<string>();
+    // Track actual tool results across rounds, not keywords in the user's
+    // request. A desktop interaction has a smaller recovery budget than a
+    // software build, while the full general-purpose budget remains available.
+    const desktopProgress: string[] = [];
+    let desktopRounds = 0;
+    let repeatedDesktopFailures = 0;
+    let lastDesktopFailure = '';
+
 
     if (loopMode === 'build') {
       const initialActivityId = 'planning_' + Date.now();
@@ -845,6 +853,21 @@ export class CodingAgent implements BaseAgent {
           hasWebEvidence = true;
         }
         if (!execution.success) lastModelToolFailed = true;
+        if (call.name.startsWith('computer_') || call.name.startsWith('desktop_') || call.name === 'open_app') {
+          const note = call.name +
+            (call.name === 'computer_act' ? ':' + String((call.args.step as { kind?: string } | undefined)?.kind || '') : '') +
+            ' ' + (execution.success ? 'completed' : 'failed');
+          desktopProgress.push(note);
+          if (desktopProgress.length > 10) desktopProgress.shift();
+          if (!execution.success) {
+            const fingerprint = call.name + ':' + execution.content.slice(0, 180);
+            repeatedDesktopFailures = fingerprint === lastDesktopFailure ? repeatedDesktopFailures + 1 : 1;
+            lastDesktopFailure = fingerprint;
+          } else {
+            repeatedDesktopFailures = 0;
+            lastDesktopFailure = '';
+          }
+        }
         agentDebug('tool.execute.result', { traceId, iteration, execution });
         onToolExecution?.(execution);
 
@@ -929,7 +952,28 @@ export class CodingAgent implements BaseAgent {
           finishReason: 'repeated_tool_failure', tokensUsed,
         };
       }
+      const desktopActions = executions.filter(item =>
+        item.call.name.startsWith('computer_') || item.call.name.startsWith('desktop_') ||
+        item.call.name === 'open_app'
+      );
+      if (desktopActions.length) desktopRounds += 1;
+      if (repeatedDesktopFailures >= 3 || desktopRounds >= 16) {
+        return {
+          content: 'SkyCode stopped this desktop task before more repeated attempts. ' +
+            (repeatedDesktopFailures >= 3
+              ? 'The same Windows interaction failure occurred repeatedly. '
+              : 'The desktop operation exceeded 16 model/tool rounds without verified completion. ') +
+            'Task outcome is not verified. Recent actions: ' + desktopProgress.slice(-7).join('; ') +
+            '. Inspect Windows focus and the tool trace before trying again.',
+          finishReason: 'desktop_progress_limit', tokensUsed,
+        };
+      }
       const toolResult = projectToolResultMessage(executions);
+      if (desktopProgress.length) {
+        toolResult.content += '\\nDESKTOP TASK PROGRESS (actual executed operations, not proof of final outcome): ' +
+          desktopProgress.slice(-8).join(' | ') +
+          '. Do not repeat successful steps. Choose the next smallest action toward the requested result, verify it, or report a blocker.';
+      }
       agentDebug('tool.result.to_model', { traceId, iteration, content: toolResult.content });
       messages.push(toolResult);
     }
