@@ -347,7 +347,7 @@ describe('screenshot vision computer fallback', () => {
     const chatgpt=readFileSync(resolve(import.meta.dir,'../providers/chatgpt.ts'),'utf8');
     expect(chatgpt).toContain('m.imageDataUrl');
     expect(chatgpt).toContain("type: 'input_image'");
-    expect(tools).toContain('imageDataUrl: executions.find');
+    expect(tools).toContain('imageDataUrl: [...executions].reverse().find(item => item.imageDataUrl)?.imageDataUrl');
     expect(tools).toContain("data:image/jpeg;base64,");
   });
 });
