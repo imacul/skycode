@@ -2487,6 +2487,7 @@ export function getBuildVerificationStatus(executions: readonly ProjectToolExecu
   const status: BuildVerificationStatus = {
     codeChanged: false, checkAttempted: false, checkPassed: false, checkFailed: false,
   };
+  const checkResults = new Map<string, boolean>();
   const checkCommand = /^(?:(?:bun|npm|pnpm|yarn)\s+(?:test|run\s+(?:test|build|lint|typecheck|check)(?::[\w-]+)?)(?:\s|$)|(?:npx\s+tsc|tsc|cargo\s+(?:test|check|build)|go\s+(?:test|vet|build)|pytest|python(?:3)?\s+-m\s+pytest|dotnet\s+(?:test|build)|mvn\s+(?:test|verify)|gradle\s+(?:test|build))(?:\s|$))/i;
   for (const item of executions) {
     if (item.success && ['write_file', 'create_directory', 'delete_file', 'delete_directory'].includes(item.call.name)) {
@@ -2495,16 +2496,17 @@ export function getBuildVerificationStatus(executions: readonly ProjectToolExecu
       status.checkFailed = false;
       status.checkAttempted = false;
       status.lastCheck = undefined;
+      checkResults.clear();
     }
     if (item.call.name === 'run_command' &&
         typeof item.call.args.command === 'string' &&
         checkCommand.test(item.call.args.command.trim())) {
+      const command = item.call.args.command.trim().slice(0, 120);
+      checkResults.set(command, item.success);
       status.checkAttempted = true;
-      status.checkFailed = status.checkFailed || !item.success;
-      status.checkPassed = item.success && !status.checkFailed;
-      if (!item.success || !status.checkFailed) {
-        status.lastCheck = item.call.args.command.trim().slice(0, 120);
-      }
+      status.checkFailed = [...checkResults.values()].some(passed => !passed);
+      status.checkPassed = checkResults.size > 0 && !status.checkFailed;
+      if (!item.success || !status.checkFailed) status.lastCheck = command;
     }
   }
   return status;
