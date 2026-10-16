@@ -36,7 +36,7 @@ The tool loop keeps a short record of actual desktop operations, passes it to th
 
 ### Automatic visual refresh after computer actions
 
-The desktop operator now attaches a fresh, full-desktop JPEG automatically after each `computer_act` / `computer_batch` operation, including a failed operation when capture is possible. The model receives actual new pixels in the next decision round without manually asking for a screenshot each time. `computer_focus_window` also returns a fresh visual observation. The most recent screenshot is forwarded if one tool response has multiple captures, and the transient image is cleared after the model request consumes it rather than added permanently to transcript history.
+The desktop operator attaches a fresh, full-desktop JPEG after pointer clicks, scrolling, drags, and failed GUI operations when a vision provider and capture are available. Successful keyboard and other semantic operations rely on lightweight post-action UI Automation evidence unless a new screenshot is explicitly needed. The model receives actual new pixels in the next decision round without manually asking for a screenshot each time. `computer_focus_window` also returns a fresh visual observation. The most recent screenshot is forwarded if one tool response has multiple captures, and the transient image is cleared after the model request consumes it rather than added permanently to transcript history.
 
 When Windows rejects `SetForegroundWindow`, the adapter also tries UI Automation's `SetFocus` against the exact previously discovered window before declining to send input. It never sends the action if the target isn't foreground. Failed actions return an error alongside post-attempt pixels, not a false success.
 
@@ -157,3 +157,9 @@ The file is placed in the current working directory used to launch SkyCode. Use 
 5. Recording/editing/exporting educational videos, then approval-gated publishing.
 
 Never label a task successful without evidence appropriate to each stage.
+
+### Completion notification and evidence provenance
+
+After an assistant turn finishes, SkyCode requests a nonblocking Windows taskbar notification via a short-lived PowerShell `NotifyIcon` process. The notification states that a **response is ready**, not that the external task's goal was independently verified. Failed or blocked runs use distinct notification titles. User-cancelled operations do not announce completion. Windows notification policy or Focus Assist can suppress the balloon; no notification is guaranteed.
+
+For tool-using answers, SkyCode appends a brief method summary produced from actual tool executions: terminal/file tools, Windows UI observations, GUI actions and the number of scroll inputs sent or attempted. This distinguishes direct filesystem enumeration from physical scrolling. A successful wheel-input action alone does not prove the visible list moved. The executed method can differ from a model's narrative, so the tool trace takes precedence.
