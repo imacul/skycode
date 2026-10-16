@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateNotepadTarget, runWindowsDesktop, validateComputerStep, verifyComputerObservation, validateComputerWindowSelector, validateComputerTextVerification } from '../agents/windows-desktop';
-import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls, selectDesktopObservation, projectToolResultMessage } from '../agents/project-tools';
+import { PROJECT_TOOL_NAMES, getProjectToolInstructions, needsReachTools, parseProjectToolCalls, selectDesktopObservation, projectToolResultMessage, shouldCaptureGuiFeedback } from '../agents/project-tools';
 
 describe('Windows desktop operator milestone', () => {
   test('rejects traversal, absolute paths and non-text documents', () => {
@@ -497,7 +497,7 @@ describe('automatic dynamic visual loop', () => {
     const source=readFileSync(resolve(import.meta.dir,'../agents/project-tools.ts'),'utf8');
     expect(source).toContain("const result = await runComputerCore('capture', [], undefined, undefined, scope)");
     expect(source).toContain("if (needsVisual && ['chatgpt','openai','openrouter'].includes");
-    expect(source).toContain("['click','right_click','double_click','visual_click','drag'].includes(kind)");
+    expect(source).toContain('const needsVisual = shouldCaptureGuiFeedback(result.ok === true, stepKinds)');
     expect(source).toContain("try { visual = await captureComputerFeedback('desktop'); }");
     expect(source).toContain("result = { ok: false, error: actionError }");
     expect(source).toContain("imageDataUrl: visual?.imageDataUrl");
@@ -534,7 +534,7 @@ describe('outcome-oriented desktop efficiency', () => {
   });
   test('returns lightweight semantic feedback for keyboard and nonclick actions', () => {
     const source = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
-    expect(source).toContain("const needsVisual = result.ok !== true");
+    expect(source).toContain('export function shouldCaptureGuiFeedback');
     expect(source).toContain("observationMode: needsVisual ? 'capture-unavailable' : 'semantic'");
     expect(source).toContain('Use the adapter post-action UIA observation');
   });
@@ -542,5 +542,21 @@ describe('outcome-oriented desktop efficiency', () => {
     const source = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
     expect(source).toContain('Do not launch another instance. Observe current screen');
     expect(source).toContain('Unable to check existing windows');
+  });
+});
+
+describe('adaptive GUI feedback decisions', () => {
+  test('does not waste screenshots on successful semantic and keyboard operations', () => {
+    expect(shouldCaptureGuiFeedback(true, ['focus'])).toBe(false);
+    expect(shouldCaptureGuiFeedback(true, ['keypress'])).toBe(false);
+    expect(shouldCaptureGuiFeedback(true, ['move'])).toBe(false);
+    expect(shouldCaptureGuiFeedback(true, ['set_value'])).toBe(false);
+  });
+  test('captures visual evidence for pointer interaction and failures', () => {
+    for (const action of ['click','double_click','right_click','visual_click','drag']) {
+      expect(shouldCaptureGuiFeedback(true, [action])).toBe(true);
+    }
+    expect(shouldCaptureGuiFeedback(false, ['focus'])).toBe(true);
+    expect(shouldCaptureGuiFeedback(false, ['keypress'])).toBe(true);
   });
 });
