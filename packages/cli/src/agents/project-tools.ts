@@ -2492,9 +2492,11 @@ export function getBuildVerificationStatus(executions: readonly ProjectToolExecu
         typeof item.call.args.command === 'string' &&
         checkCommand.test(item.call.args.command.trim())) {
       status.checkAttempted = true;
-      status.checkPassed = item.success;
-      status.checkFailed = !item.success;
-      status.lastCheck = item.call.args.command.trim().slice(0, 120);
+      status.checkFailed = status.checkFailed || !item.success;
+      status.checkPassed = item.success && !status.checkFailed;
+      if (!item.success || !status.checkFailed) {
+        status.lastCheck = item.call.args.command.trim().slice(0, 120);
+      }
     }
   }
   return status;
