@@ -736,7 +736,7 @@ function App() {
               ? 'running'
               : taskFinishReason === 'clarification_required'
               ? 'blocked'
-              : /tool_iteration_limit|desktop_progress_limit|tool_action_budget|repeated_tool_failure|provider_stopped|tool_protocol_not_followed|web_evidence_required/i.test(taskFinishReason)
+              : /tool_iteration_limit|desktop_progress_limit|tool_action_budget|repeated_tool_failure|provider_stopped|tool_protocol_not_followed|web_evidence_required|build_unverified/i.test(taskFinishReason)
                 ? 'failed'
                 : 'completed'
             : undefined;
