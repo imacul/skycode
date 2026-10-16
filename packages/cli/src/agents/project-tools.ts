@@ -2111,19 +2111,28 @@ export async function executeProjectToolCall(
           actionError = error instanceof Error ? error.message : String(error);
           result = { ok: false, error: actionError };
         }
-        // New pixels automatically follow each GUI action; the model should
-        // inspect them before planning its next action, without extra tool calls.
+        // Use cheap, bounded UIA post-state from the adapter first. Capture
+        // pixels for pointer actions (or failures) where UIA cannot prove the
+        // visual result; avoid a full-screen vision round for every key/move.
         let visual: Awaited<ReturnType<typeof captureComputerFeedback>> | undefined;
         let visualError: string | undefined;
-        try { visual = await captureComputerFeedback('desktop'); }
-        catch (error) { visualError = String(error); }
+        const stepKinds = (steps as Array<{kind?: string}>).map(step => step.kind || '');
+        const needsVisual = result.ok !== true ||
+          stepKinds.some(kind => ['click','right_click','double_click','visual_click','drag'].includes(kind));
+        if (needsVisual && ['chatgpt','openai','openrouter'].includes(context.provider?.name || '')) {
+          try { visual = await captureComputerFeedback('desktop'); }
+          catch (error) { visualError = String(error); }
+        }
         return {
           call, success: result.ok === true, trust: 'untrusted-data',
           content: JSON.stringify({
             visualFeedback: visual
               ? { captured: true, scope: 'desktop', capture: visual.capture,
                   note: 'Fresh pixels after the attempted action (whether success or failure). On failure identify the actual foreground window, then safely refocus or ask the user if Windows blocks activation.' }
-              : { captured: false, error: visualError || 'Screenshot unavailable' },
+              : { captured: false, observationMode: needsVisual ? 'capture-unavailable' : 'semantic', 
+                  ...(visualError ? { error: visualError } : {}),
+                  note: needsVisual ? 'Visual capture unavailable; do not claim unverified GUI outcome.' :
+                    'Use the adapter post-action UIA observation; request pixels only if the result remains ambiguous.' },
             ...result,
           }),
           imageDataUrl: visual?.imageDataUrl,
