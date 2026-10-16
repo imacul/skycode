@@ -18,6 +18,14 @@ Call `desktop_list_windows` to obtain the exact window title, process ID, and op
 
 After a `type` or `set_value` action, call `computer_verify` with `expectedTitle`, `expectedProcessId`, and `expectedText` (1–1000 characters). This checks text actually exposed by accessible Edit/Document controls, searching up to 3,000 descendants instead of relying on the first 40 nodes returned by `computer_observe`. When the app does not expose readable text, the outcome is `verified:false` (unknown), **not** proof that the action failed or succeeded. Do not use `controlName` as evidence that the expected text was typed.
 
+### Outcome-driven execution and adaptive observations
+
+SkyCode now asks the model to reason from the requested final state and choose the most suitable available method, taking explicit user constraints into account. General GUI tasks may use accessibility controls and physical mouse/keyboard input, while filesystem, terminal or APIs remain available for tasks better solved directly. This behavior does not use hardcoded user-phrase routing.
+
+Visual feedback is adaptive: clicks, drags and failed interactions request fresh screen pixels; successful semantic or keyboard operations use the desktop adapter's post-action UI Automation evidence unless additional vision is needed. This saves model-image overhead without preventing explicit screenshot requests.
+
+The tool loop keeps a short record of actual desktop operations, passes it to the model each round, and stops after three identical desktop failures or 16 desktop model/tool rounds without verified completion. The general software-build loop keeps its larger independent budget. A focus failure when reusing an open app no longer triggers another launch. These are safety and efficiency limits, not proof that a goal has been reached.
+
 ### Automatic visual refresh after computer actions
 
 The desktop operator now attaches a fresh, full-desktop JPEG automatically after each `computer_act` / `computer_batch` operation, including a failed operation when capture is possible. The model receives actual new pixels in the next decision round without manually asking for a screenshot each time. `computer_focus_window` also returns a fresh visual observation. The most recent screenshot is forwarded if one tool response has multiple captures, and the transient image is cleared after the model request consumes it rather than added permanently to transcript history.
