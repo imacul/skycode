@@ -44,6 +44,16 @@ function requireTempDirectory(): string {
   return resolve(process.env.TEMP || process.env.TMP || homedir()) + (process.platform === 'win32' ? '\\' : '/');
 }
 
+/** Choose the least expensive feedback that can still verify the tool outcome.
+ * UIA observation is generally sufficient for keyboard/focus/move actions;
+ * pointer clicks, drags and failures need fresh pixels when supported.
+ */
+export function shouldCaptureGuiFeedback(success: boolean, kinds: readonly string[]): boolean {
+  return !success || kinds.some(kind =>
+    ['click', 'right_click', 'double_click', 'visual_click', 'drag'].includes(kind)
+  );
+}
+
 /** Attach fresh screen pixels after GUI actions, not just semantic UIA data. */
 async function captureComputerFeedback(scope: 'desktop' | 'window' = 'desktop'): Promise<{
   imageDataUrl: string; capture: Record<string, unknown>;
@@ -2123,8 +2133,7 @@ export async function executeProjectToolCall(
         let visual: Awaited<ReturnType<typeof captureComputerFeedback>> | undefined;
         let visualError: string | undefined;
         const stepKinds = (steps as Array<{kind?: string}>).map(step => step.kind || '');
-        const needsVisual = result.ok !== true ||
-          stepKinds.some(kind => ['click','right_click','double_click','visual_click','drag'].includes(kind));
+        const needsVisual = shouldCaptureGuiFeedback(result.ok === true, stepKinds);
         if (needsVisual && ['chatgpt','openai','openrouter'].includes(context.provider?.name || '')) {
           try { visual = await captureComputerFeedback('desktop'); }
           catch (error) { visualError = String(error); }
