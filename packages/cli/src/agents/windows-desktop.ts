@@ -126,7 +126,7 @@ export function verifyComputerObservation(
 }
 
 export type ComputerStep = {
-  kind: 'focus' | 'invoke' | 'set_value' | 'keypress' | 'scroll' | 'move' | 'click' | 'right_click' | 'double_click' | 'type' | 'drag' | 'visual_click';
+  kind: 'scroll_view' | 'focus' | 'invoke' | 'set_value' | 'keypress' | 'scroll' | 'move' | 'click' | 'right_click' | 'double_click' | 'type' | 'drag' | 'visual_click';
   expectedTitle: string;
   expectedProcessId: number;
   name?: string;
@@ -137,6 +137,7 @@ export type ComputerStep = {
   keys?: string;
   value?: string;
   direction?: 'up' | 'down';
+  notches?: number;
   /** Pixel coordinate in the resized screenshot, not desktop coordinates. */
   x?: number;
   y?: number;
@@ -149,10 +150,15 @@ export type ComputerStep = {
 };
 
 export function validateComputerStep(step: ComputerStep): void {
-  if (!step || !['focus','invoke','set_value','keypress','scroll','move','click','right_click','double_click','type','drag','visual_click'].includes(step.kind)) throw new Error('Invalid computer action.');
+  if (!step || !['scroll_view','focus','invoke','set_value','keypress','scroll','move','click','right_click','double_click','type','drag','visual_click'].includes(step.kind)) throw new Error('Invalid computer action.');
   if (!step.expectedTitle || !Number.isSafeInteger(step.expectedProcessId) || step.expectedProcessId <= 0) throw new Error('Exact foreground window identity required.');
   if (step.kind === 'keypress') {
     if (!['^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}','{BACKSPACE}','{DELETE}','{HOME}','{END}'].includes(step.keys || '')) throw new Error('Unsupported keyboard shortcut.');
+  } else if (step.kind === 'scroll_view') {
+    if (!['up', 'down'].includes(step.direction || '') ||
+        (step.notches != null && (!Number.isSafeInteger(step.notches) || step.notches < 1 || step.notches > 5))) {
+      throw new Error('Viewport scroll requires direction up/down and optional 1-5 wheel notches.');
+    }
   } else if (step.kind === 'visual_click') {
     if (!step.snapshot || typeof step.snapshot.path !== 'string' ||
         !/^skycode-window-[0-9a-f]{32}\.jpg$/.test(step.snapshot.path.split(/[\\/]/).pop() || '') ||
