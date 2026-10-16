@@ -138,6 +138,8 @@ export type ComputerStep = {
   value?: string;
   direction?: 'up' | 'down';
   notches?: number;
+  atXPercent?: number;
+  atYPercent?: number;
   /** Pixel coordinate in the resized screenshot, not desktop coordinates. */
   x?: number;
   y?: number;
@@ -156,8 +158,10 @@ export function validateComputerStep(step: ComputerStep): void {
     if (!['^s','^o','^n','^f','^a','^c','^v','{ESC}','{ENTER}','{TAB}','+{TAB}','{UP}','{DOWN}','{LEFT}','{RIGHT}','{BACKSPACE}','{DELETE}','{HOME}','{END}'].includes(step.keys || '')) throw new Error('Unsupported keyboard shortcut.');
   } else if (step.kind === 'scroll_view') {
     if (!['up', 'down'].includes(step.direction || '') ||
-        (step.notches != null && (!Number.isSafeInteger(step.notches) || step.notches < 1 || step.notches > 5))) {
-      throw new Error('Viewport scroll requires direction up/down and optional 1-5 wheel notches.');
+        (step.notches != null && (!Number.isSafeInteger(step.notches) || step.notches < 1 || step.notches > 5)) ||
+        [step.atXPercent, step.atYPercent].some(value =>
+          value != null && (typeof value !== 'number' || !Number.isFinite(value) || value < 5 || value > 95))) {
+      throw new Error('Viewport scroll requires direction up/down, optional 1-5 wheel notches and optional 5-95% viewport coordinates.');
     }
   } else if (step.kind === 'visual_click') {
     if (!step.snapshot || typeof step.snapshot.path !== 'string' ||
