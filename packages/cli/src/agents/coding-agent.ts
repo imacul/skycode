@@ -641,7 +641,7 @@ export class CodingAgent implements BaseAgent {
                 : undefined,
           });
           return {
-            content: method ? finalText + '\\n\\n' + method : finalText,
+            content: method ? finalText + '\n\n' + method : finalText,
             finishReason,
             tokensUsed,
           };
