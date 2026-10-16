@@ -496,6 +496,8 @@ describe('automatic dynamic visual loop', () => {
   test('feeds new screen pixels to the model after GUI actions, including failures', () => {
     const source=readFileSync(resolve(import.meta.dir,'../agents/project-tools.ts'),'utf8');
     expect(source).toContain("const result = await runComputerCore('capture', [], undefined, undefined, scope)");
+    expect(source).toContain("if (needsVisual && ['chatgpt','openai','openrouter'].includes");
+    expect(source).toContain("['click','right_click','double_click','visual_click','drag'].includes(kind)");
     expect(source).toContain("try { visual = await captureComputerFeedback('desktop'); }");
     expect(source).toContain("result = { ok: false, error: actionError }");
     expect(source).toContain("imageDataUrl: visual?.imageDataUrl");
@@ -518,5 +520,27 @@ describe('automatic dynamic visual loop', () => {
     const clear=agent.indexOf('if (message.imageDataUrl) delete message.imageDataUrl;',send);
     expect(send).toBeGreaterThan(0);
     expect(clear).toBeGreaterThan(send);
+  });
+});
+
+describe('outcome-oriented desktop efficiency', () => {
+  test('tracks real tool progress and bounds repeated failures and slow desktop runs', () => {
+    const agent = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
+    expect(agent).toContain('const desktopProgress: string[] = []');
+    expect(agent).toContain('desktopRounds += 1');
+    expect(agent).toContain('repeatedDesktopFailures >= 3 || desktopRounds >= 16');
+    expect(agent).toContain('DESKTOP TASK PROGRESS (actual executed operations');
+    expect(agent).toContain('Do not repeat successful steps');
+  });
+  test('returns lightweight semantic feedback for keyboard and nonclick actions', () => {
+    const source = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
+    expect(source).toContain("const needsVisual = result.ok !== true");
+    expect(source).toContain("observationMode: needsVisual ? 'capture-unavailable' : 'semantic'");
+    expect(source).toContain('Use the adapter post-action UIA observation');
+  });
+  test('does not launch another app when the existing window refuses focus', () => {
+    const source = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
+    expect(source).toContain('Do not launch another instance. Observe current screen');
+    expect(source).toContain('Unable to check existing windows');
   });
 });
