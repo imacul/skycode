@@ -18,6 +18,14 @@ Call `desktop_list_windows` to obtain the exact window title, process ID, and op
 
 After a `type` or `set_value` action, call `computer_verify` with `expectedTitle`, `expectedProcessId`, and `expectedText` (1–1000 characters). This checks text actually exposed by accessible Edit/Document controls, searching up to 3,000 descendants instead of relying on the first 40 nodes returned by `computer_observe`. When the app does not expose readable text, the outcome is `verified:false` (unknown), **not** proof that the action failed or succeeded. Do not use `controlName` as evidence that the expected text was typed.
 
+### Goal-directed visual exploration
+
+A screenshot represents a **viewport**, not necessarily the whole content of a window. SkyCode can now use a general `computer_act` step with `kind: "scroll_view"`, a verified foreground window identity, direction (`up` or `down`), and one to five wheel notches. The adapter sends real Windows wheel input over the foreground window and returns a new UIA observation. The agent's adaptive visual feedback mechanism attaches a fresh screenshot afterward.
+
+When collecting information from a long list, the model should keep the requested outcome in mind, inspect subsequent viewports, combine observed entries without duplicates, and distinguish complete information from partial observations. UIA snapshots now also include scroll extent/percentage when a non-sensitive control exposes a scroll pattern. These capabilities are generic across applications; no user wording or folder names trigger them.
+
+Scroll success means only that wheel input was sent, not that a particular pane moved. The model must inspect the new observation; if the viewport does not advance, it should change approach or report the blocker rather than claim to have seen hidden content.
+
 ### Outcome-driven execution and adaptive observations
 
 SkyCode now asks the model to reason from the requested final state and choose the most suitable available method, taking explicit user constraints into account. General GUI tasks may use accessibility controls and physical mouse/keyboard input, while filesystem, terminal or APIs remain available for tasks better solved directly. This behavior does not use hardcoded user-phrase routing.
