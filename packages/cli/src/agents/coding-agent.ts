@@ -31,6 +31,7 @@ import {
   parseProjectToolCalls,
   parseProjectClarification,
   projectToolResultMessage,
+  summarizeToolProvenance,
   describeRunningProcesses,
   recoverImpliedToolCall,
   responseLooksLikePendingWork,
@@ -627,6 +628,7 @@ export class CodingAgent implements BaseAgent {
           ? stripped
           : stripped || response.content.trim();
         if (finalText) {
+          const method = summarizeToolProvenance(allExecutions);
           onActivity?.({
             id: 'complete_' + Date.now(),
             type: 'complete',
@@ -639,7 +641,7 @@ export class CodingAgent implements BaseAgent {
                 : undefined,
           });
           return {
-            content: finalText,
+            content: method ? finalText + '\\n\\n' + method : finalText,
             finishReason,
             tokensUsed,
           };
