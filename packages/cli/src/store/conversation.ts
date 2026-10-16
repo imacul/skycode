@@ -17,6 +17,8 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: string;
+  /** Transient image attachment for multimodal tool feedback; never persist screenshot data in history. */
+  imageDataUrl?: string;
   timestamp: Date;
   // Metadata
   metadata?: {
