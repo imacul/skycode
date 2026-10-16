@@ -2479,7 +2479,7 @@ export function getBuildVerificationStatus(executions: readonly ProjectToolExecu
   const status: BuildVerificationStatus = {
     codeChanged: false, checkAttempted: false, checkPassed: false, checkFailed: false,
   };
-  const checkCommand = /^(?:(?:bun|npm|pnpm|yarn)\\s+(?:test|run\\s+(?:test|build|lint|typecheck|check)(?::[\\w-]+)?)(?:\\s|$)|(?:npx\\s+tsc|tsc|cargo\\s+(?:test|check|build)|go\\s+(?:test|vet|build)|pytest|python(?:3)?\\s+-m\\s+pytest|dotnet\\s+(?:test|build)|mvn\\s+(?:test|verify)|gradle\\s+(?:test|build))(?:\\s|$))/i;
+  const checkCommand = /^(?:(?:bun|npm|pnpm|yarn)\s+(?:test|run\s+(?:test|build|lint|typecheck|check)(?::[\w-]+)?)(?:\s|$)|(?:npx\s+tsc|tsc|cargo\s+(?:test|check|build)|go\s+(?:test|vet|build)|pytest|python(?:3)?\s+-m\s+pytest|dotnet\s+(?:test|build)|mvn\s+(?:test|verify)|gradle\s+(?:test|build))(?:\s|$))/i;
   for (const item of executions) {
     if (item.success && ['write_file', 'create_directory', 'delete_file', 'delete_directory'].includes(item.call.name)) {
       status.codeChanged = true;
