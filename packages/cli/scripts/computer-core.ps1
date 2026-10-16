@@ -400,7 +400,7 @@ function SendLiteralText([string]$value,$window){
  }
  return $sent
 }
-function ScrollViewport($window,[string]$direction,[int]$notches){
+function ScrollViewport($window,[string]$direction,[int]$notches,[double]$atXPercent,[double]$atYPercent){
  CheckSafety $window
  if($direction -ne 'up' -and $direction -ne 'down'){throw 'Viewport scroll direction must be up or down.'}
  if($notches -lt 1 -or $notches -gt 5){throw 'Viewport scroll must be 1 to 5 wheel notches.'}
@@ -409,8 +409,11 @@ function ScrollViewport($window,[string]$direction,[int]$notches){
  $rect=$window.Current.BoundingRectangle
  if($rect.IsEmpty -or $rect.Width -lt 80 -or $rect.Height -lt 80){throw 'No usable visible viewport.'}
  $screen=[System.Windows.Forms.SystemInformation]::VirtualScreen
- $px=[int][Math]::Max($screen.Left,[Math]::Min($screen.Right-1,($rect.Left + ($rect.Width*0.65))))
- $py=[int][Math]::Max($screen.Top,[Math]::Min($screen.Bottom-1,($rect.Top + ($rect.Height*0.60))))
+ if($atXPercent -lt 5 -or $atXPercent -gt 95 -or $atYPercent -lt 5 -or $atYPercent -gt 95){
+  throw 'Viewport scroll position must stay within 5–95 percent of the target window.'
+ }
+ $px=[int][Math]::Max($screen.Left,[Math]::Min($screen.Right-1,($rect.Left + ($rect.Width*$atXPercent/100.0))))
+ $py=[int][Math]::Max($screen.Top,[Math]::Min($screen.Bottom-1,($rect.Top + ($rect.Height*$atYPercent/100.0))))
  if(![SkyDesktopNative]::SetCursorPos($px,$py)){throw 'Could not position mouse over viewport.'}
  $delta=if($direction -eq 'up'){$notches*120}else{-$notches*120}
  [SkyDesktopNative]::mouse_event([SkyMouseFlags]::WHEEL,0,0,[BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$delta),0),[UIntPtr]::Zero)
@@ -429,7 +432,9 @@ function RunStep($step){
   # Pixel actions are NOT refocused: their screenshot may already be stale.
   if($kind -eq 'scroll_view'){
   $notches=if($step.notches){[int]$step.notches}else{2}
-  $wheel=ScrollViewport $window ([string]$step.direction) $notches
+  $sx=if($null -ne $step.atXPercent){[double]$step.atXPercent}else{65.0}
+  $sy=if($null -ne $step.atYPercent){[double]$step.atYPercent}else{60.0}
+  $wheel=ScrollViewport $window ([string]$step.direction) $notches $sx $sy
   return @{kind=$kind;scroll=$wheel;after=Observe (Foreground) 40;postObserved=$true;outcomeVerified=$false}
  }
  if($kind -eq 'visual_click'){throw 'Foreground changed since screenshot; capture another image before clicking.'}
