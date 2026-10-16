@@ -413,7 +413,7 @@ function ScrollViewport($window,[string]$direction,[int]$notches){
  $py=[int][Math]::Max($screen.Top,[Math]::Min($screen.Bottom-1,($rect.Top + ($rect.Height*0.60))))
  if(![SkyDesktopNative]::SetCursorPos($px,$py)){throw 'Could not position mouse over viewport.'}
  $delta=if($direction -eq 'up'){$notches*120}else{-$notches*120}
- [SkyDesktopNative]::mouse_event([SkyMouseFlags]::WHEEL,0,0,[uint32]$delta,[UIntPtr]::Zero)
+ [SkyDesktopNative]::mouse_event([SkyMouseFlags]::WHEEL,0,0,[BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$delta),0),[UIntPtr]::Zero)
  Start-Sleep -Milliseconds 200
  return @{direction=$direction;notches=$notches;pointer=@{x=$px;y=$py};outcomeVerified=$false}
 }
