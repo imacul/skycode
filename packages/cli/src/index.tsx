@@ -772,6 +772,7 @@ function App() {
           setError(wasCancelled ? 'Generation cancelled.' : err.message);
           setIsProcessing(false);
           scrollChatToBottom();
+          if (!wasCancelled) notifyTaskFinished('failed');
         },
       };
 
