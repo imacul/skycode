@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { getBuildVerificationStatus, type ProjectToolExecution } from '../agents/project-tools';
 const event = (name: ProjectToolExecution['call']['name'], success = true, command?: string): ProjectToolExecution => ({
   call: { name, args: command ? { command } : {} }, success, content: success ? 'ok' : 'failed'
@@ -72,6 +74,21 @@ describe('outcome-driven engineering verification', () => {
       event('run_command', true, 'npx tsc --noEmit'),
     ]);
     expect(status.checkPassed).toBe(false);
+  });
+
+  test('agent refuses green completion after unverified writes', () => {
+    const source = readFileSync(resolve(import.meta.dir, '../agents/coding-agent.ts'), 'utf8');
+    expect(source).toContain('getBuildVerificationStatus(allExecutions)');
+    expect(source).toContain('verificationReminderCount < 2');
+    expect(source).toContain("finishReason: unverifiedChanges ? 'build_unverified' : finishReason");
+    const ui = readFileSync(resolve(import.meta.dir, '../index.tsx'), 'utf8');
+    expect(ui).toContain('build_unverified');
+  });
+  test('engineering guidance selects deterministic tools for code and vision for visual acceptance', () => {
+    const source = readFileSync(resolve(import.meta.dir, '../agents/project-tools.ts'), 'utf8');
+    expect(source).toContain('Software engineering operating policy:');
+    expect(source).toContain('Use direct filesystem and terminal tools');
+    expect(source).toContain('Use your eyes (computer_screenshot');
   });
 
 });
