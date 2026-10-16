@@ -2201,20 +2201,35 @@ export async function executeProjectToolCall(
             );
             const chosen = matching.find(window => window.focused) || matching[0];
             if (chosen) {
-              await runComputerCore('focus_window', [], {
-                title: chosen.title,
-                processId: chosen.processId,
-                windowHandle: chosen.windowHandle,
-              });
-              return {
-                call, success: true,
-                content: 'Reused and focused the already open application window: ' + chosen.title,
-                displayPath: chosen.title,
-              };
+              try {
+                await runComputerCore('focus_window', [], {
+                  title: chosen.title,
+                  processId: chosen.processId,
+                  windowHandle: chosen.windowHandle,
+                });
+                return {
+                  call, success: true,
+                  content: 'Reused and focused the already open application window: ' + chosen.title,
+                  displayPath: chosen.title,
+                };
+              } catch (error) {
+                // Focus denial is not evidence that another app instance is
+                // needed. Do not spawn duplicate windows on this failure.
+                return {
+                  call, success: false, trust: 'trusted-control',
+                  content: 'Existing window ' + chosen.title + ' was found, but Windows rejected focus: ' +
+                    String(error) + '. Do not launch another instance. Observe current screen or ask user to activate the app.',
+                  displayPath: chosen.title,
+                };
+              }
             }
           } catch (error) {
             agentDebug('desktop.reuse_window.failed', { target, error: String(error) });
-            // Continue to regular launch only when no reusable window was confirmed.
+            // If enumeration itself fails, the result is unknown: do not
+            // assume the application is absent and launch a duplicate.
+            return { call, success: false, trust: 'trusted-control',
+              content: 'Unable to check existing windows: ' + String(error) +
+                '. Inspect desktop windows before opening another instance.' };
           }
         }
         // Route Brave through the single-instance controller so open_app does
