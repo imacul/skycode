@@ -301,7 +301,7 @@ function WritingBlock({ text }: { text: string }) {
 function RichText({ text, fg = 'white' }: { text: string; fg?: string }) {
   const tokens = parseInlineMarkdown(text);
   return (
-    <text fg={fg} width="100%" wrapMode="word">
+    <text fg={fg} width="100%">
       {tokens.map((token, index) => {
         switch (token.type) {
           case 'bold': return <strong key={index}>{token.text}</strong>;
@@ -346,7 +346,6 @@ export function ResponseContent({
                 key={index}
                 fg={block.level <= 2 ? 'cyan' : 'white'}
                 attributes={TextAttributes.BOLD}
-                wrapMode="word"
                 width="100%"
               ><strong>{block.text}</strong></text>
             );
