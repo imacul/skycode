@@ -1,5 +1,6 @@
 import type { AgentActivity } from '../agents/types';
 
+import { TextAttributes } from '@opentui/core';
 function activitySymbol(activity: AgentActivity): string {
   if (activity.status === 'error') return '✗';
   if (activity.status === 'running') return '•';
@@ -34,8 +35,8 @@ export function WorkActivityView({
       maxHeight={18}
     >
       <box width="100%" flexDirection="row" justifyContent="space-between">
-        <text fg="cyan" attributes={{ bold: true }}>{'Working'}</text>
-        <text fg="gray" attributes={{ dim: true }}>
+        <text fg="cyan" attributes={TextAttributes.BOLD}>{'Working'}</text>
+        <text fg="gray" attributes={TextAttributes.DIM}>
           {String(activities.length) + ' actions'}
         </text>
       </box>
@@ -46,7 +47,7 @@ export function WorkActivityView({
             <text fg={activityColor(activity)}>
               {activitySymbol(activity) + ' '}
             </text>
-            <text fg="white" attributes={{ bold: activity.status === 'running' }}>
+            <text fg="white" attributes={(activity.status === 'running' ? TextAttributes.BOLD : TextAttributes.NONE)}>
               {String(activity.title)}
             </text>
             {activity.path ? (
@@ -60,7 +61,7 @@ export function WorkActivityView({
           </box>
 
           {activity.detail ? (
-            <text fg="gray" attributes={{ dim: true }} wordWrap="break-word" width="100%">
+            <text fg="gray" attributes={TextAttributes.DIM} wrapMode="word" width="100%">
               {String(activity.detail)}
             </text>
           ) : null}
@@ -71,8 +72,8 @@ export function WorkActivityView({
                 <text
                   key={index}
                   fg={line.startsWith('+ ') ? 'green' : line.startsWith('- ') ? 'red' : 'gray'}
-                  attributes={{ dim: line === '…' }}
-                  wordWrap="break-word"
+                  attributes={(line === '…' ? TextAttributes.DIM : TextAttributes.NONE)}
+                  wrapMode="word"
                   width="100%"
                 >
                   {String(line)}
@@ -84,7 +85,7 @@ export function WorkActivityView({
       ))}
 
       {activities.length > visible.length ? (
-        <text fg="gray" attributes={{ dim: true }}>
+        <text fg="gray" attributes={TextAttributes.DIM}>
           {'Showing latest ' + visible.length + ' actions · earlier work is above in the chat log'}
         </text>
       ) : null}
