@@ -61,7 +61,7 @@ export function WorkActivityView({
           </box>
 
           {activity.detail ? (
-            <text fg="gray" attributes={TextAttributes.DIM} wrapMode="word" width="100%">
+            <text fg="gray" attributes={TextAttributes.DIM} width="100%">
               {String(activity.detail)}
             </text>
           ) : null}
@@ -73,7 +73,6 @@ export function WorkActivityView({
                   key={index}
                   fg={line.startsWith('+ ') ? 'green' : line.startsWith('- ') ? 'red' : 'gray'}
                   attributes={(line === '…' ? TextAttributes.DIM : TextAttributes.NONE)}
-                  wrapMode="word"
                   width="100%"
                 >
                   {String(line)}
