@@ -1575,7 +1575,7 @@ Current provider: ${provider?.name || 'none'}
       {/* Error display */}
       {error && !showWelcome && (
         <box width="96%" paddingX={2}>
-          <text fg="red" wrapMode="word" width="100%">
+          <text fg="red" width="100%">
             {'❌ ' + String(error)}
           </text>
         </box>
@@ -1626,7 +1626,7 @@ Current provider: ${provider?.name || 'none'}
               {msg.role === 'assistant' ? (
                 <ResponseContent content={msg.content} />
               ) : (
-                <text wrapMode="word" width="100%">{msg.content}</text>
+                <text width="100%">{msg.content}</text>
               )}
               {msg.role === 'assistant' && (
                 <text
