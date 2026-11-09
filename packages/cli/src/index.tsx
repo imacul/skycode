@@ -10,6 +10,7 @@ import { WorkActivityView } from './components/work-activity-view';
 import { ApprovalPrompt } from './components/approval-prompt';
 import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
 import {
+import { TextAttributes } from '@opentui/core';
   useConversationStore,
   createNewConversation,
   formatConversationHistory,
@@ -1437,7 +1438,7 @@ Current provider: ${provider?.name || 'none'}
             <box flexShrink={0} width="96%" paddingX={2} flexDirection="row" gap={2}>
         <text
           fg="cyan"
-          attributes={{ underline: true }}
+          attributes={TextAttributes.UNDERLINE}
           onMouseDown={() => {
             createNewConversation(
               useConversationStore.getState(),
@@ -1453,7 +1454,7 @@ Current provider: ${provider?.name || 'none'}
         </text>
         <text
           fg={showHistoryPanel ? 'magenta' : 'gray'}
-          attributes={{ underline: true }}
+          attributes={TextAttributes.UNDERLINE}
           onMouseDown={() => {
             setHistoryView(null);
             setShowHistoryPanel((visible) => !visible);
@@ -1461,7 +1462,7 @@ Current provider: ${provider?.name || 'none'}
         >
           Chats ({getSortedConversations().length})
         </text>
-        <text fg="gray" attributes={{ dim: true }}>
+        <text fg="gray" attributes={TextAttributes.DIM}>
           Agent: {activeAgent}
         </text>
         {queuedMessages.length > 0 && (
@@ -1470,7 +1471,7 @@ Current provider: ${provider?.name || 'none'}
         {isProcessing && (
           <text
             fg="red"
-            attributes={{ underline: true }}
+            attributes={TextAttributes.UNDERLINE}
             onMouseDown={cancelGeneration}
           >
             Cancel
@@ -1493,7 +1494,7 @@ Current provider: ${provider?.name || 'none'}
             <text fg="white">Saved chats</text>
             <text
               fg="gray"
-              attributes={{ underline: true }}
+              attributes={TextAttributes.UNDERLINE}
               onMouseDown={() => setShowHistoryPanel(false)}
             >
               Close
@@ -1507,7 +1508,7 @@ Current provider: ${provider?.name || 'none'}
             overflow="hidden"
           >
             {getSortedConversations().length === 0 ? (
-              <text fg="gray" attributes={{ dim: true }}>No saved chats yet.</text>
+              <text fg="gray" attributes={TextAttributes.DIM}>No saved chats yet.</text>
             ) : (
               getSortedConversations().map((conversation) => {
                 const isCurrent =
@@ -1530,7 +1531,7 @@ Current provider: ${provider?.name || 'none'}
                     <text fg={isCurrent ? 'cyan' : 'white'}>
                       {isCurrent ? '● ' : '  '}{conversation.title}
                     </text>
-                    <text fg="gray" attributes={{ dim: true }}>
+                    <text fg="gray" attributes={TextAttributes.DIM}>
                       {formatRelativeTime(conversation.updatedAt)} · {getVisibleConversationMessages(conversation.messages).length} messages
                     </text>
                   </box>
@@ -1547,7 +1548,7 @@ Current provider: ${provider?.name || 'none'}
           <text fg="yellow">
             ⚠️  No AI provider configured.
           </text>
-          <text fg="gray" attributes={{ dim: true }}>
+          <text fg="gray" attributes={TextAttributes.DIM}>
             {' Type /setup to configure API keys or use /help'}
           </text>
         </box>
@@ -1574,7 +1575,7 @@ Current provider: ${provider?.name || 'none'}
       {/* Error display */}
       {error && !showWelcome && (
         <box width="96%" paddingX={2}>
-          <text fg="red" wordWrap="break-word" width="100%">
+          <text fg="red" wrapMode="word" width="100%">
             {'❌ ' + String(error)}
           </text>
         </box>
@@ -1625,12 +1626,12 @@ Current provider: ${provider?.name || 'none'}
               {msg.role === 'assistant' ? (
                 <ResponseContent content={msg.content} />
               ) : (
-                <text wordWrap="break-word" width="100%">{msg.content}</text>
+                <text wrapMode="word" width="100%">{msg.content}</text>
               )}
               {msg.role === 'assistant' && (
                 <text
                   fg={copiedMessageId === msg.id ? 'green' : 'gray'}
-                  attributes={{ dim: copiedMessageId !== msg.id, underline: true }}
+                  attributes={(copiedMessageId !== msg.id ? TextAttributes.DIM : TextAttributes.NONE) | TextAttributes.UNDERLINE}
                   onMouseDown={() => {
                     if (copyToClipboard(msg.content)) {
                       setCopiedMessageId(msg.id);
@@ -1645,13 +1646,13 @@ Current provider: ${provider?.name || 'none'}
         ) : (
           !isProcessing && !showWelcome && (
             <box width="100%" flexDirection="column" gap={1}>
-              <text fg="gray" attributes={{ dim: true }}>
+              <text fg="gray" attributes={TextAttributes.DIM}>
                 Welcome to Sky Code!
               </text>
-              <text fg="gray" attributes={{ dim: true }}>
+              <text fg="gray" attributes={TextAttributes.DIM}>
                 Type a message to start chatting with AI.
               </text>
-              <text fg="gray" attributes={{ dim: true }}>
+              <text fg="gray" attributes={TextAttributes.DIM}>
                 Use /help for available commands.
               </text>
             </box>
@@ -1684,7 +1685,7 @@ Current provider: ${provider?.name || 'none'}
         {isProcessing && !currentResponse && workActivities.length === 0 && !pendingApproval && (
           <box width="100%" flexDirection="column" gap={0.5} paddingY={0.5}>
             <text fg="green">🤖 Assistant:</text>
-            <text attributes={{ blink: true }}>Thinking...</text>
+            <text attributes={TextAttributes.BLINK}>Thinking...</text>
           </box>
         )}
       </scrollbox>
