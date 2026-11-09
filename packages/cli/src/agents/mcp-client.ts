@@ -90,7 +90,7 @@ export function takeMcpFrames(buffer: Buffer): { messages: JsonRpcMessage[]; res
 
 class McpSession {
   private child: ChildProcess;
-  private buffer = Buffer.alloc(0);
+  private buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   private pending = new Map<number, (message: JsonRpcMessage) => void>();
   private nextId = 1;
 
