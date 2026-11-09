@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { StatusBar } from './satus-bar';
 import { SLASH_COMMANDS } from '../utils/slash-commands';
-import {
 import { TextAttributes } from '@opentui/core';
+import {
   createModelPickerItems,
   filterModelPickerItems,
   type CatalogModel,
