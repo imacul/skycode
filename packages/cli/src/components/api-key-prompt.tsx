@@ -133,7 +133,7 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
           focused={true}
           keyBindings={SETUP_TEXTAREA_KEY_BINDINGS}
           placeholder={provider === 'local' ? 'http://localhost:11434' : 'sk-...'}
-          onChange={handleKeyChange}
+          onContentChange={handleKeyChange}
           onKeyDown={handleKeyDown}
           onSubmit={handleSubmit}
           width="100%"
