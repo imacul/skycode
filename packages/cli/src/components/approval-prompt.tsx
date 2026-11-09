@@ -1,8 +1,8 @@
 import type {
-import { TextAttributes } from '@opentui/core';
   AgentApprovalDecision,
   AgentApprovalRequest,
 } from '../agents/types';
+import { TextAttributes } from '@opentui/core';
 
 export function ApprovalPrompt({
   request,
