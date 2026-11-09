@@ -125,9 +125,9 @@ export function bufferStream<T>(
         }
       };
       
-      const clearTimeout = () => {
+      const clearPendingFlush = () => {
         if (timeoutId) {
-          clearTimeout(timeoutId);
+          globalThis.clearTimeout(timeoutId);
           timeoutId = undefined;
         }
       };
@@ -146,7 +146,7 @@ export function bufferStream<T>(
           
           if (buffer.length >= size) {
             flush();
-            clearTimeout();
+            clearPendingFlush();
           } else if (!timeoutId) {
             timeoutId = setTimeout(() => {
               timeoutId = undefined;
@@ -385,13 +385,13 @@ export function splitStream<T>(stream: ReadableStream<T>): {
   createBranch: () => ReadableStream<T>;
   close: () => void;
 } {
-  const branches: WritableStream<T>[] = [];
+  const branches: WritableStreamDefaultWriter<T>[] = [];
   const reader = stream.getReader();
   
   return {
     createBranch: () => {
       const { readable, writable } = createDuplexStream<T>();
-      branches.push(writable);
+      branches.push(writable.getWriter());
       
       // Start reading from source and writing to all branches
       (async () => {
@@ -402,6 +402,7 @@ export function splitStream<T>(stream: ReadableStream<T>): {
             if (done) {
               for (const branch of branches) {
                 await branch.close();
+                branch.releaseLock();
               }
               break;
             }
@@ -413,6 +414,7 @@ export function splitStream<T>(stream: ReadableStream<T>): {
         } catch (error) {
           for (const branch of branches) {
             await branch.abort(error as Error);
+            branch.releaseLock();
           }
         }
       })();
