@@ -23,13 +23,13 @@ export function ApprovalPrompt({
       flexShrink={0}
     >
       <text fg="yellow" attributes={TextAttributes.BOLD}>{request.title}</text>
-      <text fg="white" wrapMode="word" width="100%">
+      <text fg="white" width="100%">
         {request.description}
       </text>
 
       <box width="100%" flexDirection="column" paddingY={1}>
         <text fg="gray" attributes={TextAttributes.DIM}>{'Command'}</text>
-        <text fg="cyan" wrapMode="word" width="100%">
+        <text fg="cyan" width="100%">
           {request.command}
         </text>
       </box>
