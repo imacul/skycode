@@ -123,7 +123,7 @@ interface ConversationActions {
 /**
  * Conversation store type
  */
-type ConversationStore = ConversationState & ConversationActions;
+export type ConversationStore = ConversationState & ConversationActions;
 
 const CONVERSATIONS_FILE =
   process.env.SKYCODE_HISTORY_PATH ||
