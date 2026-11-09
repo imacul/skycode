@@ -410,7 +410,11 @@ export class OpenAIProvider implements BaseProvider {
               }
 
               if (chunk.usage) {
-                usage = chunk.usage;
+                usage = {
+                  promptTokens: chunk.usage.prompt_tokens,
+                  completionTokens: chunk.usage.completion_tokens,
+                  totalTokens: chunk.usage.total_tokens,
+                };
               }
             } catch (e) {
               console.error('Error parsing OpenAI stream chunk:', e);
