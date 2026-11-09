@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { copyToClipboard } from '../utils/clipboard';
 import { parseInlineMarkdown, parseTerminalChart, renderBarLines, type TerminalChart } from '../utils/rich-format';
 
+import { TextAttributes } from '@opentui/core';
 export type RichBlock =
   | { type: 'paragraph'; text: string }
   | { type: 'heading'; level: number; text: string }
@@ -228,12 +229,12 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       paddingY={0}
     >
       <box width="100%" flexDirection="row" justifyContent="space-between">
-        <text fg="cyan" attributes={{ bold: true }}>{String(language || 'text')}</text>
+        <text fg="cyan" attributes={TextAttributes.BOLD}>{String(language || 'text')}</text>
         <box flexDirection="row" gap={2}>
-          <text fg="gray" attributes={{ dim: true }}>{String(lines.length) + ' lines'}</text>
+          <text fg="gray" attributes={TextAttributes.DIM}>{String(lines.length) + ' lines'}</text>
           <text
             fg={copied ? 'green' : 'gray'}
-            attributes={{ underline: true }}
+            attributes={TextAttributes.UNDERLINE}
             onMouseDown={() => {
               if (copyToClipboard(code)) {
                 setCopied(true);
@@ -246,14 +247,14 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 
       {lines.map((line, index) => (
         <box key={index} width="100%" flexDirection="row">
-          <text fg="gray" attributes={{ dim: true }}>
+          <text fg="gray" attributes={TextAttributes.DIM}>
             {String(index + 1).padStart(gutterWidth, ' ') + ' │ '}
           </text>
           {tokenizeCodeLine(line, language).map((token, tokenIndex) => (
             <text
               key={tokenIndex}
               fg={tokenColor(token.kind)}
-              attributes={{ dim: token.kind === 'comment' }}
+              attributes={(token.kind === 'comment' ? TextAttributes.DIM : TextAttributes.NONE)}
             >{token.text || ' '}</text>
           ))}
         </box>
@@ -276,10 +277,10 @@ function WritingBlock({ text }: { text: string }) {
       paddingY={1}
     >
       <box width="100%" flexDirection="row" justifyContent="space-between">
-        <text fg="magenta" attributes={{ bold: true }}>{'Writing'}</text>
+        <text fg="magenta" attributes={TextAttributes.BOLD}>{'Writing'}</text>
         <text
           fg={copied ? 'green' : 'gray'}
-          attributes={{ underline: true }}
+          attributes={TextAttributes.UNDERLINE}
           onMouseDown={() => {
             if (copyToClipboard(text)) {
               setCopied(true);
@@ -300,7 +301,7 @@ function WritingBlock({ text }: { text: string }) {
 function RichText({ text, fg = 'white' }: { text: string; fg?: string }) {
   const tokens = parseInlineMarkdown(text);
   return (
-    <text fg={fg} width="100%" wordWrap="break-word">
+    <text fg={fg} width="100%">
       {tokens.map((token, index) => {
         switch (token.type) {
           case 'bold': return <strong key={index}>{token.text}</strong>;
@@ -344,8 +345,7 @@ export function ResponseContent({
               <text
                 key={index}
                 fg={block.level <= 2 ? 'cyan' : 'white'}
-                attributes={{ bold: true }}
-                wordWrap="break-word"
+                attributes={TextAttributes.BOLD}
                 width="100%"
               ><strong>{block.text}</strong></text>
             );
@@ -373,7 +373,7 @@ export function ResponseContent({
             );
 
           case 'divider':
-            return <text key={index} fg="gray" attributes={{ dim: true }}>{'────────────────────────'}</text>;
+            return <text key={index} fg="gray" attributes={TextAttributes.DIM}>{'────────────────────────'}</text>;
 
           case 'code':
             return <CodeBlock key={index} language={block.language} code={block.code} />;

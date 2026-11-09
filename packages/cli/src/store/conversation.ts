@@ -17,6 +17,8 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: string;
+  /** Transient image attachment for multimodal tool feedback; never persist screenshot data in history. */
+  imageDataUrl?: string;
   timestamp: Date;
   // Metadata
   metadata?: {
@@ -121,7 +123,7 @@ interface ConversationActions {
 /**
  * Conversation store type
  */
-type ConversationStore = ConversationState & ConversationActions;
+export type ConversationStore = ConversationState & ConversationActions;
 
 const CONVERSATIONS_FILE =
   process.env.SKYCODE_HISTORY_PATH ||

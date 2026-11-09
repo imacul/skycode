@@ -52,7 +52,7 @@ interface OpenRouterRequest {
   model: string;
   messages: Array<{
     role: 'user' | 'assistant' | 'system';
-    content: string;
+    content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
   }>;
   temperature?: number;
   max_tokens?: number;
@@ -281,9 +281,26 @@ export class OpenRouterProvider implements BaseProvider {
         }
       }
 
+      // Merge consecutive user turns while preserving screenshot pixels as
+      // structured image parts for upstream providers requiring role alternation.
       const previous = normalized[normalized.length - 1];
+      const image = msg.imageDataUrl && role === 'user'
+        ? { type: 'image_url' as const, image_url: { url: msg.imageDataUrl } }
+        : undefined;
       if (previous && previous.role === role) {
-        previous.content += '\n\n' + content;
+        if (image || Array.isArray(previous.content)) {
+          const parts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> =
+            typeof previous.content === 'string'
+              ? [{ type: 'text', text: previous.content }]
+              : previous.content;
+          parts.push({ type: 'text', text: content });
+          if (image) parts.push(image);
+          previous.content = parts;
+        } else {
+          previous.content += '\n\n' + content;
+        }
+      } else if (image) {
+        normalized.push({ role, content: [{ type: 'text', text: content }, image] });
       } else {
         normalized.push({ role, content });
       }

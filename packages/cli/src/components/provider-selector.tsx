@@ -2,6 +2,7 @@
 // Allows user to choose and configure their AI provider
 import { useState, useCallback } from 'react';
 
+import { TextAttributes } from '@opentui/core';
 export interface ProviderSelectorProps {
   onSelect: (provider: string, config?: Record<string, string>) => void;
   onBack: () => void;
@@ -73,12 +74,12 @@ export function ProviderSelector({ onSelect, onBack, allowedProviders }: Provide
       maxWidth={60}
       padding={2}
       backgroundColor="#1A1A24"
-      border={['all']}
+      border={['left', 'right', 'top', 'bottom']}
       borderColor="cyan"
     >
       {/* Header */}
       <box flexDirection="column" gap={1}>
-        <text fg="cyan" attributes={{ bold: true }}>{'🎯 Select AI Provider'}</text>
+        <text fg="cyan" attributes={TextAttributes.BOLD}>{'🎯 Select AI Provider'}</text>
         <text fg="gray">{'Choose how you want to use Sky Code'}</text>
       </box>
 
@@ -100,8 +101,8 @@ export function ProviderSelector({ onSelect, onBack, allowedProviders }: Provide
             }}
           >
             <text fg={selectedIndex === index ? 'cyan' : 'white'}>{String(provider.icon)}</text>
-            <text fg={selectedIndex === index ? 'white' : 'gray'} attributes={{ bold: selectedIndex === index }}>{String(provider.name)}</text>
-            <text fg="gray" attributes={{ dim: true }}>{'- ' + String(provider.description)}</text>
+            <text fg={selectedIndex === index ? 'white' : 'gray'} attributes={(selectedIndex === index ? TextAttributes.BOLD : TextAttributes.NONE)}>{String(provider.name)}</text>
+            <text fg="gray" attributes={TextAttributes.DIM}>{'- ' + String(provider.description)}</text>
           </box>
         ))}
       </box>
@@ -122,10 +123,10 @@ export function ProviderSelector({ onSelect, onBack, allowedProviders }: Provide
 
       {/* Actions */}
       <box flexDirection="row" gap={2} justifyContent="flex-end">
-        <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onBack}>{'Back'}</text>
+        <text fg="gray" attributes={TextAttributes.DIM | TextAttributes.UNDERLINE} onMouseDown={onBack}>{'Back'}</text>
         <text 
           fg="green" 
-          attributes={{ bold: true, underline: true }} 
+          attributes={TextAttributes.BOLD | TextAttributes.UNDERLINE} 
           onMouseDown={handleSelect}
         >{'Select ' + String(visibleProviders[selectedIndex].name)}</text>
       </box>

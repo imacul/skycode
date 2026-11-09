@@ -17,7 +17,6 @@ import { createBusinessAgent, DEFAULT_BUSINESS_AGENT_CONFIG } from './business-a
 import type { CodingAgentConfig, ChatAgentConfig, PlanningAgentConfig, BusinessAgentConfig } from './types';
 import type { BaseProvider } from '../providers/base';
 import type { AgentContext } from './types';
-import { shouldUseProjectTools } from './project-tools';
 import { agentDebug } from '../utils/agent-debug';
 
 /**
@@ -214,131 +213,26 @@ export class SkyCodeAgentOrchestrator implements AgentOrchestrator {
       };
     }
 
-    // Real workspace mutations must always use the coding agent. This is a
-    // capability boundary, not a fuzzy intent classification: chat/planning
-    // agents stream model text directly and cannot execute project tools.
-    const planningOnly = /\b(implementation plan|project plan|roadmap|launch plan|rollout plan)\b/i.test(request.input);
-    const activeWorkspaceTask =
-      request.taskKind === 'workspace' && request.taskState === 'running';
-    if (planningOnly && !activeWorkspaceTask) {
-      return {
-        agentName: 'planning-agent',
-        reason: 'request asks for a plan rather than tool execution',
-        scores: { 'planning-agent': 100 },
-      };
-    }
-    if ((shouldUseProjectTools(request.input) || activeWorkspaceTask) && !planningOnly) {
-      return {
-        agentName: 'coding-agent',
-        reason: activeWorkspaceTask
-          ? 'active workspace task requires project tools'
-          : 'workspace mutation requires project tools',
-        scores: { 'coding-agent': 100 },
-      };
-    }
-
+    // Automatic routing uses one tool-capable agent for both conversation and
+    // execution. The model chooses tools dynamically from its context, rather
+    // than requiring user phrasing to match hardcoded verbs or app names.
+    // Explicit modes remain available for specialized planning/business chats.
     const mode = request.mode || (request.context?.mode as AgentMode | undefined);
-    const modeMap: Partial<Record<AgentMode, string>> = {
-      code: 'coding-agent',
-      debug: 'coding-agent',
-      refactor: 'coding-agent',
-      test: 'coding-agent',
-      explain: 'chat-agent',
-      search: 'chat-agent',
-      chat: 'chat-agent',
+    const specializedModes: Partial<Record<AgentMode, string>> = {
       plan: 'planning-agent',
-      build: 'planning-agent',
       business: 'business-agent',
     };
-
-    if (mode && modeMap[mode]) {
+    if (mode && specializedModes[mode]) {
       return {
-        agentName: modeMap[mode]!,
-        reason: `explicit mode: ${mode}`,
+        agentName: specializedModes[mode]!,
+        reason: 'explicit specialist mode: ' + mode,
         scores: {},
       };
     }
-
-    const input = request.input.toLowerCase();
-    const scores: Record<string, number> = {
-      'chat-agent': 0,
-      'coding-agent': 0,
-      'planning-agent': 0,
-      'business-agent': 0,
-    };
-
-    const add = (agentName: keyof typeof scores, amount: number, patterns: RegExp[]) => {
-      for (const pattern of patterns) {
-        if (pattern.test(input)) scores[agentName] += amount;
-      }
-    };
-
-    add('coding-agent', 3, [
-      /\b(debug|bug|fix|refactor|test|implement|function|class|typescript|javascript|react|node(?:\.js)?|python|sql)\b/,
-      /\b(api|endpoint|database|promise|async|await|component|hook|compiler|runtime)\b/,
-      /\b(code|coding|program|algorithm|software|website|web app|desktop app|mobile app|application|cli|backend|frontend|full-stack|full stack)\b/,
-      /\b(create|build|develop|scaffold|architect|structure|make)\b.*\b(software|app|application|website|project|repo|backend|frontend|api|cli|desktop|mobile)\b/,
-      /\b(can|could|would)\s+you\s+(create|build|develop|make|code)\b.*\b(software|app|application|website|project|program)\b/,
-    ]);
-    add('coding-agent', 2, [
-      /\b(explain|review|inspect)\b.*\b(code|function|react|api|typescript|javascript|node)\b/,
-      /\bbusiness logic\b.*\b(bug|function|code|fix)\b/,
-    ]);
-
-    add('planning-agent', 3, [
-      /\b(roadmap|milestone|implementation plan|launch plan|project plan|rollout plan)\b/,
-      /\bplan\b.*\b(launch|build|implement|project|beta|release)\b/,
-    ]);
-    add('planning-agent', 1, [/\b(schedule|timeline|phases|steps)\b/]);
-
-    add('business-agent', 3, [
-      /\b(pricing|revenue|sales|monetization|go-to-market|gtm|market strategy|customer acquisition)\b/,
-      /\b(business model|business strategy|unit economics)\b/,
-    ]);
-    add('business-agent', 1, [/\b(market|customer|saas|startup)\b/]);
-
-    add('chat-agent', 2, [
-      /\b(joke|story|chat|conversation|hello|hi|who is|what is|tell me about)\b/,
-      /\b(explain|describe)\b/,
-    ]);
-
-    // Technical evidence should beat generic conversational words such as
-    // "explain", and code-specific bugs should beat the word "business".
-    if (scores['coding-agent'] > 0 && /\b(code|bug|debug|function|react|api|endpoint)\b/.test(input)) {
-      scores['chat-agent'] = Math.max(0, scores['chat-agent'] - 1);
-      if (/\bbusiness logic\b/.test(input)) {
-        scores['business-agent'] = Math.max(0, scores['business-agent'] - 2);
-      }
-    }
-
-    const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-    const [topAgent, topScore] = ranked[0];
-    const secondScore = ranked[1]?.[1] ?? 0;
-
-    if (topScore === 0) {
-      const shortFollowUp = input.trim().split(/\s+/).length <= 8;
-      if (shortFollowUp && this.lastRouteDecision) {
-        return {
-          agentName: this.lastRouteDecision.agentName,
-          reason: 'short follow-up retained previous route',
-          scores,
-        };
-      }
-
-      return {
-        agentName: this.defaultAgentName,
-        reason: 'no strong routing signal',
-        scores,
-      };
-    }
-
     return {
-      agentName: topAgent,
-      reason:
-        topScore === secondScore
-          ? `routing tie resolved by score order (${topScore})`
-          : `highest routing score (${topScore})`,
-      scores,
+      agentName: 'coding-agent',
+      reason: 'model-led assistant with optional computer and workspace tools',
+      scores: { 'coding-agent': 100 },
     };
   }
 

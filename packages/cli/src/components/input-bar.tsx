@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { StatusBar } from './satus-bar';
 import { SLASH_COMMANDS } from '../utils/slash-commands';
+import { TextAttributes } from '@opentui/core';
 import {
   createModelPickerItems,
   filterModelPickerItems,
@@ -344,16 +345,16 @@ export function InputBar({
           paddingY={0}
         >
           <box width="100%" flexDirection="row" justifyContent="space-between">
-            <text fg="cyan" attributes={{ bold: true }}>
+            <text fg="cyan" attributes={TextAttributes.BOLD}>
               {'Models' + (!modelCatalogLoading && !modelCatalogError ? ' · ' + filteredModels.total : '')}
             </text>
             <text
               fg="gray"
-              attributes={{ dim: true, underline: true }}
+              attributes={TextAttributes.DIM | TextAttributes.UNDERLINE}
               onMouseDown={closeModelPicker}
             >{'Close'}</text>
           </box>
-          <text fg="gray" attributes={{ dim: true }}>
+          <text fg="gray" attributes={TextAttributes.DIM}>
             {'Type to filter · ↑↓ browse all · Enter switch · Tab fill · click switch · Esc close'}
           </text>
 
@@ -381,14 +382,14 @@ export function InputBar({
                   }}
                 >
                   <box width="100%" flexDirection="row" justifyContent="space-between">
-                    <text fg={selected ? 'cyan' : 'white'} attributes={{ bold: selected }}>
+                    <text fg={selected ? 'cyan' : 'white'} attributes={(selected ? TextAttributes.BOLD : TextAttributes.NONE)}>
                       {String(item.name)}
                     </text>
                     <text fg={item.current || item.providerLabel === 'CHATGPT' || item.local || item.free ? 'green' : 'gray'}>
                       {item.current ? 'CURRENT' : item.providerLabel === 'CHATGPT' ? 'PLAN' : item.local ? 'LOCAL' : item.free ? 'FREE' : 'PAID'}
                     </text>
                   </box>
-                  <text fg="gray" attributes={{ dim: true }}>
+                  <text fg="gray" attributes={TextAttributes.DIM}>
                     {String(item.meta)}
                   </text>
                 </box>
@@ -397,7 +398,7 @@ export function InputBar({
           )}
 
           {!modelCatalogLoading && !modelCatalogError && filteredModels.total > 0 && (
-            <text fg="gray" attributes={{ dim: true }}>
+            <text fg="gray" attributes={TextAttributes.DIM}>
               {'Showing ' +
                 (modelWindowStart + 1) +
                 '–' +
@@ -420,7 +421,7 @@ export function InputBar({
           paddingX={1}
           paddingY={0}
         >
-          <text fg="gray" attributes={{ dim: true }}>
+          <text fg="gray" attributes={TextAttributes.DIM}>
             Slash commands · ↑↓ navigate · Tab complete · Enter choose/run
           </text>
           {filteredCommands.map((item, index) => {
@@ -436,7 +437,7 @@ export function InputBar({
                 onMouseDown={() => applySelectedCommand(item)}
               >
                 <text fg={selected ? 'magenta' : 'white'}>{item.command}</text>
-                <text fg="gray" attributes={{ dim: !selected }}>
+                <text fg="gray" attributes={(!selected ? TextAttributes.DIM : TextAttributes.NONE)}>
                   {item.description}
                 </text>
               </box>

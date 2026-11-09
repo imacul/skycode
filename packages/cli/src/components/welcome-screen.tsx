@@ -5,6 +5,7 @@ import { ProviderSelector } from './provider-selector';
 import { ApiKeyPrompt } from './api-key-prompt';
 import { getProviderApiKey, setProviderApiKey, getConfiguredProviders, useSettingsStore } from '../store/settings';
 
+import { TextAttributes } from '@opentui/core';
 export type SetupMode = 'all' | 'cloud' | 'local' | 'openrouter';
 
 export interface WelcomeScreenProps {
@@ -104,8 +105,8 @@ export function WelcomeScreen({ onComplete, mode = 'all', forceSetup = false }: 
           gap={2}
           backgroundColor="#0D0D12"
         >
-          <text fg="cyan" attributes={{ bold: true }}>{'🌌 Welcome to Sky Code'}</text>
-          <text fg="gray" attributes={{ dim: true }}>{'Your AI Agent Harness for the Terminal'}</text>
+          <text fg="cyan" attributes={TextAttributes.BOLD}>{'🌌 Welcome to Sky Code'}</text>
+          <text fg="gray" attributes={TextAttributes.DIM}>{'Your AI Agent Harness for the Terminal'}</text>
           
           <ProviderSelector
             onSelect={handleProviderSelect}

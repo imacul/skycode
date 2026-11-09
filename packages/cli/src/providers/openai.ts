@@ -124,7 +124,7 @@ interface OpenAIRequest {
   model: string;
   messages: Array<{
     role: 'user' | 'assistant' | 'system';
-    content: string;
+    content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
   }>;
   temperature?: number;
   max_tokens?: number;
@@ -239,7 +239,12 @@ export class OpenAIProvider implements BaseProvider {
     }
 
     const model = request.model || this.config.model || OPENAI_MODELS[0].id;
-    const messages = request.messages;
+    const messages: OpenAIRequest['messages'] = request.messages.map(msg => ({
+      role: msg.role,
+      content: msg.imageDataUrl && msg.role === 'user'
+        ? [{ type: 'text' as const, text: msg.content }, { type: 'image_url' as const, image_url: { url: msg.imageDataUrl } }]
+        : msg.content,
+    }));
 
     const body: OpenAIRequest = {
       model,
@@ -314,7 +319,12 @@ export class OpenAIProvider implements BaseProvider {
     }
 
     const model = request.model || this.config.model || OPENAI_MODELS[0].id;
-    const messages = request.messages;
+    const messages: OpenAIRequest['messages'] = request.messages.map(msg => ({
+      role: msg.role,
+      content: msg.imageDataUrl && msg.role === 'user'
+        ? [{ type: 'text' as const, text: msg.content }, { type: 'image_url' as const, image_url: { url: msg.imageDataUrl } }]
+        : msg.content,
+    }));
 
     const body: OpenAIRequest = {
       model,
@@ -400,7 +410,11 @@ export class OpenAIProvider implements BaseProvider {
               }
 
               if (chunk.usage) {
-                usage = chunk.usage;
+                usage = {
+                  promptTokens: chunk.usage.prompt_tokens,
+                  completionTokens: chunk.usage.completion_tokens,
+                  totalTokens: chunk.usage.total_tokens,
+                };
               }
             } catch (e) {
               console.error('Error parsing OpenAI stream chunk:', e);

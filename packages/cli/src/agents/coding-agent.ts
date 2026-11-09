@@ -31,13 +31,12 @@ import {
   parseProjectToolCalls,
   parseProjectClarification,
   projectToolResultMessage,
+  summarizeToolProvenance,
+  getBuildVerificationStatus,
   describeRunningProcesses,
   recoverImpliedToolCall,
   responseLooksLikePendingWork,
   setProcessLogListener,
-  shouldContinueProjectTools,
-  shouldUseProjectTools,
-  classifyToolLoopMode,
   stripProjectToolCalls,
   type ProjectToolCall,
   type ProjectToolExecution,
@@ -48,7 +47,7 @@ import {
  */
 export const DEFAULT_CODING_AGENT_CONFIG: CodingAgentConfig = {
   name: 'coding-agent',
-  description: 'A specialized AI agent for coding tasks including code completion, explanation, bug fixing, and refactoring.',
+  description: 'A model-led general assistant with optional coding, computer, browser, and workspace tools.',
   capabilities: [
     'code-completion',
     'code-explanation',
@@ -57,9 +56,13 @@ export const DEFAULT_CODING_AGENT_CONFIG: CodingAgentConfig = {
     'testing',
   ],
   defaultMode: 'code',
-  systemPrompt: `You are an expert AI coding assistant running inside the SkyCode developer harness.
+  systemPrompt: `You are SkyCode, a general-purpose assistant running inside a tool-enabled desktop and developer harness.
 
 SkyCode capability facts:
+- Interpret the user's intended outcome from their full conversational context, not from any required list of trigger words. An instruction such as "open it" may refer to the window, file, or folder discussed moments ago.
+- Decide yourself whether the request needs a tool. For conversational questions, answer directly without forcing a tool call. For requested computer actions, use available computer tools and actual observations, not claims that this chat cannot operate Windows.
+- Preserve constraints and references across turns. If a target is genuinely ambiguous, inspect open windows and accessible controls or ask one concise clarification instead of pretending a task was completed.
+- Do not invent GUI state or success. Owner Mode changes approval behavior, not whether tools exist or which user phrases are recognized.
 - You are not limited to pasting code snippets in chat.
 - For explicit build/edit requests, SkyCode can let you inspect the active workspace, create directories, read/search files, and write real project files.
 - You can design project architecture and create multi-file software projects for web, backend, CLI, mobile, or desktop stacks when the requested stack can be represented as source files in the workspace.
@@ -157,7 +160,9 @@ export class CodingAgent implements BaseAgent {
    * Get the system message based on current mode
    */
   private getSystemMessage(enableProjectTools = false): Message {
-    const modePrompt = MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.code;
+    const modePrompt = enableProjectTools && this.currentMode === 'code'
+      ? 'You are an assistant with optional computer, coding and research tools. Choose tools only when needed by the user request.'
+      : MODE_PROMPTS[this.currentMode as keyof typeof MODE_PROMPTS] || MODE_PROMPTS.code;
     const systemPrompt = this.config.systemPrompt || DEFAULT_CODING_AGENT_CONFIG.systemPrompt;
     const toolPrompt = enableProjectTools
       ? '\n\n' + getProjectToolInstructions(this.context.workingDirectory)
@@ -219,47 +224,22 @@ export class CodingAgent implements BaseAgent {
         return `TEST MODE: Please write tests for this code:\n\n${input}`;
       case 'code':
       default:
-        // Check if input looks like a request for specific capability
-        const lowerInput = input.toLowerCase();
-        if (lowerInput.includes('fix') || lowerInput.includes('bug')) {
-          return `BUG FIXING: ${input}`;
-        }
-        if (lowerInput.includes('explain') || lowerInput.includes('how does')) {
-          return `CODE EXPLANATION: ${input}`;
-        }
-        if (lowerInput.includes('refactor') || lowerInput.includes('improve')) {
-          return `REFACTORING: ${input}`;
-        }
-        if (lowerInput.includes('test') || lowerInput.includes('testing')) {
-          return `TESTING: ${input}`;
-        }
-        if (lowerInput.includes('complete') || lowerInput.includes('write')) {
-          return `CODE COMPLETION: ${input}`;
-        }
         return input;
     }
   }
 
-  private shouldRunProjectTools(request: AgentRequest): boolean {
-    if (request.taskKind === 'workspace' && request.taskState === 'running') return true;
-    if (shouldUseProjectTools(request.input)) return true;
-
-    const history = [
-      ...(this.context.conversation?.messages || []),
-      ...this.context.messages,
-    ];
-    return shouldContinueProjectTools(request.input, history);
+  private shouldRunProjectTools(_request: AgentRequest): boolean {
+    // Do not gate tool availability on exact words or previous route state.
+    // The selected model decides whether to invoke an exposed tool.
+    return true;
   }
 
   private looksLikeRawModelCapabilityRefusal(content: string): boolean {
+    // Detect inaccurate claims of tool unavailability in a MODEL RESPONSE,
+    // never use this to classify the user's instruction or choose an action.
     const text = content.toLowerCase();
-    return (
-      /\b(i (?:am|['’]m) not able to|i cannot|i can['’]?t|unable to)\b/.test(text) &&
-      /\b(create|build|develop|software|files?|folders?|project|app|application|execute|compile|deploy)\b/.test(text)
-    ) || (
-      /\b(i can only|limited to)\b/.test(text) &&
-      /\b(code snippets?|guidance|examples?|text|source code)\b/.test(text)
-    );
+    return /\b(i (?:am|['’]m) (?:not able to|unable to)|i cannot|i can['’]?t|unable to|i (?:can only|am limited to))\b/.test(text) &&
+      /\b(interact|operate|click|mouse|window|desktop|screen|file|folder|computer|app|application|execute|create|open|control|tool)\b/.test(text);
   }
 
   private async runProjectToolLoop(
@@ -278,7 +258,9 @@ export class CodingAgent implements BaseAgent {
     // Model-driven tools only: SkyCode never hardcodes the user's intent into a
     // forced open_url / browser play. The model must choose tools (or say that
     // no suitable capability exists).
-    const loopMode = classifyToolLoopMode(request.input);
+    // Tool availability never depends on the exact words in the request.
+    // The model chooses whether to inspect the workspace or operate the desktop.
+    const loopMode: 'reach' | 'build' = request.context?.toolLoopMode === 'build' ? 'build' : 'reach';
     const maxTokens = (request.context as any)?.maxTokens || 4096;
     const messages = this.buildProviderMessages(request, true);
     const traceId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -308,6 +290,21 @@ export class CodingAgent implements BaseAgent {
     let lastModelToolFailed = false;
     let untrustedInfluence = false;
     const allExecutions: ProjectToolExecution[] = [];
+    const failedCallCounts = new Map<string, number>();
+    // Keep a passive observation from becoming an infinite inspection loop.
+    // Reset after any state-changing tool so legitimate re-verification works.
+    let lastPassiveObservation = '';
+    let repeatedPassiveObservations = 0;
+    const launchedApplicationTargets = new Set<string>();
+    let verificationReminderCount = 0;
+    // Track actual tool results across rounds, not keywords in the user's
+    // request. A desktop interaction has a smaller recovery budget than a
+    // software build, while the full general-purpose budget remains available.
+    const desktopProgress: string[] = [];
+    let desktopRounds = 0;
+    let repeatedDesktopFailures = 0;
+    let lastDesktopFailure = '';
+
 
     if (loopMode === 'build') {
       const initialActivityId = 'planning_' + Date.now();
@@ -363,11 +360,13 @@ export class CodingAgent implements BaseAgent {
         id: 'reach_hint_' + Date.now(),
         role: 'user',
         content:
-          'This request does not require workspace file inspection first. ' +
-          'Review the SkyCode tools available to you and call the one that fits. ' +
-          'Typical fits: open_url / open_app / browser / web_search / web_fetch / mcp_*. ' +
-          'If none fit, say clearly that SkyCode does not provide that capability yet. ' +
-          'Do not invent success and do not start unrelated file edits.',
+          'The model decides whether tools are needed; do not require trigger phrases. ' +
+          'Interpret the user requested end state and resolve references from conversation context. ' +
+          'If the request needs action, plan and execute any reasonable prerequisites before the requested operation: discover the existing target, start or open it when absent, then inspect, act, and verify. ' +
+          'When a screenshot shows a different app, switch to or open the target and inspect again; do not give up based on the wrong foreground window. ' +
+          'You may respond conversationally without a tool for information-only requests. ' +
+          'Never claim that an action or menu state succeeded without current tool evidence. ' +
+          'If no supported sequence can reach the outcome, clearly report which prerequisite failed.',
         timestamp: new Date(),
       });
     }
@@ -398,6 +397,9 @@ export class CodingAgent implements BaseAgent {
     try {
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const modelActivityId = 'model_round_' + Date.now() + '_' + iteration;
+      // Screenshot pixels must be present for THIS provider call. Clear the
+      // transient attachment only AFTER model inference consumes the image.
+      // Keep the compact screenshot geometry in the text history.
       onActivity?.({
         id: modelActivityId,
         type: 'planning',
@@ -489,6 +491,9 @@ export class CodingAgent implements BaseAgent {
         throw error;
       }
 
+      for (const message of messages) {
+        if (message.imageDataUrl) delete message.imageDataUrl;
+      }
       onActivity?.({
         id: modelActivityId,
         type: 'planning',
@@ -539,9 +544,23 @@ export class CodingAgent implements BaseAgent {
       const containsRawToolProtocol = /<tool_call>|<\|DSML\|/i.test(response.content);
 
       if (calls.length === 0) {
+        const buildCheck = getBuildVerificationStatus(allExecutions);
+        if (buildCheck.codeChanged && !buildCheck.checkPassed && verificationReminderCount < 2 &&
+            !parseProjectClarification(response.content)) {
+          verificationReminderCount += 1;
+          messages.push({
+            id: 'verification_request_' + Date.now() + '_' + iteration,
+            role: 'user',
+            content: buildCheck.checkFailed
+              ? 'Engineering verification FAILED after the latest code changes (' + (buildCheck.lastCheck || 'verification command') + '). Inspect the actual error, fix the source, and rerun a relevant check. Do not claim that the software is working.'
+              : 'You changed project files, but no successful test/build/typecheck is recorded AFTER the latest change. Inspect the project scripts, run the relevant existing verification command using run_command, and fix errors before finishing. If no checks exist or execution is impossible, clearly report the limitation instead of inventing success.',
+            timestamp: new Date(),
+          });
+          continue;
+        }
         const falseCapabilityRefusal = this.looksLikeRawModelCapabilityRefusal(response.content);
 
-        if (containsRawToolProtocol || (!hasExecutedTools && iteration < 3) || (requiresWebEvidence && !hasWebEvidence && iteration < 4)) {
+        if (containsRawToolProtocol || (!hasExecutedTools && falseCapabilityRefusal && iteration < 2) || (requiresWebEvidence && !hasWebEvidence && iteration < 4)) {
           messages.push({
             id: 'assistant_invalid_tool_plan_' + Date.now() + '_' + iteration,
             role: 'assistant',
@@ -557,13 +576,13 @@ export class CodingAgent implements BaseAgent {
               (falseCapabilityRefusal
                 ? 'Your previous response described raw-model limitations, but that is incorrect inside SkyCode. '
                 : '') +
-              'SkyCode gives you real workspace tools for this task: list_files, read_file, search_files, create_directory, write_file, delete_file, delete_directory, run_command, start_process, read_process_logs, stop_process, web_search, web_fetch, open_url, open_app, browser, mcp_list, and mcp_call. ' +
+              'SkyCode has computer_observe, computer_focus_window, computer_act, computer_screenshot, file operations, terminal, browser and other tools. Choose the matching one for the user request. ' +
               (containsRawToolProtocol
                 ? 'Your previous response contained tool-call markup that SkyCode could not execute. Do not repeat that syntax. '
                 : '') +
               (requiresWebEvidence
                 ? 'The user asked for current web research. You must call web_search and, where useful, web_fetch before answering. Do not invent URLs, dates, releases, or sources. '
-                : 'The user asked you to modify real project files. ') +
+                : 'Choose the appropriate SkyCode tool only if the user requested an action you can execute. ') +
               'Use the exact ' +
               '<tool_call>{"name":"...","args":{...}}</tool_call> format now. ' +
               'If a genuinely architecture-changing detail is missing, ask one concise <clarification> block instead. ' +
@@ -592,9 +611,9 @@ export class CodingAgent implements BaseAgent {
             role: 'user',
             content:
               'You stopped before the task was checked. Do not describe the next command and do not summarize yet. ' +
-              'Call a tool now. Use run_command for tests, builds, log files, and localhost probes. ' +
-              'Use start_process for an app or dev server, then read_process_logs, then stop_process when testing is done. ' +
-              'If the last command failed, fix the code and run the check again. ' +
+              'Call the most appropriate available tool now. For computer UI requests, use focused window observations, physical mouse/keyboard actions and screenshots, not shell navigation. ' +
+              'For development tests or logs, use the workspace terminal and process tools when necessary. ' +
+              'If an action failed, inspect the real error and choose a different approach rather than repeating identical observations. ' +
               'Use <tool_call>{"name":"...","args":{...}}</tool_call>.',
             timestamp: new Date(),
           });
@@ -604,8 +623,8 @@ export class CodingAgent implements BaseAgent {
         if (!hasExecutedTools && falseCapabilityRefusal) {
           return {
             content:
-              'SkyCode can create and structure this software in the active workspace, but the selected model did not follow the workspace tool protocol after multiple retries. ' +
-              'Try the build request again or switch to a stronger coding model; SkyCode will keep the same real file-creation capabilities.',
+              'SkyCode exposes computer and workspace tools, but the selected model did not follow its tool protocol after corrective prompts. ' +
+              'The operation is incomplete. Retry with the same natural-language request or inspect the tool trace; no task completion is claimed.',
             finishReason: 'tool_protocol_not_followed',
             tokensUsed,
           };
@@ -625,11 +644,20 @@ export class CodingAgent implements BaseAgent {
           ? stripped
           : stripped || response.content.trim();
         if (finalText) {
+          const method = summarizeToolProvenance(allExecutions);
+          const verification = getBuildVerificationStatus(allExecutions);
+          const unverifiedChanges = verification.codeChanged && !verification.checkPassed;
+          const verificationNote = !verification.codeChanged ? '' :
+            verification.checkPassed
+              ? 'Verification: passed ' + (verification.lastCheck || 'project check') + ' after the latest code changes.'
+              : 'Verification: NOT PASSED after the latest code changes. ' +
+                (verification.checkFailed ? 'The latest check failed: ' + (verification.lastCheck || 'unknown check') + '.' :
+                'No successful build/test/typecheck was recorded. The delivered code is unverified.');
           onActivity?.({
             id: 'complete_' + Date.now(),
             type: 'complete',
-            status: 'success',
-            title: 'Project work complete',
+            status: unverifiedChanges ? 'error' : 'success',
+            title: unverifiedChanges ? 'Code changes not verified' : 'Project work complete',
             detail:
               allExecutions.length > 0
                 ? allExecutions.filter((item) => item.success).length +
@@ -637,8 +665,8 @@ export class CodingAgent implements BaseAgent {
                 : undefined,
           });
           return {
-            content: finalText,
-            finishReason,
+            content: [finalText, verificationNote, method].filter(Boolean).join('\n\n'),
+            finishReason: unverifiedChanges ? 'build_unverified' : finishReason,
             tokensUsed,
           };
         }
@@ -720,6 +748,60 @@ export class CodingAgent implements BaseAgent {
         };
       }
       for (const call of executableCalls.slice(0, Math.min(8, remainingToolBudget))) {
+        const signature = call.name + ':' + JSON.stringify(call.args);
+        // A model can rediscover or refocus an existing application, but it
+        // must not spawn the same app repeatedly within one task.
+        if (call.name === 'open_app' && typeof call.args.name === 'string') {
+          const target = call.args.name.trim().toLowerCase().replace(/\\.exe$/i, '');
+          if (launchedApplicationTargets.has(target)) {
+            const blocked: ProjectToolExecution = {
+              call, success: false,
+              content: 'This application was already launched during the current task. Enumerate existing windows and focus the target instead of launching another instance.',
+              trust: 'trusted-control',
+            };
+            executions.push(blocked);
+            allExecutions.push(blocked);
+            lastModelToolFailed = true;
+            onToolExecution?.(blocked);
+            continue;
+          }
+        }
+        const isPassiveObservation = [
+          'desktop_list_windows', 'computer_observe', 'computer_observe_window',
+          'computer_verify', 'desktop_snapshot', 'computer_screenshot'
+        ].includes(call.name);
+        if (isPassiveObservation) {
+          repeatedPassiveObservations = signature === lastPassiveObservation
+            ? repeatedPassiveObservations + 1 : 0;
+          lastPassiveObservation = signature;
+          if (repeatedPassiveObservations >= 2) {
+            const blocked: ProjectToolExecution = {
+              call, success: false,
+              content: 'Repeated the same read-only desktop observation without intervening action. Use existing evidence to act, switch to an alternative observation modality such as screenshot, or report an actual blocker. Do not re-inspect the unchanged window.',
+              trust: 'trusted-control',
+            };
+            executions.push(blocked);
+            allExecutions.push(blocked);
+            lastModelToolFailed = true;
+            onToolExecution?.(blocked);
+            continue;
+          }
+        } else {
+          lastPassiveObservation = '';
+          repeatedPassiveObservations = 0;
+        }
+        if ((failedCallCounts.get(signature) || 0) >= 2) {
+          const blocked: ProjectToolExecution = {
+            call, success: false,
+            content: 'This identical action already failed twice. Do not retry it. Use a different tool or request clarification.',
+            trust: 'trusted-control',
+          };
+          executions.push(blocked);
+          allExecutions.push(blocked);
+          lastModelToolFailed = true;
+          onToolExecution?.(blocked);
+          continue;
+        }
         const activityId =
           'tool_' + Date.now() + '_' + iteration + '_' + executions.length;
         const path =
@@ -742,12 +824,19 @@ export class CodingAgent implements BaseAgent {
                     ? 'search'
                     : 'inspect';
 
+        const mouseKind = call.name === 'computer_act'
+          ? String((call.args.step as { kind?: string } | undefined)?.kind || '')
+          : '';
+        const isPointerAction = ['move','click','right_click','double_click','drag','visual_click'].includes(mouseKind);
+        const isComputerActivity = call.name.startsWith('computer_') || call.name.startsWith('desktop_');
         onActivity?.({
           id: activityId,
           type: activityType,
           status: 'running',
           title:
-            call.name === 'write_file'
+            isPointerAction
+              ? 'Using Windows mouse: ' + mouseKind
+              : call.name === 'write_file'
               ? 'Writing file'
               : call.name === 'create_directory'
                 ? 'Creating directory'
@@ -763,7 +852,9 @@ export class CodingAgent implements BaseAgent {
                           ? 'Stopping app'
                           : call.name === 'read_file'
                       ? 'Reading file'
-                      : 'Inspecting workspace',
+                      : isComputerActivity
+                        ? call.name === 'computer_screenshot' ? 'Looking at Windows screen' : 'Inspecting Windows interface'
+                        : 'Inspecting workspace',
           path:
             (call.name === 'run_command' || call.name === 'start_process') &&
             typeof call.args.command === 'string'
@@ -780,10 +871,29 @@ export class CodingAgent implements BaseAgent {
         );
         executions.push(execution);
         allExecutions.push(execution);
+        if (execution.success && call.name === 'open_app' && typeof call.args.name === 'string') {
+          launchedApplicationTargets.add(call.args.name.trim().toLowerCase().replace(/\\.exe$/i, ''));
+        }
+        if (!execution.success) failedCallCounts.set(signature, (failedCallCounts.get(signature) || 0) + 1);
         if (execution.success && (call.name === 'web_search' || call.name === 'web_fetch')) {
           hasWebEvidence = true;
         }
         if (!execution.success) lastModelToolFailed = true;
+        if (call.name.startsWith('computer_') || call.name.startsWith('desktop_') || call.name === 'open_app') {
+          const note = call.name +
+            (call.name === 'computer_act' ? ':' + String((call.args.step as { kind?: string } | undefined)?.kind || '') : '') +
+            ' ' + (execution.success ? 'completed' : 'failed');
+          desktopProgress.push(note);
+          if (desktopProgress.length > 10) desktopProgress.shift();
+          if (!execution.success) {
+            const fingerprint = call.name + ':' + execution.content.slice(0, 180);
+            repeatedDesktopFailures = fingerprint === lastDesktopFailure ? repeatedDesktopFailures + 1 : 1;
+            lastDesktopFailure = fingerprint;
+          } else {
+            repeatedDesktopFailures = 0;
+            lastDesktopFailure = '';
+          }
+        }
         agentDebug('tool.execute.result', { traceId, iteration, execution });
         onToolExecution?.(execution);
 
@@ -792,7 +902,9 @@ export class CodingAgent implements BaseAgent {
           type: activityType,
           status: execution.success ? 'success' : 'error',
           title:
-            call.name === 'write_file'
+            isPointerAction
+              ? (execution.success ? 'Mouse action sent: ' : 'Mouse action failed: ') + mouseKind
+              : call.name === 'write_file'
               ? execution.success
                 ? 'Updated file'
                 : 'File update failed'
@@ -824,9 +936,11 @@ export class CodingAgent implements BaseAgent {
                       ? execution.success
                         ? 'Read file'
                         : 'Read failed'
-                      : execution.success
-                        ? 'Workspace inspected'
-                        : 'Inspection failed',
+                      : isComputerActivity
+                        ? execution.success ? 'Windows interface inspected' : 'Windows interaction failed'
+                        : execution.success
+                          ? 'Workspace inspected'
+                          : 'Inspection failed',
           path:
             (call.name === 'run_command' || call.name === 'start_process') &&
             typeof call.args.command === 'string'
@@ -852,7 +966,40 @@ export class CodingAgent implements BaseAgent {
         untrustedInfluence = true;
       }
 
+      // Stop on an actual run of failures, not four failures interleaved with
+      // successful observations. Report a failed call, never a successful one.
+      const tail = allExecutions.slice(-4);
+      if (tail.length === 4 && tail.every(item => !item.success)) {
+        const failed = tail[tail.length - 1];
+        return {
+          content: 'SkyCode stopped after four consecutive tool failures. Failing tool: ' +
+            failed.call.name + '. Error: ' + (failed.content || 'unknown').slice(0, 900) +
+            '\\nThe task is incomplete. Inspect the tool trace before retrying.',
+          finishReason: 'repeated_tool_failure', tokensUsed,
+        };
+      }
+      const desktopActions = executions.filter(item =>
+        item.call.name.startsWith('computer_') || item.call.name.startsWith('desktop_') ||
+        item.call.name === 'open_app'
+      );
+      if (desktopActions.length) desktopRounds += 1;
+      if (repeatedDesktopFailures >= 3 || desktopRounds >= 16) {
+        return {
+          content: 'SkyCode stopped this desktop task before more repeated attempts. ' +
+            (repeatedDesktopFailures >= 3
+              ? 'The same Windows interaction failure occurred repeatedly. '
+              : 'The desktop operation exceeded 16 model/tool rounds without verified completion. ') +
+            'Task outcome is not verified. Recent actions: ' + desktopProgress.slice(-7).join('; ') +
+            '. Inspect Windows focus and the tool trace before trying again.',
+          finishReason: 'desktop_progress_limit', tokensUsed,
+        };
+      }
       const toolResult = projectToolResultMessage(executions);
+      if (desktopProgress.length) {
+        toolResult.content += '\\nDESKTOP TASK PROGRESS (actual executed operations, not proof of final outcome): ' +
+          desktopProgress.slice(-8).join(' | ') +
+          '. Do not repeat successful steps. Choose the next smallest action toward the requested result, verify it, or report a blocker.';
+      }
       agentDebug('tool.result.to_model', { traceId, iteration, content: toolResult.content });
       messages.push(toolResult);
     }
