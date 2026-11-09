@@ -9,8 +9,8 @@ import { ResponseContent } from './components/response-content';
 import { WorkActivityView } from './components/work-activity-view';
 import { ApprovalPrompt } from './components/approval-prompt';
 import { WelcomeScreen, type SetupMode } from './components/welcome-screen';
-import {
 import { TextAttributes } from '@opentui/core';
+import {
   useConversationStore,
   createNewConversation,
   formatConversationHistory,
