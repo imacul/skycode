@@ -31,6 +31,8 @@ export interface ChatRequestOptions {
   temperature?: number;
   /** Maximum tokens to generate */
   maxTokens?: number;
+  /** Request timeout in milliseconds */
+  timeout?: number;
   /** Stream the response */
   stream?: boolean;
   /** Stop sequences */
