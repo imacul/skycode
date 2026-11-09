@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 
+import { TextAttributes } from '@opentui/core';
 export interface ApiKeyPromptProps {
   provider: 'openrouter' | 'anthropic' | 'openai' | 'local';
   onSubmit: (apiKey: string) => void;
@@ -99,12 +100,12 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
       maxWidth={60}
       padding={2}
       backgroundColor="#1A1A24"
-      border={['all']}
+      border={['left', 'right', 'top', 'bottom']}
       borderColor="yellow"
     >
       {/* Header */}
       <box flexDirection="column" gap={1}>
-        <text fg="yellow" attributes={{ bold: true }}>{provider === 'local' ? '🏡 Local LLM Setup' : '🔑 API Key Required'}</text>
+        <text fg="yellow" attributes={TextAttributes.BOLD}>{provider === 'local' ? '🏡 Local LLM Setup' : '🔑 API Key Required'}</text>
         <text fg="white">{provider === 'local' ? 'Enter your local LLM server URL' : 'Enter your ' + String(info.name) + ' API key to continue'}</text>
       </box>
 
@@ -144,18 +145,18 @@ export function ApiKeyPrompt({ provider, onSubmit, onSkip, onBack }: ApiKeyPromp
 
       {/* Actions */}
       <box flexDirection="row" gap={2} justifyContent="flex-end">
-        <text fg="gray" attributes={{ dim: true }}>{provider === 'local' ? 'Press Enter to submit, Esc to go back' : 'Press Enter to submit, Esc to skip'}</text>
+        <text fg="gray" attributes={TextAttributes.DIM}>{provider === 'local' ? 'Press Enter to submit, Esc to go back' : 'Press Enter to submit, Esc to skip'}</text>
       </box>
 
       {/* Buttons */}
       <box flexDirection="row" gap={2} justifyContent="flex-end">
-        <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onBack}>{'Back'}</text>
+        <text fg="gray" attributes={TextAttributes.DIM | TextAttributes.UNDERLINE} onMouseDown={onBack}>{'Back'}</text>
         {provider !== 'local' && (
-          <text fg="gray" attributes={{ dim: true, underline: true }} onMouseDown={onSkip}>{'Try Without API Key'}</text>
+          <text fg="gray" attributes={TextAttributes.DIM | TextAttributes.UNDERLINE} onMouseDown={onSkip}>{'Try Without API Key'}</text>
         )}
         <text
           fg={canSubmit ? 'green' : 'gray'}
-          attributes={{ bold: canSubmit, underline: canSubmit }}
+          attributes={(canSubmit ? TextAttributes.BOLD : TextAttributes.NONE) | (canSubmit ? TextAttributes.UNDERLINE : TextAttributes.NONE)}
           onMouseDown={() => {
             if (canSubmit) handleSubmit();
           }}
